@@ -1,0 +1,13 @@
+[package]
+name = "strata-engine"
+description = "Single-pass streaming scan engine running every detector over evidence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-source.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
