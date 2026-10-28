@@ -1,0 +1,12 @@
+[package]
+name = "strata-fs"
+description = "Filesystem parsing with deleted/orphan recovery: NTFS, FAT, exFAT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-source.workspace = true
+strata-volume.workspace = true
+serde.workspace = true

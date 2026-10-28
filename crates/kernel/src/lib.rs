@@ -6,6 +6,7 @@ mod damage;
 mod error;
 mod ids;
 mod range;
+pub mod scan;
 pub mod time;
 
 pub use confidence::Confidence;
