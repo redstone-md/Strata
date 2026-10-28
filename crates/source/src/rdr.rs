@@ -6,8 +6,10 @@
 //! * file header at 0 (record_size 0x34, kind 1);
 //! * data records, kind `0x18000020`: `a` = logical disk offset, `b` = payload length, payload
 //!   (normally 256 KiB) follows the header;
-//! * trailer index, kind `0x08000090`: `a` = disk size, followed by 12-byte entries
-//!   `u64 file_offset | u32 record_size` for every data record.
+//! * trailer index, kind `0x08000090`: `a` = disk size, `u64 block_size` at +0x24,
+//!   `u32 count` at +0x2C, then `count` entries `u64 offset | u32 record_size` at +0x30, where
+//!   offsets are relative to the first data record;
+//! * after the trailer: zlib-compressed metadata records and a short footer.
 //!
 //! Blocks R-Studio could not read are simply absent; they read back as zeros and are reported
 //! as damage. Images still being written (no trailer) are indexed by walking record headers.
@@ -24,7 +26,8 @@ const HEADER_LEN: u64 = 0x24;
 const KIND_DATA: u32 = 0x1800_0020;
 const KIND_INDEX: u32 = 0x0800_0090;
 const TRAILER_SEARCH: u64 = 64 << 20;
-const CACHE_MAGIC: &[u8; 8] = b"STRDRIX1";
+const TRAILER_ENTRIES: usize = 0x30;
+const CACHE_MAGIC: &[u8; 8] = b"STRDRIX2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Block {
@@ -74,8 +77,10 @@ impl RdrImage {
         let (blocks, disk_size) = match cache.as_deref().and_then(Self::load_cache) {
             Some(hit) => hit,
             None => {
-                let built = Self::index_from_trailer(&file, file_len)
-                    .unwrap_or_else(|| Self::index_by_walk(&file, u64::from(first.size), file_len));
+                let first_record = u64::from(first.size);
+                let built = Self::index_from_trailer(&file, file_len, first_record)
+                    .filter(|(blocks, _)| !blocks.is_empty())
+                    .unwrap_or_else(|| Self::index_by_walk(&file, first_record, file_len));
                 if let Some(c) = &cache {
                     Self::store_cache(c, &built.0, built.1);
                 }
@@ -103,19 +108,22 @@ impl RdrImage {
         Self { path: path.to_path_buf(), file, blocks, len, gaps: ByteRange::coalesce(gaps) }
     }
 
-    fn index_from_trailer(file: &File, file_len: u64) -> Option<(Vec<Block>, Option<u64>)> {
+    fn index_from_trailer(file: &File, file_len: u64, first_record: u64) -> Option<(Vec<Block>, Option<u64>)> {
         let start = file_len.saturating_sub(TRAILER_SEARCH);
         let mut tail = vec![0u8; (file_len - start) as usize];
         let n = read_full_at(file, start, &mut tail).ok()?;
         tail.truncate(n);
-        let at = (0..tail.len().saturating_sub(HEADER_LEN as usize)).rev().find(|&i| {
+        let at = (0..tail.len().saturating_sub(TRAILER_ENTRIES)).rev().find(|&i| {
             RecordHeader::parse(&tail[i..]).is_some_and(|h| h.kind == KIND_INDEX)
         })?;
         let trailer = RecordHeader::parse(&tail[at..])?;
-        let entries = &tail[at + HEADER_LEN as usize..];
-        let mut file_offsets: Vec<(u64, u32)> = Vec::new();
-        for e in entries.chunks_exact(12) {
-            let (off, size) = (u64_le(e, 0)?, u32_le(e, 8)?);
+        let record = tail.get(at..at + trailer.size as usize).unwrap_or(&tail[at..]);
+        let count = u32_le(record, 0x2c)? as usize;
+        let entries = record.get(TRAILER_ENTRIES..)?;
+        let mut file_offsets: Vec<(u64, u32)> = Vec::with_capacity(count.min(entries.len() / 12));
+        for e in entries.chunks_exact(12).take(count) {
+            let (rel, size) = (u64_le(e, 0)?, u32_le(e, 8)?);
+            let off = first_record.checked_add(rel)?;
             if off >= file_len || u64::from(size) <= HEADER_LEN {
                 break;
             }
@@ -128,8 +136,7 @@ impl RdrImage {
         // Records are contiguous on disk in the common case, so verify a sample and fall back
         // to reading every header when the sample disagrees.
         let cumulative = Self::cumulative_blocks(&file_offsets);
-        let sample_ok = Self::sample_matches(file, &cumulative);
-        let blocks = if sample_ok { cumulative } else { Self::headers_at(file, &file_offsets) };
+        let blocks = if Self::sample_matches(file, &cumulative) { cumulative } else { Self::headers_at(file, &file_offsets) };
         Some((blocks, Some(trailer.a)))
     }
 
@@ -331,11 +338,15 @@ mod tests {
             body.extend([fill; 8]);
         }
         if with_trailer {
-            body.extend(header(0, KIND_INDEX, 32, 0));
+            let size = (TRAILER_ENTRIES + 12 * entries.len()) as u32;
+            body.extend(header(size, KIND_INDEX, 32, 0));
+            body.extend(8u64.to_le_bytes());
+            body.extend((entries.len() as u32).to_le_bytes());
             for (off, size) in entries {
-                body.extend(off.to_le_bytes());
+                body.extend((off - 0x34).to_le_bytes());
                 body.extend(size.to_le_bytes());
             }
+            body.extend(header(0x24, 2, 0, 0));
         }
         f.write_all(&body).unwrap();
         (dir, path)
