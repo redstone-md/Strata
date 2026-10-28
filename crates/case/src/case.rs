@@ -1,0 +1,256 @@
+use crate::attribution::EvidenceLayout;
+use crate::store::{self, HitQuery, StoredHit};
+use crate::schema;
+use parking_lot::Mutex;
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use strata_engine::{ScanControl, ScanSummary, Scanner};
+use strata_kernel::scan::HitCategory;
+use strata_kernel::{ByteRange, Error, EvidenceId, Result};
+use strata_source::{BlockSource, SourceInfo, open_source};
+use strata_volume::{Volume, VolumeScanner};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceRecord {
+    pub id: EvidenceId,
+    pub info: SourceInfo,
+    pub volumes: Vec<Volume>,
+}
+
+pub(crate) fn db(e: rusqlite::Error) -> Error {
+    Error::Other(format!("case database: {e}"))
+}
+
+fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Option<T> {
+    serde_json::from_value(serde_json::Value::String(s)).ok()
+}
+
+fn now() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+/// The aggregate root. Thread-safe: UI and background jobs share one `Arc<Case>`.
+pub struct Case {
+    root: PathBuf,
+    conn: Mutex<Connection>,
+    sources: Mutex<HashMap<EvidenceId, Arc<dyn BlockSource>>>,
+    layouts: Mutex<HashMap<EvidenceId, Arc<EvidenceLayout>>>,
+}
+
+impl Case {
+    /// Open or create the case folder.
+    pub fn open(root: &Path) -> Result<Self> {
+        std::fs::create_dir_all(root.join("cache"))?;
+        let conn = Connection::open(root.join("case.db")).map_err(db)?;
+        schema::apply(&conn).map_err(db)?;
+        Ok(Self { root: root.to_path_buf(), conn: Mutex::new(conn), sources: Mutex::default(), layouts: Mutex::default() })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn name(&self) -> String {
+        self.root.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    }
+
+    /// Register a disk image or physical drive and discover its volumes.
+    pub fn add_evidence(&self, location: &str) -> Result<EvidenceRecord> {
+        if let Some(existing) = self.evidence()?.into_iter().find(|e| e.info.location == location) {
+            return Ok(existing);
+        }
+        let source = open_source(location, Some(&self.root.join("cache")))?;
+        let info = source.info();
+        let volumes = VolumeScanner::default().scan(source.as_ref());
+        let id = {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction().map_err(db)?;
+            tx.execute(
+                "INSERT INTO evidence (label, location, kind, len, added_at, info) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![info.label, info.location, format!("{:?}", info.kind), info.len as i64, now(), serde_json::to_string(&info).unwrap_or_default()],
+            )
+            .map_err(db)?;
+            let id = EvidenceId::new(tx.last_insert_rowid() as u32);
+            for v in &volumes {
+                tx.execute(
+                    "INSERT INTO volumes (evidence_id, idx, start, len, fs, origin, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id.get(), v.index, v.range.start() as i64, v.range.len() as i64, format!("{:?}", v.fs), format!("{:?}", v.origin), v.label],
+                )
+                .map_err(db)?;
+            }
+            tx.commit().map_err(db)?;
+            id
+        };
+        self.sources.lock().insert(id, source);
+        Ok(EvidenceRecord { id, info, volumes })
+    }
+
+    pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare("SELECT id, info FROM evidence ORDER BY id").map_err(db)?;
+        let rows: Vec<(u32, String)> =
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(db)?.collect::<rusqlite::Result<_>>().map_err(db)?;
+        let mut out = Vec::new();
+        for (id, info) in rows {
+            let id = EvidenceId::new(id);
+            let info: SourceInfo = serde_json::from_str(&info).map_err(|e| Error::Other(e.to_string()))?;
+            out.push(EvidenceRecord { id, info, volumes: Self::load_volumes(&conn, id)? });
+        }
+        Ok(out)
+    }
+
+    fn load_volumes(conn: &Connection, id: EvidenceId) -> Result<Vec<Volume>> {
+        let mut stmt = conn
+            .prepare("SELECT idx, start, len, fs, origin, label FROM volumes WHERE evidence_id = ?1 ORDER BY idx")
+            .map_err(db)?;
+        let rows = stmt
+            .query_map([id.get()], |r| {
+                Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?))
+            })
+            .map_err(db)?;
+        rows.filter_map(|r| r.ok())
+            .map(|(index, start, len, fs, origin, label)| {
+                Ok(Volume {
+                    index,
+                    range: ByteRange::new(start as u64, len as u64),
+                    fs: parse_enum(fs).unwrap_or(strata_volume::FsKind::Unknown),
+                    origin: parse_enum(origin).unwrap_or(strata_volume::VolumeOrigin::Recovered),
+                    label,
+                })
+            })
+            .collect()
+    }
+
+    pub fn source(&self, id: EvidenceId) -> Result<Arc<dyn BlockSource>> {
+        if let Some(s) = self.sources.lock().get(&id) {
+            return Ok(s.clone());
+        }
+        let record = self.record(id)?;
+        let source = open_source(&record.info.location, Some(&self.root.join("cache")))?;
+        self.sources.lock().insert(id, source.clone());
+        Ok(source)
+    }
+
+    pub fn record(&self, id: EvidenceId) -> Result<EvidenceRecord> {
+        self.evidence()?.into_iter().find(|e| e.id == id).ok_or_else(|| Error::Other(format!("no evidence {id}")))
+    }
+
+    /// Parsed filesystems of an evidence item (built once, then shared).
+    pub fn layout(&self, id: EvidenceId) -> Result<Arc<EvidenceLayout>> {
+        if let Some(l) = self.layouts.lock().get(&id) {
+            return Ok(l.clone());
+        }
+        let layout = Arc::new(EvidenceLayout::build(&self.source(id)?, &self.record(id)?.volumes));
+        self.layouts.lock().insert(id, layout.clone());
+        Ok(layout)
+    }
+
+    /// Run (or resume) the single-pass scan of one evidence item and store attributed hits.
+    pub fn scan(&self, id: EvidenceId, scanner: &Scanner, control: &ScanControl) -> Result<ScanSummary> {
+        let source = self.source(id)?;
+        let layout = self.layout(id)?;
+        let detectors = scanner.detector_ids().join(",");
+        let start = self.resume_point(id, &detectors)?;
+        let range = ByteRange::from_bounds(start, source.len());
+        let mut last_save = Instant::now();
+        let mut failure: Option<Error> = None;
+        let summary = scanner.run(source.as_ref(), range, control, |hits| {
+            let attributed: Vec<_> = hits.into_iter().map(|h| { let a = layout.attribute(h.offset); (h, a) }).collect();
+            if let Err(e) = store::insert(&mut self.conn.lock(), id, &attributed) {
+                failure.get_or_insert(db(e));
+                control.cancel();
+            }
+            if last_save.elapsed().as_secs() >= 10 {
+                let _ = self.save_progress(id, source.len(), control.snapshot().watermark, false, &detectors);
+                last_save = Instant::now();
+            }
+        })?;
+        if let Some(e) = failure {
+            return Err(e);
+        }
+        self.save_progress(id, source.len(), control.snapshot().watermark.max(start), summary.completed, &detectors)?;
+        Ok(summary)
+    }
+
+    fn resume_point(&self, id: EvidenceId, detectors: &str) -> Result<u64> {
+        let conn = self.conn.lock();
+        let row: Option<(i64, bool, String)> = conn
+            .query_row("SELECT watermark, completed, detectors FROM scans WHERE evidence_id = ?1", [id.get()], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .optional()
+            .map_err(db)?;
+        Ok(match row {
+            Some((mark, false, d)) if d == detectors => mark as u64,
+            _ => 0,
+        })
+    }
+
+    fn save_progress(&self, id: EvidenceId, len: u64, watermark: u64, completed: bool, detectors: &str) -> Result<()> {
+        self.conn
+            .lock()
+            .execute(
+                "INSERT OR REPLACE INTO scans (evidence_id, range_start, range_len, watermark, completed, detectors, updated_at)
+                 VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6)",
+                params![id.get(), len as i64, watermark as i64, completed, detectors, now()],
+            )
+            .map_err(db)?;
+        Ok(())
+    }
+
+    /// `(watermark, total, completed)` of the last scan, if any.
+    pub fn scan_state(&self, id: EvidenceId) -> Result<Option<(u64, u64, bool)>> {
+        self.conn
+            .lock()
+            .query_row("SELECT watermark, range_len, completed FROM scans WHERE evidence_id = ?1", [id.get()], |r| {
+                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64, r.get(2)?))
+            })
+            .optional()
+            .map_err(db)
+    }
+
+    /// Store the file listing of every parsed volume (for correlation and search).
+    pub fn index_files(&self, id: EvidenceId) -> Result<usize> {
+        let layout = self.layout(id)?;
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction().map_err(db)?;
+        let mut n = 0;
+        {
+            let mut stmt = tx
+                .prepare_cached(
+                    "INSERT OR REPLACE INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state,
+                     created, modified, accessed, changed) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                )
+                .map_err(db)?;
+            for (vol, fs) in layout.filesystems() {
+                for (i, e) in fs.entries().iter().enumerate() {
+                    let t = |ts: Option<strata_kernel::Timestamp>| ts.map(|t| t.unix_secs());
+                    stmt.execute(params![
+                        id.get(), vol.index, i as i64, e.path, e.name, e.size as i64, e.is_dir, format!("{:?}", e.state),
+                        t(e.times.created), t(e.times.modified), t(e.times.accessed), t(e.times.changed)
+                    ])
+                    .map_err(db)?;
+                    n += 1;
+                }
+            }
+        }
+        tx.commit().map_err(db)?;
+        Ok(n)
+    }
+
+    pub fn hits(&self, q: &HitQuery) -> Result<Vec<StoredHit>> {
+        store::query(&self.conn.lock(), q).map_err(db)
+    }
+
+    pub fn hit_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<(HitCategory, u64)>> {
+        store::counts(&self.conn.lock(), evidence).map_err(db)
+    }
+
+    pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
+        f(&self.conn.lock()).map_err(db)
+    }
+}
