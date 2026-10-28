@@ -1,0 +1,19 @@
+[package]
+name = "strata-source"
+description = "Evidence byte sources: raw images, R-Studio .rdr, physical drives"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_IO", "Win32_System_Ioctl", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile.workspace = true

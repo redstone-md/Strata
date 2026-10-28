@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["redstone-md"]
+rust-version = "1.90"
+
+[workspace.dependencies]
+strata-kernel = { path = "crates/kernel" }
+strata-source = { path = "crates/source" }
+strata-volume = { path = "crates/volume" }
+strata-fs = { path = "crates/fs" }
+strata-identify = { path = "crates/identify" }
+strata-crypto = { path = "crates/crypto" }
+strata-engine = { path = "crates/engine" }
+strata-case = { path = "crates/case" }
+
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+memchr = "2"
+regex = "1"
+sha2 = "0.10"
+ripemd = "0.1"
+bs58 = { version = "0.5", features = ["check"] }
+secp256k1 = { version = "0.29", features = ["global-context"] }
+bech32 = "0.11"
+rayon = "1"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+tempfile = "3"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+debug = 1

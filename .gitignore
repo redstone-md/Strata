@@ -1,0 +1,10 @@
+/target
+/.dev
+*.strata/
+*.img
+*.rdr
+*.scn
+*.dd
+*.E01
+*.local.txt
+/.cargo/config.toml
