@@ -1,6 +1,7 @@
 //! The open case as seen by the UI: the [`Workbench`] plus a cached snapshot that views render
 //! from. Polls every 500 ms while background jobs run or the Tasks screen is open; idle
-//! polling costs one atomic check.
+//! polling costs one atomic check. The snapshot is built on a background thread: on a large
+//! case its queries take a few hundred milliseconds, which must never stall a frame.
 
 use gpui::{Context, Task};
 use std::path::{Path, PathBuf};
@@ -11,6 +12,9 @@ use strata_workbench::{
 };
 
 const POLL: Duration = Duration::from_millis(500);
+/// Counts and disks are rebuilt every this many polls while jobs run (3 s); job progress
+/// and resource use every poll.
+const FULL_EVERY: u32 = 6;
 
 /// One disk as the overview shows it.
 #[derive(Clone)]
@@ -59,6 +63,20 @@ impl Snapshot {
         self.disks.iter().find(|d| d.id() == id).map_or_else(|| id.to_string(), |d| d.record.info.label.clone())
     }
 
+    /// Take fresh job states (in memory, cheap) and move the scan progress of each disk with them.
+    fn set_jobs(&mut self, jobs: Vec<JobView>) {
+        for disk in &mut self.disks {
+            if let Some(job) = Self::running_scan(&jobs, disk.id()) {
+                disk.scanned = job.fraction();
+            }
+        }
+        self.jobs = jobs;
+    }
+
+    fn running_scan(jobs: &[JobView], disk: EvidenceId) -> Option<&JobView> {
+        jobs.iter().rev().find(|j| j.evidence == disk && j.kind == JobKind::Scan && j.state == JobState::Running)
+    }
+
     pub fn active_jobs(&self) -> impl Iterator<Item = &JobView> {
         self.jobs.iter().filter(|j| matches!(j.state, JobState::Queued | JobState::Running))
     }
@@ -81,6 +99,10 @@ pub struct Session {
     /// Resource history, refreshed while the Tasks screen is open or jobs run.
     monitor: MonitorView,
     tasks_visible: bool,
+    /// A snapshot is being built; `stale` asks for another one when it lands.
+    loading: bool,
+    stale: bool,
+    ticks: u32,
     _poll: Task<()>,
 }
 
@@ -107,9 +129,12 @@ impl Session {
             was_active: false,
             monitor: MonitorView::default(),
             tasks_visible: false,
+            loading: false,
+            stale: false,
+            ticks: 0,
             _poll: poll,
         };
-        session.reload();
+        session.snapshot = Self::load(&session.workbench);
         session
     }
 
@@ -175,33 +200,58 @@ impl Session {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        self.ticks = self.ticks.wrapping_add(1);
         let active = self.workbench.has_active_jobs();
-        if active || self.was_active {
+        let settled = self.was_active && !active;
+        if settled || (active && !self.loading && self.ticks % FULL_EVERY == 0) {
             self.refresh(cx);
-        } else if self.tasks_visible {
+        } else if active || self.tasks_visible {
             self.monitor = self.workbench.monitor().view();
-            self.snapshot.jobs = self.workbench.jobs();
+            self.snapshot.set_jobs(self.workbench.jobs());
             cx.notify();
         }
         self.was_active = active;
     }
 
+    /// Rebuild the snapshot in the background. Job states are in memory and update at once,
+    /// so buttons react immediately; counts and disks follow when the queries finish.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        self.reload();
+        self.snapshot.set_jobs(self.workbench.jobs());
+        if self.tasks_visible || self.was_active {
+            self.monitor = self.workbench.monitor().view();
+        }
         cx.notify();
+        if self.loading {
+            self.stale = true;
+            return;
+        }
+        self.loading = true;
+        let wb = self.workbench.clone();
+        let generation = self.generation;
+        cx.spawn(async move |this, cx| {
+            let snapshot = cx.background_executor().spawn(async move { Self::load(&wb) }).await;
+            let _ = this.update(cx, |s, cx| {
+                s.loading = false;
+                if s.generation == generation {
+                    s.snapshot = snapshot;
+                    cx.notify();
+                }
+                if std::mem::take(&mut s.stale) || s.generation != generation {
+                    s.refresh(cx);
+                }
+            });
+        })
+        .detach();
     }
 
-    fn reload(&mut self) {
-        let wb = &self.workbench;
+    fn load(wb: &Workbench) -> Snapshot {
         let jobs = wb.jobs();
         let disks = wb
             .evidence()
             .unwrap_or_default()
             .into_iter()
             .map(|record| {
-                let running = jobs.iter().rev().find(|j| {
-                    j.evidence == record.id && j.kind == JobKind::Scan && j.state == JobState::Running
-                });
+                let running = Snapshot::running_scan(&jobs, record.id);
                 let stored = wb.scan_progress(record.id).ok().flatten();
                 let (scanned, scan_complete) = match (running, stored) {
                     (Some(job), _) => (job.fraction(), false),
@@ -219,10 +269,7 @@ impl Session {
         let checked = wb.balances().unwrap_or_default();
         let mut balances: Vec<_> = checked.iter().filter(|b| b.ever_used()).cloned().collect();
         balances.sort_by(|a, b| b.balance_sat().cmp(&a.balance_sat()).then(b.tx_count.cmp(&a.tx_count)));
-        self.snapshot = Snapshot { disks, counts, jobs, total_hits, balances, checked: Arc::new(checked) };
-        if self.tasks_visible || self.was_active {
-            self.monitor = wb.monitor().view();
-        }
+        Snapshot { disks, counts, jobs, total_hits, balances, checked: Arc::new(checked) }
     }
 
     /// Add a disk; `deep` also probes old CHS cylinder boundaries for deleted partitions.

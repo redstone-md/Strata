@@ -43,12 +43,17 @@ impl HitTableDelegate {
         self.sort = Some((column, ColumnSort::Ascending));
     }
 
-    /// Re-run the query from the first page.
-    pub fn reload(&mut self, disks: DiskLabels) {
+    /// The query for the first page, to run off the UI thread.
+    pub fn first_page(&self) -> HitQuery {
+        HitQuery { offset: 0, ..self.query.clone() }
+    }
+
+    /// Show a freshly loaded first page.
+    pub fn set_rows(&mut self, disks: DiskLabels, rows: Vec<StoredHit>) {
         self.disks = disks;
         self.query.offset = 0;
-        self.rows = self.workbench.hits(&self.query).unwrap_or_default();
-        self.has_more = self.rows.len() == PAGE;
+        self.has_more = rows.len() == PAGE;
+        self.rows = rows;
         self.apply_sort();
     }
 

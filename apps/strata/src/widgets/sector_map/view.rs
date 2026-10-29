@@ -34,6 +34,10 @@ pub struct SectorMapView {
     map: Option<Rc<SectorMap>>,
     error: Option<String>,
     fetched: Instant,
+    /// A refetch is due; the current map stays on screen until the new one lands.
+    stale: bool,
+    /// A fetch runs on a background thread.
+    loading: bool,
     volumes: Vec<VolumeLabel>,
     /// Live scan coverage 0..=1; the stored map lags behind a running scan.
     coverage: f32,
@@ -51,6 +55,8 @@ impl SectorMapView {
             map: None,
             error: None,
             fetched: Instant::now(),
+            stale: false,
+            loading: false,
             volumes: Vec::new(),
             coverage: 0.0,
             width: Rc::new(Cell::new(0.0)),
@@ -69,23 +75,38 @@ impl SectorMapView {
     /// Refetch now (`force`) or when the cached map is older than [`STALE`].
     pub fn refresh(&mut self, force: bool, cx: &mut Context<Self>) {
         if force || self.fetched.elapsed() >= STALE {
-            self.map = None;
+            self.stale = true;
             cx.notify();
         }
     }
 
-    fn ensure(&mut self, grid: Grid) {
-        if self.map.as_ref().is_some_and(|m| m.cells.len() == grid.cells()) {
+    /// Fetch the map for `grid` on a background thread when it is missing, the wrong size or
+    /// stale. On a large case the density query takes seconds; it must not stall a frame.
+    fn ensure(&mut self, grid: Grid, cx: &mut Context<Self>) {
+        let fits = self.map.as_ref().is_some_and(|m| m.cells.len() == grid.cells());
+        if self.loading || (fits && !self.stale) {
             return;
         }
+        self.loading = true;
+        self.stale = false;
         self.fetched = Instant::now();
-        match self.workbench.sector_map(self.evidence, grid.cells()) {
-            Ok(map) => {
-                self.map = Some(Rc::new(map));
-                self.error = None;
-            }
-            Err(e) => self.error = Some(format!("Cannot draw the sector map: {e}")),
-        }
+        let (wb, evidence, cells) = (self.workbench.clone(), self.evidence, grid.cells());
+        cx.spawn(async move |this, cx| {
+            let map = cx.background_executor().spawn(async move { wb.sector_map(evidence, cells) }).await;
+            let _ = this.update(cx, |v, cx| {
+                v.loading = false;
+                v.fetched = Instant::now();
+                match map {
+                    Ok(map) => {
+                        v.map = Some(Rc::new(map));
+                        v.error = None;
+                    }
+                    Err(e) => v.error = Some(format!("Cannot draw the sector map: {e}")),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn grid_canvas(&self, map: Rc<SectorMap>, grid: Grid) -> impl IntoElement {
@@ -174,10 +195,12 @@ impl SectorMapView {
 }
 
 impl Render for SectorMapView {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let grid = Grid::fit(self.width.get(), self.rows);
-        self.ensure(grid);
-        let body = match (&self.map, &self.error) {
+        self.ensure(grid, cx);
+        // A map fetched for another width is not drawn; the refit one follows.
+        let map = self.map.as_ref().filter(|m| m.cells.len() == grid.cells());
+        let body = match (map, &self.error) {
             (_, Some(e)) => quiet().child(e.clone()).into_any_element(),
             (Some(map), None) => v_flex()
                 .gap(px(8.))

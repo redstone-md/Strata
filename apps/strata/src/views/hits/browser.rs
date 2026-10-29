@@ -48,6 +48,9 @@ pub struct HitBrowser {
     export_note: Option<gpui::SharedString>,
     generation: u64,
     last_load: Instant,
+    /// Bumped per reload; a slower earlier load that lands late is dropped.
+    loads: u64,
+    loading: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -86,6 +89,8 @@ impl HitBrowser {
             export_note: None,
             generation,
             last_load: Instant::now(),
+            loads: 0,
+            loading: false,
             _subscriptions: subscriptions,
         };
         this.reload(cx);
@@ -137,11 +142,28 @@ impl HitBrowser {
         self.loaded_total = snapshot.total_hits;
         self.chain = Rc::new(Chain::new(snapshot.checked.iter().cloned()));
         self.last_load = Instant::now();
-        self.table.update(cx, |t, cx| {
-            t.delegate_mut().reload(disks);
-            t.refresh(cx);
-            cx.notify();
-        });
+        let wb = self.session.read(cx).workbench().clone();
+        let query = self.table.read(cx).delegate().first_page();
+        self.loads += 1;
+        self.loading = true;
+        let ticket = self.loads;
+        cx.spawn(async move |this, cx| {
+            let rows = cx.background_executor().spawn(async move { wb.hits(&query).unwrap_or_default() }).await;
+            let _ = this.update(cx, |v, cx| {
+                if v.loads != ticket {
+                    return;
+                }
+                v.loading = false;
+                v.last_load = Instant::now();
+                v.table.update(cx, |t, cx| {
+                    t.delegate_mut().set_rows(disks, rows);
+                    t.refresh(cx);
+                    cx.notify();
+                });
+                cx.notify();
+            });
+        })
+        .detach();
         cx.notify();
     }
 
@@ -153,7 +175,7 @@ impl HitBrowser {
             self.selected = None;
             self.table.update(cx, |t, _| t.delegate_mut().set_workbench(wb));
             self.reload(cx);
-        } else if session.snapshot().total_hits != self.loaded_total && self.last_load.elapsed() >= LIVE_RELOAD {
+        } else if !self.loading && session.snapshot().total_hits != self.loaded_total && self.last_load.elapsed() >= LIVE_RELOAD {
             self.reload(cx);
         }
         cx.notify();

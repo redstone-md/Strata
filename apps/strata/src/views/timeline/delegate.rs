@@ -50,11 +50,16 @@ impl TimelineDelegate {
         self.workbench = workbench;
     }
 
-    pub fn reload(&mut self, disks: HashMap<EvidenceId, String>) {
+    /// The query for the first page, to run off the UI thread.
+    pub fn first_page(&self) -> EventQuery {
+        EventQuery { offset: 0, ..self.query.clone() }
+    }
+
+    pub fn set_rows(&mut self, disks: HashMap<EvidenceId, String>, rows: Vec<(EvidenceId, TimelineEvent)>) {
         self.disks = disks;
         self.query.offset = 0;
-        self.rows = self.workbench.events(&self.query).unwrap_or_default();
-        self.has_more = self.rows.len() == PAGE;
+        self.has_more = rows.len() == PAGE;
+        self.rows = rows;
     }
 
     pub fn len(&self) -> usize {

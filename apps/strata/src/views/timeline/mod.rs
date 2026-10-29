@@ -16,6 +16,7 @@ use gpui::{
 };
 use gpui_component::table::TableState;
 use gpui_component::{h_flex, v_flex};
+use std::collections::HashMap;
 use strip::{DayRange, DayStrip};
 
 pub struct TimelineView {
@@ -25,6 +26,8 @@ pub struct TimelineView {
     day: Option<DayRange>,
     generation: u64,
     was_active: bool,
+    /// Bumped per reload; a slower earlier load that lands late is dropped.
+    loads: u64,
     _observe: Subscription,
 }
 
@@ -35,7 +38,7 @@ impl TimelineView {
         let observe = cx.observe(&session, |this, _, cx| this.on_session_changed(cx));
         let generation = session.read(cx).generation();
         let mut this =
-            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, _observe: observe };
+            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, loads: 0, _observe: observe };
         this.reload(cx);
         this
     }
@@ -97,16 +100,33 @@ impl TimelineView {
         self.reload(cx);
     }
 
+    /// Query the day strip and the first page on a background thread, then show them.
     fn reload(&mut self, cx: &mut Context<Self>) {
         let session = self.session.read(cx);
-        let disks = session.snapshot().disks.iter().map(|d| (d.id(), d.record.info.label.clone())).collect();
-        self.strip.set_days(session.workbench().events_per_day(None).unwrap_or_default());
-        self.table.update(cx, |t, cx| {
-            t.delegate_mut().reload(disks);
-            t.refresh(cx);
-            cx.notify();
-        });
-        cx.notify();
+        let disks: HashMap<_, _> = session.snapshot().disks.iter().map(|d| (d.id(), d.record.info.label.clone())).collect();
+        let wb = session.workbench().clone();
+        let query = self.table.read(cx).delegate().first_page();
+        self.loads += 1;
+        let ticket = self.loads;
+        cx.spawn(async move |this, cx| {
+            let (days, rows) = cx
+                .background_executor()
+                .spawn(async move { (wb.events_per_day(None).unwrap_or_default(), wb.events(&query).unwrap_or_default()) })
+                .await;
+            let _ = this.update(cx, |v, cx| {
+                if v.loads != ticket {
+                    return;
+                }
+                v.strip.set_days(days);
+                v.table.update(cx, |t, cx| {
+                    t.delegate_mut().set_rows(disks, rows);
+                    t.refresh(cx);
+                    cx.notify();
+                });
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
