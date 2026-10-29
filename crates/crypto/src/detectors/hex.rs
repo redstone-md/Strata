@@ -19,6 +19,28 @@ const HASH_WORDS: &[&str] = &[
 ];
 const HASH_LOOKBACK: usize = 48;
 
+/// Published constants that are valid scalars but never anyone's key: curve parameters
+/// shipped in every crypto library and well-known hashes (lower case).
+const KNOWN_CONSTANTS: &[&str] = &[
+    // secp256k1 generator x / y, group order
+    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+    // NIST P-256 generator x / y, b, order
+    "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+    "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+    "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b",
+    "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+    // brainpoolP256r1 generator x / y
+    "8bd2aeb9cb7e57cb2c4b482ffc81b7afb9de27e1e3bd23c23a4453bd9ace3262",
+    "547ef835c3dac4fd97f8461a14611dc9c27745132ded8e545c1d54c72f046997",
+    // Ed25519 / Curve25519 base point y, order
+    "6666666666666666666666666666666666666666666666666666666666666658",
+    "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
+    // SHA-256 of the empty string
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+];
+
 static HASH_AC: LazyLock<AhoCorasick> = LazyLock::new(|| {
     let utf16: Vec<Vec<u8>> =
         HASH_WORDS.iter().map(|w| w.encode_utf16().flat_map(|u| u.to_le_bytes()).collect()).collect();
@@ -38,8 +60,12 @@ impl Default for HexKeyDetector {
 }
 
 impl HexKeyDetector {
-    /// Reject shapes real keys never have: mixed letter case, decimal-only, low variety.
+    /// Reject published constants and shapes real keys never have: mixed letter case,
+    /// decimal-only, low variety.
     fn plausible(text: &[u8]) -> bool {
+        if KNOWN_CONSTANTS.iter().any(|c| c.as_bytes().eq_ignore_ascii_case(text)) {
+            return false;
+        }
         let upper = text.iter().any(|b| b.is_ascii_uppercase());
         let lower = text.iter().any(|b| b.is_ascii_lowercase());
         if upper && lower || !(upper || lower) {
@@ -103,5 +129,17 @@ impl Detector for HexKeyDetector {
                     .details(details),
             );
         });
+    }
+}
+
+#[cfg(test)]
+mod constant_tests {
+    use super::*;
+
+    #[test]
+    fn curve_constants_are_not_keys() {
+        assert!(!HexKeyDetector::plausible(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"));
+        assert!(!HexKeyDetector::plausible(b"79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"));
+        assert!(HexKeyDetector::plausible(b"0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d"));
     }
 }
