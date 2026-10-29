@@ -6411,6 +6411,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-graph"
+version = "0.0.4"
+dependencies = [
+ "serde",
+ "strata-accounts",
+ "strata-kernel",
+ "strata-leads",
+]
+
+[[package]]
 name = "strata-identify"
 version = "0.0.4"
 dependencies = [
