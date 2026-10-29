@@ -233,3 +233,33 @@ mod period_tests {
         assert_eq!(values(Period::parse("2008", "2013")), ["free", "old", "undated"]);
     }
 }
+
+#[cfg(test)]
+mod promote_tests {
+    use crate::{Attribution, Case, FileRef, HitQuery};
+    use strata_fs::EntryState;
+    use strata_kernel::scan::{Hit, HitCategory};
+    use strata_kernel::{Confidence, EvidenceId};
+
+    fn key(case: &Case, id: EvidenceId, path: &str, offset: u64) {
+        let file = FileRef { path: path.into(), state: EntryState::Allocated, file_offset: 0 };
+        let hit = Hit::new("crypto.hex_key", HitCategory::PrivateKey, offset, 64).value(path).confidence(Confidence::new(0.15));
+        case.store_hits(id, &[(hit, Attribution { volume: Some(0), file: Some(file) })]).unwrap();
+    }
+
+    #[test]
+    fn files_named_like_key_backups_lift_their_findings() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = dir.path().join("zero.img");
+        std::fs::write(&img, vec![0u8; 1 << 20]).unwrap();
+        let case = Case::open(&dir.path().join("t.strata")).unwrap();
+        let id = case.add_evidence(&img.display().to_string()).unwrap().id;
+        key(&case, id, "home/u/Desktop/btc privkey.txt", 1);
+        key(&case, id, "home/u/notes/todo.txt", 2);
+        key(&case, id, "home/u/node_modules/wallet/index.js", 3);
+        assert_eq!(case.promote_wallet_named_files(id, 0.4).unwrap(), 1);
+        let shown: Vec<String> = case.hits(&HitQuery { min_confidence: 0.4, ..HitQuery::default() }).unwrap().into_iter().map(|h| h.hit.value).collect();
+        assert_eq!(shown, ["home/u/Desktop/btc privkey.txt"]);
+        assert_eq!(case.promote_wallet_named_files(id, 0.4).unwrap(), 0, "idempotent");
+    }
+}

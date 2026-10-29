@@ -26,6 +26,10 @@ const HASH_LABEL_LOOKBACK: usize = 16;
 const HEX_BLOCK_CONFIDENCE: f32 = 0.15;
 /// How far to look for the neighbouring lines.
 const LINE_LOOKAROUND: usize = 512;
+/// Bytes before a run searched for the JSON field it is the value of.
+const JSON_LOOKBACK: usize = 64;
+/// JSON field names that may hold a private key.
+const KEY_FIELDS: &[&str] = &["priv", "secret", "key", "seed", "wif", "hex", "mnemonic"];
 /// Bytes on each side checked for a binary surrounding.
 const BINARY_LOOKAROUND: usize = 64;
 /// Share of non-text bytes around a run that marks it as a string constant inside a binary
@@ -109,6 +113,19 @@ impl HexKeyDetector {
         binary as f32 / total as f32 > BINARY_SHARE
     }
 
+    /// The run is the value of a JSON field whose name says nothing about keys (`"id": "..."`,
+    /// `"hash":"..."`): identifiers and digests in configs, caches and package metadata.
+    fn json_value_of_other_field(chunk: &[u8], start: usize) -> bool {
+        let before = &chunk[start.saturating_sub(JSON_LOOKBACK)..start];
+        let Some(rest) = before.strip_suffix(b"\"") else { return false };
+        let rest = rest.trim_ascii_end();
+        let Some(rest) = rest.strip_suffix(b":") else { return false };
+        let Some(rest) = rest.trim_ascii_end().strip_suffix(b"\"") else { return false };
+        let name_start = rest.iter().rposition(|b| *b == b'"').map_or(0, |p| p + 1);
+        let name = String::from_utf8_lossy(&rest[name_start..]).to_ascii_lowercase();
+        !name.is_empty() && !KEY_FIELDS.iter().any(|k| name.contains(k))
+    }
+
     /// The line before or after is hex too: the run is one row of a hex block.
     fn in_hex_block(chunk: &[u8], start: usize, end: usize) -> bool {
         fn hex_row(line: &[u8]) -> bool {
@@ -134,7 +151,9 @@ impl HexKeyDetector {
             (true, _, false) => 0.6,
             (false, true, true) => 0.45,
             (false, true, false) => 0.35,
-            (false, false, true) => 0.25,
+            // A bare hex line with no word about wallets is nearly always a hash; files named
+            // like a key backup are raised again by triage.
+            (false, false, true) => HEX_BLOCK_CONFIDENCE,
             _ => return None,
         };
         Some(Confidence::new(c))
@@ -165,7 +184,9 @@ impl Detector for HexKeyDetector {
             }
             let Some(mut confidence) = Self::confidence(&ctx) else { return };
             let ascii = matches!(run.encoding, Encoding::Ascii);
-            if !ctx.strong() && (Self::in_hex_block(chunk, run.start, end) || ascii && Self::in_binary(chunk, run.start, end)) {
+            let noise = Self::in_hex_block(chunk, run.start, end)
+                || ascii && (Self::in_binary(chunk, run.start, end) || Self::json_value_of_other_field(chunk, run.start));
+            if !ctx.strong() && noise {
                 confidence = Confidence::new(HEX_BLOCK_CONFIDENCE);
             }
             let details = with(
@@ -220,9 +241,9 @@ mod context_tests {
         let row = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
         let hits = scan(&format!("{row}\n{KEY}\n{row}\n"));
         assert!(hits.iter().all(|h| h.confidence.get() <= HEX_BLOCK_CONFIDENCE + f32::EPSILON), "{hits:?}");
-        let alone = scan(&format!("my notes\n{KEY}\nend\n"));
-        assert_eq!(alone.len(), 1);
-        assert!(alone[0].confidence.get() > HEX_BLOCK_CONFIDENCE);
+        let labelled = scan(&format!("my wallet private key\n{KEY}\nend\n"));
+        assert_eq!(labelled.len(), 1);
+        assert!(labelled[0].confidence.get() > HEX_BLOCK_CONFIDENCE, "a wallet word lifts a run out of a block");
     }
 }
 
@@ -237,7 +258,7 @@ mod binary_tests {
     fn string_constants_in_binaries_are_noise() {
         let mut lib = vec![0x7fu8, b'E', b'L', b'F'];
         lib.extend((0..64u8).map(|i| i.wrapping_mul(37)));
-        lib.extend(b" gcry_pk_testkey secret key ");
+        lib.extend(b"\0gcry_pk_testkey secret key\0");
         lib.extend(KEY.as_bytes());
         lib.push(0);
         lib.extend((0..64u8).map(|i| i.wrapping_mul(91) | 0x80));
@@ -245,5 +266,30 @@ mod binary_tests {
         HexKeyDetector::default().scan(&lib, 0, &mut hits);
         assert_eq!(hits.len(), 1, "a wallet word nearby still reports it");
         assert!(hits[0].confidence.get() <= HEX_BLOCK_CONFIDENCE + f32::EPSILON, "{hits:?}");
+    }
+}
+
+#[cfg(test)]
+mod json_tests {
+    use super::*;
+    use strata_kernel::scan::Hit;
+
+    const KEY: &str = "0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d";
+
+    fn confidence(text: &str) -> Option<f32> {
+        let mut hits: Vec<Hit> = Vec::new();
+        HexKeyDetector::default().scan(text.as_bytes(), 0, &mut hits);
+        hits.first().map(|h| h.confidence.get())
+    }
+
+    #[test]
+    fn json_identifiers_are_noise_but_key_fields_are_not() {
+        assert!(confidence(&format!("{{\"id\": \"{KEY}\", \"key\": \"x\"}}")).is_none_or(|c| c <= HEX_BLOCK_CONFIDENCE));
+        assert!(confidence(&format!("{{\"privkey\": \"{KEY}\", \"seed\": 1}}")).is_some_and(|c| c > HEX_BLOCK_CONFIDENCE));
+    }
+
+    #[test]
+    fn a_bare_hex_line_is_noise() {
+        assert!(confidence(&format!("notes\n{KEY}\nend\n")).is_some_and(|c| c <= HEX_BLOCK_CONFIDENCE));
     }
 }

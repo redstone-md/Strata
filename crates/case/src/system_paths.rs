@@ -12,13 +12,15 @@ const FOLDERS: &[&str] = &[
     "usr/share/", "usr/lib/", "usr/lib32/", "usr/lib64/", "usr/include/", "usr/src/", "usr/bin/", "usr/sbin/",
     "lib/modules/", "lib/firmware/", "var/lib/dpkg/", "var/lib/apt/lists/", "var/cache/apt/", "var/lib/rpm/",
     "var/lib/snapd/", "snap/core", "boot/",
+    // Installed dependencies of programs and projects: never somebody's own notes.
+    "node_modules/", "site-packages/", "dist-packages/", "bower_components/", ".cargo/registry/", "go/pkg/mod/", ".npm/",
 ];
 
 /// Extensions of binaries, fonts and linguistic data that never hold user keys.
 const EXTENSIONS: &[&str] = &[
     "dll", "exe", "sys", "ocx", "cpl", "drv", "mui", "jar", "class", "ttf", "ttc", "fon", "otf", "nls", "chs", "cht",
     "lex", "dic", "msi", "msp", "cab", "cat", "manifest", "pnf", "inf", "chm", "hlp", "so", "ko", "pm", "pyc", "mo",
-    "a", "o", "dylib", "node", "wasm",
+    "a", "o", "dylib", "node", "wasm", "xmlb",
 ];
 
 /// Versioned shared libraries (`libgcrypt.so.20.1.6`): their last extension is a number.
@@ -57,6 +59,8 @@ mod tests {
         assert!(is_system_path("var/lib/apt/lists/archive.ubuntu.com_dists_Packages"));
         assert!(is_system_path("home/u/lib/libssl.so"));
         assert!(is_system_path("var/lib/docker/overlay2/b6/diff/lib/x86_64-linux-gnu/libgcrypt.so.20.1.6"));
+        assert!(is_system_path("home/u/Desktop/kami/node_modules/discord.js/src/util/detectable.json"));
+        assert!(is_system_path("home/u/.cache/app-info/cache/user.xmlb"));
         assert!(!is_system_path("home/u/Documents/wallet backup.txt"));
         assert!(!is_system_path("Documents and Settings/u/Application Data/Bitcoin/wallet.dat"));
         assert!(!is_system_path("home/u/reboot/notes.txt"));

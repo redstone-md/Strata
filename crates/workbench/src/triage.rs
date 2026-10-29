@@ -9,6 +9,8 @@ use strata_kernel::{EvidenceId, Result};
 const SYSTEM_FACTOR: f32 = 0.2;
 /// A raw hex value seen this often is a library constant, not a saved key.
 const CONSTANT_COPIES: u32 = 20;
+/// Key-like findings in a file named like a key backup are shown at least at this confidence.
+const WALLET_FILE_FLOOR: f32 = 0.4;
 /// A file with this many different e-mail addresses is a list (dump, customer table).
 const ADDRESS_LIST: u32 = 1000;
 
@@ -25,6 +27,8 @@ impl<'a> Triage<'a> {
     pub fn run(&self, id: EvidenceId) -> Result<usize> {
         let system = self.case.downgrade_system_hits(id, SYSTEM_FACTOR)?;
         let constants = self.case.downgrade_repeated_constants(id, CONSTANT_COPIES, SYSTEM_FACTOR)?;
-        Ok(system + constants + self.case.downgrade_address_lists(id, ADDRESS_LIST, SYSTEM_FACTOR)?)
+        let lists = self.case.downgrade_address_lists(id, ADDRESS_LIST, SYSTEM_FACTOR)?;
+        self.case.promote_wallet_named_files(id, WALLET_FILE_FLOOR)?;
+        Ok(system + constants + lists)
     }
 }

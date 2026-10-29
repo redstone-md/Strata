@@ -341,6 +341,25 @@ impl Case {
         self.with_write(|conn| conn.execute(&sql, params![id.get(), factor, min_copies]))
     }
 
+    /// Raise key-like findings in user files whose name says what they are (`privkey.txt`,
+    /// `bitcoin wallet backup.txt`, `ключ.txt`) to at least `floor`: a bare hex line or seed is
+    /// noise anywhere else but not there. System files are left alone. Tagged; idempotent.
+    pub fn promote_wallet_named_files(&self, id: EvidenceId, floor: f32) -> Result<usize> {
+        const WORDS: &[&str] = &["wallet", "priv", "bitcoin", "btc", "seed", "mnemonic", "backup", "ключ", "кошел", "биткоин"];
+        let details = "CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{}' END";
+        let name = "lower(replace(file_path, rtrim(file_path, replace(file_path, '/', '')), ''))";
+        let named: Vec<String> = WORDS.iter().map(|w| format!("{name} LIKE '%{w}%'")).collect();
+        let sql = format!(
+            "UPDATE hits SET confidence = MAX(confidence, ?2), details = json_set({details}, '$.triage', 'file named like a key backup')
+             WHERE evidence_id = ?1 AND category IN ('PrivateKey','ExtendedKey','Mnemonic') AND confidence < ?2
+               AND json_extract({details}, '$.triage') IS NULL AND file_path IS NOT NULL
+               AND NOT {system} AND ({named})",
+            system = crate::system_paths::sql_condition("file_path"),
+            named = named.join(" OR ")
+        );
+        self.with_write(|conn| conn.execute(&sql, params![id.get(), floor]))
+    }
+
     /// Lower the confidence of e-mails and links inside files that hold at least `min_distinct`
     /// different addresses: database dumps, customer tables, mailing lists. They bury the
     /// owner's own accounts. Tagged `address list`; idempotent.
