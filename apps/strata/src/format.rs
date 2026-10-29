@@ -37,6 +37,7 @@ pub fn source_kind(debug: &str) -> &'static str {
     match debug {
         "RawImage" => "Disk image",
         "RStudioImage" => "R-Studio image",
+        "EwfImage" => "EnCase image",
         "PhysicalDrive" => "Physical drive",
         _ => "Partial image",
     }
