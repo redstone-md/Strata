@@ -8,6 +8,7 @@ pub mod disks;
 pub mod files;
 pub mod hits;
 pub mod leads;
+pub mod mail;
 pub mod overview;
 pub mod search;
 pub mod settings;

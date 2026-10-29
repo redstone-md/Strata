@@ -15,6 +15,7 @@ strata-chain = { path = "../chain" }
 strata-timeline = { path = "../timeline" }
 strata-accounts = { path = "../accounts" }
 strata-leads = { path = "../leads" }
+strata-mail.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

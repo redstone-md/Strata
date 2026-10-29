@@ -70,6 +70,7 @@ pub fn job_name(kind: JobKind) -> &'static str {
         JobKind::Archives => "Unpack archives",
         JobKind::CheckBalances => "Check balances",
         JobKind::Artifacts => "Artefacts and timeline",
+        JobKind::Mail => "Read mail",
         JobKind::RecoverPartitions => "Recover partitions",
         JobKind::Search => "Search",
         JobKind::Recover => "Recover files",
@@ -110,6 +111,8 @@ pub fn items(kind: JobKind) -> &'static str {
         JobKind::CheckBalances => "addresses",
         JobKind::RecoverPartitions => "steps",
         JobKind::Recover => "items",
+        // Mail files, then MiB of free text.
+        JobKind::Mail => "items",
         JobKind::Recheck => "findings",
         JobKind::Scan | JobKind::Carve | JobKind::Search => "bytes",
     }

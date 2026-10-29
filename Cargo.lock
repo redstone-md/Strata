@@ -1522,6 +1522,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "encodify"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e95d6e27686e1d6991a3077f4dbec9d33d18903466d234165ad86cd08c3ebc79"
+dependencies = [
+ "memchr",
+ "simdutf8",
+]
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2842,6 +2852,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashify"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66f5a65bf7824ada2de4a2cf9fa0981dabffc5392bb8550767c3c3d71ed52e4d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "hashlink"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3720,6 +3741,18 @@ name = "mach2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
+
+[[package]]
+name = "mail-parser"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "908e05ffd2f281e4494cdb77552e6df2dc1476da22af811685b37773d415b2df"
+dependencies = [
+ "encodify",
+ "hashify",
+ "memchr",
+ "simdutf8",
+]
 
 [[package]]
 name = "malloc_buf"
@@ -6273,6 +6306,7 @@ dependencies = [
  "strata-accounts",
  "strata-fs",
  "strata-kernel",
+ "strata-mail",
  "strata-source",
  "strata-timeline",
  "strata-volume",
@@ -6305,6 +6339,7 @@ dependencies = [
  "strata-fs",
  "strata-kernel",
  "strata-leads",
+ "strata-mail",
  "strata-source",
  "strata-timeline",
  "strata-volume",
@@ -6425,6 +6460,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-mail"
+version = "0.0.3"
+dependencies = [
+ "mail-parser",
+ "memchr",
+ "serde",
+ "strata-kernel",
+]
+
+[[package]]
 name = "strata-mcp"
 version = "0.0.3"
 dependencies = [
@@ -6520,6 +6565,7 @@ dependencies = [
  "strata-index",
  "strata-kernel",
  "strata-leads",
+ "strata-mail",
  "strata-report",
  "strata-search",
  "strata-source",

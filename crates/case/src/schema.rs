@@ -2,7 +2,7 @@
 
 use rusqlite::Connection;
 
-pub const VERSION: i64 = 2;
+pub const VERSION: i64 = 3;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -152,6 +152,7 @@ pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(SCHEMA)?;
     conn.execute_batch(crate::insights::SCHEMA)?;
+    conn.execute_batch(crate::messages::SCHEMA)?;
     migrate(conn)?;
     conn.execute(
         "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?1)",

@@ -20,6 +20,7 @@ strata-carve = { path = "../carve" }
 strata-index = { path = "../index" }
 strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
+strata-mail.workspace = true
 strata-timeline = { path = "../timeline" }
 strata-leads = { path = "../leads" }
 strata-report = { path = "../report" }

@@ -10,6 +10,7 @@ strata-kernel.workspace = true
 strata-fs.workspace = true
 strata-timeline = { path = "../timeline" }
 strata-accounts = { path = "../accounts" }
+strata-mail.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 crc32fast = "1.5"

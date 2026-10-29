@@ -14,6 +14,7 @@ use crate::views::tasks::TasksView;
 use crate::views::timeline::TimelineView;
 use crate::views::accounts::AccountsView;
 use crate::views::leads::LeadsView;
+use crate::views::mail::MailView;
 use crate::views::wallets;
 use crate::widgets::DiskMaps;
 use gpui::{AnyView, AppContext as _, Context, Entity, Subscription, Window};
@@ -27,6 +28,7 @@ pub struct Screens {
     pub accounts: Entity<AccountsView>,
     pub leads: Entity<LeadsView>,
     pub timeline: Entity<TimelineView>,
+    pub mail: Entity<MailView>,
     pub correlation: Entity<CorrelationView>,
     pub tasks: Entity<TasksView>,
     pub settings: Entity<SettingsView>,
@@ -50,6 +52,7 @@ impl Screens {
             accounts: cx.new(|cx| AccountsView::new(session.clone(), window, cx)),
             leads: cx.new(|cx| LeadsView::new(session.clone(), window, cx)),
             timeline: cx.new(|cx| TimelineView::new(session.clone(), window, cx)),
+            mail: cx.new(|cx| MailView::new(session.clone(), window, cx)),
             correlation: cx.new(|cx| CorrelationView::new(session.clone(), window, cx)),
             tasks: cx.new(|cx| TasksView::new(session.clone(), cx)),
             settings: cx.new(|cx| SettingsView::new(session.clone(), window, cx)),
@@ -58,7 +61,10 @@ impl Screens {
         subscriptions.extend([
             cx.subscribe_in(&screens.leads, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.accounts, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
+            cx.subscribe_in(&screens.wallets, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
         ]);
+        let raw = screens.accounts.read(cx).raw().clone();
+        subscriptions.push(cx.subscribe_in(&raw, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)));
         (screens, subscriptions)
     }
 
@@ -72,6 +78,7 @@ impl Screens {
             Screen::Accounts => self.accounts.clone().into(),
             Screen::Leads => self.leads.clone().into(),
             Screen::Timeline => self.timeline.clone().into(),
+            Screen::Mail => self.mail.clone().into(),
             Screen::Correlation => self.correlation.clone().into(),
             Screen::Tasks => self.tasks.clone().into(),
             Screen::Settings => self.settings.clone().into(),
@@ -92,6 +99,7 @@ impl Screens {
             Screen::Accounts => self.accounts.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Leads => self.leads.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Timeline => self.timeline.update(cx, |v, cx| v.set_search(text, cx)),
+            Screen::Mail => self.mail.update(cx, |v, cx| v.set_search(text, cx)),
             _ => {}
         }
     }

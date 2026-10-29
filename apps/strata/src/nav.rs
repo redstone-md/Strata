@@ -13,6 +13,7 @@ pub enum Screen {
     Accounts,
     Leads,
     Timeline,
+    Mail,
     Correlation,
     Tasks,
     Settings,
@@ -47,7 +48,7 @@ pub enum Jump {
 }
 
 impl Screen {
-    const ALL: [Screen; 11] = [
+    const ALL: [Screen; 12] = [
         Self::Overview,
         Self::Disks,
         Self::Files,
@@ -56,6 +57,7 @@ impl Screen {
         Self::Accounts,
         Self::Leads,
         Self::Timeline,
+        Self::Mail,
         Self::Correlation,
         Self::Tasks,
         Self::Settings,
@@ -71,6 +73,7 @@ impl Screen {
             Self::Accounts => "Accounts",
             Self::Leads => "Leads",
             Self::Timeline => "Timeline",
+            Self::Mail => "Mail",
             Self::Correlation => "Across disks",
             Self::Tasks => "Tasks",
             Self::Settings => "Settings",
@@ -87,6 +90,7 @@ impl Screen {
             Self::Accounts => Glyph::Users,
             Self::Leads => Glyph::Lightbulb,
             Self::Timeline => Glyph::Clock,
+            Self::Mail => Glyph::Mail,
             Self::Correlation => Glyph::GitCompare,
             Self::Tasks => Glyph::Activity,
             Self::Settings => Glyph::Settings,
@@ -108,6 +112,7 @@ impl Screen {
             Self::Accounts => "accounts",
             Self::Leads => "leads",
             Self::Timeline => "timeline",
+            Self::Mail => "mail",
             Self::Correlation => "correlation",
             Self::Tasks => "tasks",
             Self::Settings => "settings",
@@ -129,7 +134,7 @@ impl Screen {
 
     /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
-        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Timeline)
+        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Timeline | Self::Mail)
     }
 
     pub fn nav_item(self) -> NavItem {
