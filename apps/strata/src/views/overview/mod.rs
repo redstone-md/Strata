@@ -6,19 +6,28 @@ mod findings;
 mod jobs;
 
 use super::disk_row::DiskRow;
+use super::disks::usage::short_range;
 use crate::format;
 use crate::nav::{Navigate, Screen};
 use crate::session::Session;
 use crate::theme::tokens;
 use crate::widgets::{DiskMaps, Section, TextButton, legend, quiet};
 use gpui::{
-    AnyElement, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, Styled, Subscription, Window, px,
+    AnyElement, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window,
+    px,
 };
+use std::collections::HashMap;
+use strata_workbench::EvidenceId;
 use gpui_component::{h_flex, v_flex};
 
 pub struct Overview {
     session: Entity<Session>,
     maps: Entity<DiskMaps>,
+    /// When each disk was in use (`2009-03 – 2013-07`), loaded off the UI thread.
+    usage: HashMap<EvidenceId, SharedString>,
+    loads: u64,
+    was_active: bool,
+    known_disks: usize,
     _observe: Subscription,
 }
 
@@ -26,8 +35,45 @@ impl EventEmitter<Navigate> for Overview {}
 
 impl Overview {
     pub fn new(session: Entity<Session>, maps: Entity<DiskMaps>, cx: &mut Context<Self>) -> Self {
-        let observe = cx.observe(&session, |_, _, cx| cx.notify());
-        Self { session, maps, _observe: observe }
+        let observe = cx.observe(&session, |this, _, cx| this.on_session_changed(cx));
+        let mut this = Self { session, maps, usage: HashMap::new(), loads: 0, was_active: false, known_disks: 0, _observe: observe };
+        this.load_usage(cx);
+        this
+    }
+
+    /// Usage changes only when analysis finishes or disks are added.
+    fn on_session_changed(&mut self, cx: &mut Context<Self>) {
+        let snapshot = self.session.read(cx).snapshot();
+        let active = snapshot.active_jobs().next().is_some();
+        if (self.was_active && !active) || snapshot.disks.len() != self.known_disks {
+            self.load_usage(cx);
+        }
+        self.was_active = active;
+        cx.notify();
+    }
+
+    fn load_usage(&mut self, cx: &mut Context<Self>) {
+        let session = self.session.read(cx);
+        let wb = session.workbench().clone();
+        let ids: Vec<EvidenceId> = session.snapshot().disks.iter().map(|d| d.id()).collect();
+        self.known_disks = ids.len();
+        self.loads += 1;
+        let ticket = self.loads;
+        cx.spawn(async move |this, cx| {
+            let ranges = cx
+                .background_executor()
+                .spawn(async move {
+                    ids.into_iter().filter_map(|id| Some((id, short_range(&wb.disk_usage(id).ok()?)?.into()))).collect::<HashMap<_, SharedString>>()
+                })
+                .await;
+            let _ = this.update(cx, |v, cx| {
+                if v.loads == ticket {
+                    v.usage = ranges;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn disks(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -39,7 +85,7 @@ impl Overview {
             .iter()
             .map(|d| {
                 let busy = snapshot.active_jobs().any(|j| j.evidence == d.id());
-                DiskRow::new(d.clone(), maps.get(d.id()), self.session.clone(), busy).into_any_element()
+                DiskRow::new(d.clone(), maps.get(d.id()), self.session.clone(), busy).usage(self.usage.get(&d.id()).cloned()).into_any_element()
             })
             .collect();
         let section = Section::new("Disks").note(format::count(rows.len() as u64, "disk", "disks"));
