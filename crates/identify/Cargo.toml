@@ -1,0 +1,14 @@
+[package]
+name = "strata-identify"
+description = "What bytes are: file type registry, damage-tolerant identification, extension-mismatch detection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+memchr.workspace = true
+flate2 = "1.1"
+crc32fast = "1.5"
