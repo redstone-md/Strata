@@ -68,11 +68,28 @@ impl Default for EmailDetector {
     }
 }
 
+/// Top-level domains seen on old disks. Used to cut addresses glued to following text
+/// (`user@mail.rupass` -> `user@mail.ru`).
+const KNOWN_TLDS: &[&str] = &[
+    "com", "net", "org", "info", "biz", "edu", "gov", "mil", "name", "mobi", "ru", "su", "ua", "by", "kz", "uz",
+    "md", "am", "az", "ge", "lv", "lt", "ee", "de", "uk", "fr", "it", "es", "pl", "cz", "nl", "be", "ch", "at",
+    "se", "no", "fi", "dk", "il", "tr", "us", "ca", "au", "jp", "cn", "in", "br", "tv", "cc", "ws", "io", "me",
+];
+
 impl EmailDetector {
-    /// Reject common binary noise such as `x@y.zz` inside compiled code.
-    fn plausible(email: &str) -> bool {
-        let (local, domain) = email.split_once('@').unwrap_or_default();
-        local.len() >= 2 && domain.len() >= 5 && !domain.starts_with('-') && !email.contains("..")
+    /// Trim a glued tail off the TLD and reject binary noise. Returns the cleaned address.
+    fn clean(email: &str) -> Option<String> {
+        let lower = email.to_ascii_lowercase();
+        let (local, domain) = lower.split_once('@')?;
+        let (host, tld) = domain.rsplit_once('.')?;
+        let tld = if KNOWN_TLDS.contains(&tld) {
+            tld
+        } else {
+            KNOWN_TLDS.iter().filter(|t| tld.starts_with(*t)).max_by_key(|t| t.len())?
+        };
+        let domain = format!("{host}.{tld}");
+        let plausible = local.len() >= 2 && domain.len() >= 5 && !domain.starts_with('-') && !lower.contains("..");
+        plausible.then(|| format!("{local}@{domain}"))
     }
 }
 
@@ -87,14 +104,12 @@ impl Detector for EmailDetector {
 
     fn scan(&self, chunk: &[u8], base: u64, sink: &mut dyn HitSink) {
         self.matcher.each(chunk, |off, len, text, wide| {
-            if !Self::plausible(text) {
-                return;
-            }
-            let (details, service) = service_details(text, wide);
+            let Some(email) = Self::clean(text) else { return };
+            let (details, service) = service_details(&email, wide);
             sink.emit(
                 Hit::new(self.id(), HitCategory::Identity, base + off as u64, len)
                     .label("e-mail")
-                    .value(text.to_ascii_lowercase())
+                    .value(email)
                     .confidence(if service.is_some() { confidence_for(service) } else { Confidence::MEDIUM })
                     .details(details),
             );
@@ -121,11 +136,13 @@ impl Detector for UrlDetector {
         2 * 800
     }
 
-    /// Every disk holds millions of generic URLs; only service-classified ones are reported.
+    /// Every disk holds millions of generic URLs (social sites alone gave 5M hits on a 40 GB
+    /// disk), so only crypto and payment services are reported, matched on the host.
     fn scan(&self, chunk: &[u8], base: u64, sink: &mut dyn HitSink) {
         self.matcher.each(chunk, |off, len, text, wide| {
-            let (details, service) = service_details(text, wide);
-            if service.is_none() {
+            let host = text.split("://").last().unwrap_or(text).split('/').next().unwrap_or_default();
+            let (details, service) = service_details(host, wide);
+            if !matches!(service.map(|s| s.kind), Some(ServiceKind::Crypto | ServiceKind::Payment)) {
                 return;
             }
             sink.emit(
@@ -159,12 +176,15 @@ mod tests {
         EmailDetector::default().scan(&data, 100, &mut hits);
         let values: Vec<_> = hits.iter().map(|h| h.value.as_str()).collect();
         assert_eq!(values, ["anna.test3@mail.ru", "olga.test1@yandex.ru"]);
+        let mut glued = Vec::new();
+        EmailDetector::default().scan(b"emailivan.test2@mail.rupasshttp", 0, &mut glued);
+        assert_eq!(glued[0].value, "emailivan.test2@mail.ru");
         assert_eq!(hits[0].offset, 100 + 10);
     }
 
     #[test]
     fn url_only_reports_known_services() {
-        let data = b"see http://example.com/x and https://bitcointalk.org/index.php?topic=1 ok";
+        let data = b"see http://example.com/x http://vk.com/id1 and https://bitcointalk.org/index.php?topic=1 ok";
         let mut hits = Vec::new();
         UrlDetector::default().scan(data, 0, &mut hits);
         assert_eq!(hits.len(), 1);
