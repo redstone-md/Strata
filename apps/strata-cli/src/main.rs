@@ -1,9 +1,10 @@
 //! Headless front-end for long unattended runs and scripting.
 
+mod jobs;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use std::time::Duration;
-use strata_workbench::{EventQuery, EvidenceId, JobKind, HitCategory, HitQuery, JobState, Workbench};
+use strata_workbench::{EventQuery, EvidenceId, HitCategory, HitQuery, JobKind, Workbench};
 
 #[derive(Parser)]
 #[command(name = "strata-cli", about = "Strata forensic workbench (headless)")]
@@ -21,7 +22,8 @@ enum Command {
     Add { location: String },
     /// List evidence and volumes.
     List,
-    /// Index files and run the single-pass scan (resumes an interrupted scan).
+    /// Run the whole analysis pipeline. Interrupted jobs (a crash, a closed app) resume from
+    /// their checkpoints first; evidence they covered is not started again.
     Analyse {
         /// Evidence id; all evidence when omitted.
         id: Option<u32>,
@@ -71,6 +73,14 @@ enum Command {
     ArchivePasswords { passwords: Vec<String> },
     /// Members unpacked from archives by the Archives step.
     Members { id: u32 },
+    /// Jobs stored in the case: state, progress and where interrupted ones resume.
+    Jobs,
+    /// Live view of the process running this case's jobs: CPU, memory, disk I/O, GPU, jobs.
+    Top {
+        /// Print one frame and exit.
+        #[arg(long)]
+        once: bool,
+    },
     /// Show looked-up address balances; `--endpoint` changes the Esplora server.
     Balances {
         #[arg(long)]
@@ -87,7 +97,8 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    let wb = Workbench::open(&cli.case)?;
+    // Nothing resumes behind the user's back here; `analyse` resumes explicitly.
+    let wb = Workbench::open_idle(&cli.case)?;
     match cli.command {
         Command::Add { location } => {
             let r = wb.add_evidence(&location)?;
@@ -107,7 +118,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}: {:?}", view.title, view.state);
             }
         }
-        Command::Analyse { id } => analyse(&wb, id)?,
+        Command::Analyse { id } => jobs::analyse(&wb, id)?,
+        Command::Jobs => jobs::list(&wb)?,
+        Command::Top { once } => jobs::top(&wb, once)?,
         Command::Hits { category, text, min_confidence, limit, json, group } => {
             let categories = category
                 .map(|c| serde_json::from_value::<HitCategory>(serde_json::Value::String(c)))
@@ -200,34 +213,6 @@ fn list(wb: &Workbench) -> Result<(), Box<dyn std::error::Error>> {
     let counts = wb.hit_counts(None)?;
     if !counts.is_empty() {
         println!("findings: {counts:?}");
-    }
-    Ok(())
-}
-
-fn analyse(wb: &std::sync::Arc<Workbench>, id: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
-    let ids: Vec<EvidenceId> = match id {
-        Some(i) => vec![EvidenceId::new(i)],
-        None => wb.evidence()?.into_iter().map(|e| e.id).collect(),
-    };
-    for id in ids {
-        wb.analyse(id)?;
-        while wb.has_active_jobs() {
-            std::thread::sleep(Duration::from_secs(2));
-            for j in wb.jobs().iter().filter(|j| j.state == JobState::Running) {
-                let p = &j.progress;
-                eprint!(
-                    "\r{:<24} {:>6.2}%  {:>8.1} MB/s  hits {:<8}",
-                    j.title,
-                    j.fraction() * 100.0,
-                    p.per_sec / 1e6,
-                    p.hits
-                );
-            }
-        }
-        eprintln!();
-        for j in wb.jobs().iter().filter(|j| j.evidence == id) {
-            println!("{}: {:?}", j.title, j.state);
-        }
     }
     Ok(())
 }
