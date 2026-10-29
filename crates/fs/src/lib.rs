@@ -3,12 +3,21 @@
 //! Every implementation produces the same [`FileEntry`] model and reads content through the
 //! shared [`ExtentReader`], so the rest of Strata never cares which filesystem a file came from.
 
+mod alloc;
 mod entry;
 mod extent;
+mod fat;
+mod ntfs;
+mod options;
 mod ownership;
+mod tree;
+
+#[cfg(test)]
+mod testutil;
 
 pub use entry::{EntryState, FileEntry, FileId, FileTimes};
 pub use extent::{Extent, ExtentReader};
+pub use options::FsOptions;
 pub use ownership::OwnershipIndex;
 
 use std::sync::Arc;
@@ -50,8 +59,17 @@ pub trait FileSystem: Send + Sync {
     }
 }
 
-/// Open the right parser for `kind`. Returns `Err` only if nothing at all could be parsed.
+/// Open the right parser for `kind` with default options (metadata only, no record carving).
+/// Returns `Err` only if nothing at all could be parsed.
 pub fn open_filesystem(source: Arc<dyn BlockSource>, kind: FsKind) -> Result<Box<dyn FileSystem>> {
-    let _ = &source;
-    Err(strata_kernel::Error::format(format!("filesystem {kind:?} not supported yet")))
+    open_filesystem_with(source, kind, FsOptions::default())
+}
+
+/// Like [`open_filesystem`], with explicit [`FsOptions`].
+pub fn open_filesystem_with(source: Arc<dyn BlockSource>, kind: FsKind, options: FsOptions) -> Result<Box<dyn FileSystem>> {
+    match kind {
+        FsKind::Ntfs => Ok(Box::new(ntfs::NtfsFileSystem::open(source, options)?)),
+        FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 => Ok(Box::new(fat::open(source)?)),
+        other => Err(strata_kernel::Error::format(format!("filesystem {other:?} not supported yet"))),
+    }
 }

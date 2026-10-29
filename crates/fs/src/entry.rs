@@ -56,6 +56,24 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    /// A bare entry; parsers fill in path, parent, times and content afterwards.
+    pub fn new(name: impl Into<String>, is_dir: bool, state: EntryState, native_id: u64) -> Self {
+        Self {
+            name: name.into(),
+            path: String::new(),
+            parent: None,
+            is_dir,
+            size: 0,
+            state,
+            times: FileTimes::default(),
+            extents: Vec::new(),
+            resident: None,
+            native_id,
+            streams: Vec::new(),
+            damage: Vec::new(),
+        }
+    }
+
     pub fn extension(&self) -> Option<&str> {
         let (stem, ext) = self.name.rsplit_once('.')?;
         (!stem.is_empty() && !ext.is_empty() && ext.len() <= 8).then_some(ext)

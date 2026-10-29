@@ -36,7 +36,7 @@ impl OwnershipIndex {
             .filter(|s| volume_offset < s.1)
             .map(|s| (s.2, s.3 + (volume_offset - s.0)))
             .collect();
-        out.sort_by_key(|(id, _)| entries.get(id.index()).map_or(true, |e| e.is_deleted()));
+        out.sort_by_key(|(id, _)| entries.get(id.index()).is_none_or(|e| e.is_deleted()));
         out.dedup_by_key(|(id, _)| *id);
         out
     }
