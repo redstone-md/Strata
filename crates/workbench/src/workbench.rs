@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use strata_chain::{AddressBalance, EsploraBackend};
 use strata_case::{Case, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
+use strata_kernel::Period;
 use strata_kernel::scan::HitCategory;
 use strata_engine::Scanner;
 use strata_kernel::{EvidenceId, Result};
@@ -31,6 +32,8 @@ impl Workbench {
     /// to pass a checksum, matches inside system files. Lists hide them unless asked.
     pub const NOISE_FLOOR: f32 = 0.2;
     pub(crate) const RULES_KEY: &'static str = "rules_version";
+    /// Case setting: the period of interest (JSON [`Period`]).
+    const PERIOD_KEY: &'static str = "period";
     /// Case setting: the app's last screen, filters and selection (JSON chosen by the app).
     pub const UI_STATE_KEY: &'static str = "ui_state";
 
@@ -59,6 +62,15 @@ impl Workbench {
 
     pub fn set_auto_resume(&self, on: bool) -> Result<()> {
         self.case.set_setting(Self::AUTO_RESUME_KEY, if on { "1" } else { "0" })
+    }
+
+    /// The period of interest every list is narrowed to ([`Period::ALL`] when unset).
+    pub fn period(&self) -> Period {
+        self.case.setting(Self::PERIOD_KEY).ok().flatten().and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default()
+    }
+
+    pub fn set_period(&self, period: Period) -> Result<()> {
+        self.case.set_setting(Self::PERIOD_KEY, &serde_json::to_string(&period).unwrap_or_default())
     }
 
     /// The app's saved view state, if any.

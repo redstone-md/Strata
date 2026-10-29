@@ -37,6 +37,8 @@ pub struct AccountsView {
     selected: Option<Account>,
     generation: u64,
     was_active: bool,
+    /// The period of interest the list was last filled with.
+    period: strata_workbench::Period,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -90,6 +92,7 @@ impl AccountsView {
             selected: None,
             generation,
             was_active: false,
+            period: strata_workbench::Period::ALL,
             _subscriptions: subscriptions,
         };
         this.reload(cx);
@@ -110,6 +113,9 @@ impl AccountsView {
             self.reload(cx);
         }
         self.was_active = active;
+        if self.session.read(cx).period() != self.period {
+            self.fill(cx);
+        }
     }
 
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -131,10 +137,14 @@ impl AccountsView {
     fn fill(&mut self, cx: &mut Context<Self>) {
         let snapshot = self.session.read(cx).snapshot().clone();
         let needle = self.search.clone();
+        // The case's period of interest; undated items stay.
+        let period = self.session.read(cx).period();
+        self.period = period;
         let rows: Vec<Vec<SharedString>> = self
             .accounts
             .iter()
             .filter(|a| needle.is_empty() || a.identifier().to_lowercase().contains(&needle) || a.service().to_lowercase().contains(&needle))
+            .filter(|a| period.overlaps(a.first_seen(), a.last_seen()))
             .map(|a| {
                 let disks = a.disks().iter().map(|e| snapshot.disk_label(*e)).collect::<Vec<_>>().join(", ");
                 [

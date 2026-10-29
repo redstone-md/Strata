@@ -5,7 +5,7 @@ use crate::widgets::{table_empty, table_header};
 use gpui::{App, Context, IntoElement, Window};
 use gpui_component::table::{Column, ColumnSort, TableDelegate, TableState};
 use std::sync::Arc;
-use strata_workbench::{HitCategory, HitQuery, StoredHit, Workbench};
+use strata_workbench::{HitCategory, HitQuery, Period, StoredHit, Workbench};
 
 /// Rows fetched per page; more are loaded as the user scrolls.
 const PAGE: usize = 2000;
@@ -31,6 +31,11 @@ impl HitTableDelegate {
 
     pub fn set_text(&mut self, text: &str) {
         self.query.text = Some(text.trim().to_string()).filter(|t| !t.is_empty());
+    }
+
+    /// Narrow to findings in files dated inside the period (see `HitQuery::period`).
+    pub fn set_period(&mut self, period: Period) {
+        self.query.period = (!period.is_all()).then_some(period);
     }
 
     /// Show findings below the noise floor too.

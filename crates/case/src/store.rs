@@ -42,6 +42,21 @@ pub struct HitQuery {
     pub exact_value: Option<String>,
     /// Only these hit ids (findings a lead points at).
     pub ids: Vec<i64>,
+    /// Hide findings whose file is dated and was neither created nor modified in the period.
+    /// Findings outside files (free space) and in undated files are kept.
+    pub period: Option<strata_kernel::Period>,
+}
+
+/// SQL condition for [`HitQuery::period`] (bounds are numbers, inlined).
+fn period_condition(p: &strata_kernel::Period) -> String {
+    let from = p.from.map_or(i64::MIN, |t| t.unix_secs());
+    let to = p.to.map_or(i64::MAX, |t| t.unix_secs());
+    let files = "FROM files f WHERE f.evidence_id = hits.evidence_id AND f.path = hits.file_path";
+    format!(
+        " AND (file_path IS NULL
+           OR EXISTS (SELECT 1 {files} AND ((f.created >= {from} AND f.created < {to}) OR (f.modified >= {from} AND f.modified < {to})))
+           OR NOT EXISTS (SELECT 1 {files} AND (f.created IS NOT NULL OR f.modified IS NOT NULL)))"
+    )
 }
 
 /// Grouping key: equal values merge, except findings that describe one specific file.
@@ -125,6 +140,9 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
         args.push(Box::new(v.clone()));
         sql += &format!(" AND value = ?{}", args.len());
     }
+    if let Some(p) = q.period.filter(|p| !p.is_all()) {
+        sql += &period_condition(&p);
+    }
     if !q.ids.is_empty() {
         let ids: Vec<String> = q.ids.iter().map(i64::to_string).collect();
         sql += &format!(" AND id IN ({})", ids.join(","));
@@ -172,4 +190,45 @@ pub(crate) fn counts(conn: &Connection, evidence: Option<EvidenceId>, min_confid
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![evidence.map(|e| e.get()), min_confidence], |r| Ok((category_from(&r.get::<_, String>(0)?), r.get::<_, i64>(1)? as u64)))?;
     rows.collect()
+}
+
+#[cfg(test)]
+mod period_tests {
+    use crate::{Attribution, Case, FileRef, HitQuery};
+    use strata_fs::EntryState;
+    use strata_kernel::scan::{Hit, HitCategory};
+    use strata_kernel::{Period, Timestamp};
+
+    #[test]
+    fn period_hides_findings_in_files_dated_outside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = dir.path().join("zero.img");
+        std::fs::write(&img, vec![0u8; 1 << 20]).unwrap();
+        let case = Case::open(&dir.path().join("t.strata")).unwrap();
+        let id = case.add_evidence(&img.display().to_string()).unwrap().id;
+        let in_file = |path: &str, value: &str, offset: u64| {
+            let file = FileRef { path: path.into(), state: EntryState::Allocated, file_offset: 0 };
+            (Hit::new("crypto.wif", HitCategory::PrivateKey, offset, 51).value(value), Attribution { volume: Some(0), file: Some(file) })
+        };
+        let free = (Hit::new("crypto.wif", HitCategory::PrivateKey, 900, 51).value("free"), Attribution::default());
+        case.store_hits(id, &[in_file("old.txt", "old", 100), in_file("new.txt", "new", 200), in_file("undated.txt", "undated", 300), free]).unwrap();
+        let secs = |y| Timestamp::from_civil(y, 6, 1, 0, 0, 0).unwrap().unix_secs();
+        case.with_write(|c| {
+            c.execute(
+                "INSERT INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state, created, modified) VALUES
+                 (?1, 0, 1, 'old.txt', 'old.txt', 1, 0, 'Allocated', ?2, ?2),
+                 (?1, 0, 2, 'new.txt', 'new.txt', 1, 0, 'Allocated', ?3, ?3),
+                 (?1, 0, 3, 'undated.txt', 'undated.txt', 1, 0, 'Allocated', NULL, NULL)",
+                rusqlite::params![id.get(), secs(2010), secs(2018)],
+            )
+        })
+        .unwrap();
+        let values = |period| {
+            let mut v: Vec<String> = case.hits(&HitQuery { period, ..HitQuery::default() }).unwrap().into_iter().map(|h| h.hit.value).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(values(None).len(), 4);
+        assert_eq!(values(Period::parse("2008", "2013")), ["free", "old", "undated"]);
+    }
 }

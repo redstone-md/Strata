@@ -2,6 +2,7 @@
 
 mod command_bar;
 mod jump;
+mod period_bar;
 mod screens;
 mod window_controls;
 
@@ -34,6 +35,11 @@ pub struct Shell {
     search: Entity<InputState>,
     focus: FocusHandle,
     screens: Screens,
+    /// The period strip: its fields, whether it is open, and why the last Apply failed.
+    period_from: Entity<InputState>,
+    period_to: Entity<InputState>,
+    period_open: bool,
+    period_error: Option<String>,
     /// View state last written to the case.
     saved: ViewState,
     _save: Option<Task<()>>,
@@ -50,7 +56,16 @@ impl Shell {
             cx.observe(&screens.timeline, |this, _, cx| this.schedule_save(cx)),
             cx.observe(&screens.tasks, |this, _, cx| this.schedule_save(cx)),
         ];
+        let period_from = cx.new(|cx| InputState::new(window, cx).placeholder("2008"));
+        let period_to = cx.new(|cx| InputState::new(window, cx).placeholder("2013"));
+        let on_period_enter = |this: &mut Self, _: &Entity<InputState>, event: &InputEvent, window: &mut Window, cx: &mut Context<Self>| {
+            if let InputEvent::PressEnter { .. } = event {
+                this.apply_period(window, cx);
+            }
+        };
         let mut subscriptions = vec![
+            cx.subscribe_in(&period_from, window, on_period_enter),
+            cx.subscribe_in(&period_to, window, on_period_enter),
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe_in(&search, window, |this, _, event: &InputEvent, window, cx| match event {
                 InputEvent::Change => this.apply_search(cx),
@@ -62,7 +77,71 @@ impl Shell {
         subscriptions.extend(watch_views);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
-        Self { session, screen: Screen::Overview, search, focus, screens, saved: ViewState::default(), _save: None, _subscriptions: subscriptions }
+        Self {
+            session,
+            screen: Screen::Overview,
+            search,
+            focus,
+            screens,
+            period_from,
+            period_to,
+            period_open: false,
+            period_error: None,
+            saved: ViewState::default(),
+            _save: None,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn period_bar(&self, cx: &mut Context<Self>) -> period_bar::PeriodBar {
+        let this = cx.entity().downgrade();
+        let on_apply = Rc::new(move |_: &_, window: &mut Window, cx: &mut gpui::App| {
+            let _ = this.update(cx, |shell, cx| shell.apply_period(window, cx));
+        });
+        let this = cx.entity().downgrade();
+        let on_clear = Rc::new(move |_: &_, _: &mut Window, cx: &mut gpui::App| {
+            let _ = this.update(cx, |shell, cx| shell.clear_period(cx));
+        });
+        period_bar::PeriodBar::new(&self.period_from, &self.period_to, self.period_error.clone(), on_apply, on_clear)
+    }
+
+    /// Open or close the period strip; opening fills it with the case's period.
+    fn toggle_period(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.period_open = !self.period_open;
+        self.period_error = None;
+        if self.period_open {
+            let p = self.session.read(cx).period();
+            let label = |t: Option<strata_workbench::Timestamp>, end: bool| {
+                t.map(|t| strata_workbench::Period { from: (!end).then_some(t), to: end.then_some(t) }.label())
+                    .map(|l| l.trim_start_matches("from ").trim_start_matches("until ").to_string())
+                    .unwrap_or_default()
+            };
+            let (from, to) = (label(p.from, false), label(p.to, true));
+            self.period_from.update(cx, |s, cx| s.set_value(from, window, cx));
+            self.period_to.update(cx, |s, cx| s.set_value(to, window, cx));
+        }
+        cx.notify();
+    }
+
+    fn apply_period(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        let from = self.period_from.read(cx).value().to_string();
+        let to = self.period_to.read(cx).value().to_string();
+        match strata_workbench::Period::parse(&from, &to) {
+            Some(period) => {
+                self.period_error = None;
+                self.period_open = false;
+                self.session.update(cx, |s, cx| s.set_period(period, cx));
+            }
+            None => self.period_error = Some("Use a year, YYYY-MM or YYYY-MM-DD, with the start before the end.".into()),
+        }
+        cx.notify();
+    }
+
+    fn clear_period(&mut self, cx: &mut Context<Self>) {
+        self.period_open = false;
+        self.period_error = None;
+        self.session.update(cx, |s, cx| s.set_period(strata_workbench::Period::ALL, cx));
+        cx.notify();
     }
 
     /// What the user is looking at now.
@@ -185,6 +264,10 @@ impl Shell {
         let on_status = Rc::new(move |_: &_, _: &mut Window, cx: &mut gpui::App| {
             let _ = this.update(cx, |shell, cx| shell.navigate(Navigate::to(Screen::Tasks), cx));
         });
+        let this = cx.entity().downgrade();
+        let on_period = Rc::new(move |_: &_, window: &mut Window, cx: &mut gpui::App| {
+            let _ = this.update(cx, |shell, cx| shell.toggle_period(window, cx));
+        });
         // The whole bar is the window's caption: drag to move, double-click to maximize.
         // Interactive parts occlude it so they keep their clicks.
         h_flex()
@@ -204,7 +287,10 @@ impl Shell {
                     .text_color(t.emphasis)
                     .child("Strata"),
             )
-            .child(CommandBar::new(session.case_name(), session.snapshot().clone(), &self.search, on_case, on_status))
+            .child(
+                CommandBar::new(session.case_name(), session.snapshot().clone(), &self.search, on_case, on_status)
+                    .period(session.period().label(), on_period),
+            )
             .child(WindowControls)
     }
 }
@@ -239,6 +325,7 @@ impl Render for Shell {
             .text_color(t.text)
             .child(self.top_row(cx))
             .child(progress)
+            .children(self.period_open.then(|| self.period_bar(cx)))
             .child(
                 h_flex()
                     .flex_1()

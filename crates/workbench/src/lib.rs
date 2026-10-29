@@ -36,4 +36,4 @@ pub use strata_timeline::{EventKind, TimelineEvent};
 pub use strata_chain::{AddressBalance, AddressHistory};
 pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceKind, SourceRef, Years};
 pub use strata_leads::{EventRecord, Lead, LeadRef, LeadRule};
-pub use strata_kernel::{EvidenceId, Result, Timestamp};
+pub use strata_kernel::{EvidenceId, Period, Result, Timestamp};

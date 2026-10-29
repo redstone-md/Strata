@@ -29,6 +29,7 @@ pub struct TimelineView {
     /// Bumped per reload; a slower earlier load that lands late is dropped.
     loads: u64,
     loading: bool,
+    period: strata_workbench::Period,
     _observe: Subscription,
 }
 
@@ -39,7 +40,7 @@ impl TimelineView {
         let observe = cx.observe(&session, |this, _, cx| this.on_session_changed(cx));
         let generation = session.read(cx).generation();
         let mut this =
-            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, loads: 0, loading: false, _observe: observe };
+            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, loads: 0, loading: false, period: strata_workbench::Period::ALL, _observe: observe };
         this.reload(cx);
         this
     }
@@ -53,7 +54,7 @@ impl TimelineView {
             self.day = None;
             self.table.update(cx, |t, _| t.delegate_mut().set_workbench(wb));
             self.reload(cx);
-        } else if self.was_active && !active {
+        } else if session.period() != self.period || self.was_active && !active {
             self.reload(cx);
         }
         self.was_active = active;
@@ -106,6 +107,9 @@ impl TimelineView {
         let session = self.session.read(cx);
         let disks: HashMap<_, _> = session.snapshot().disks.iter().map(|d| (d.id(), d.record.info.label.clone())).collect();
         let wb = session.workbench().clone();
+        self.period = session.period();
+        let period = self.period;
+        self.table.update(cx, |t, _| t.delegate_mut().set_period(period));
         let query = self.table.read(cx).delegate().first_page();
         self.loads += 1;
         self.loading = true;

@@ -29,6 +29,8 @@ pub struct LeadsView {
     status: Option<String>,
     generation: u64,
     was_active: bool,
+    /// The period of interest the list was last filled with.
+    period: strata_workbench::Period,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -80,6 +82,7 @@ impl LeadsView {
             status: None,
             generation,
             was_active: false,
+            period: strata_workbench::Period::ALL,
             _subscriptions: subscriptions,
         };
         this.reload(cx);
@@ -96,6 +99,9 @@ impl LeadsView {
             self.reload(cx);
         }
         self.was_active = active;
+        if self.session.read(cx).period() != self.period {
+            self.fill(cx);
+        }
     }
 
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -111,10 +117,14 @@ impl LeadsView {
     fn fill(&mut self, cx: &mut Context<Self>) {
         let snapshot = self.session.read(cx).snapshot().clone();
         let needle = self.search.clone();
+        // The case's period of interest; undated items stay.
+        let period = self.session.read(cx).period();
+        self.period = period;
         let rows: Vec<Vec<SharedString>> = self
             .leads
             .iter()
             .filter(|l| needle.is_empty() || l.title.to_lowercase().contains(&needle) || l.text().to_lowercase().contains(&needle))
+            .filter(|l| period.overlaps(l.window.map(|w| w.0), l.window.map(|w| w.1)))
             .map(|l| {
                 let disks = l.evidence.iter().map(|e| snapshot.disk_label(*e)).collect::<Vec<_>>().join(", ");
                 [format!("{:.0}", l.score), l.title.clone(), l.rule.label().to_string(), window_text(l.window), disks, l.id.clone()]

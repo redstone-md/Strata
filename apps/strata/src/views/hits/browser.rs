@@ -48,6 +48,8 @@ pub struct HitBrowser {
     /// Outcome of the last export from the detail panel.
     export_note: Option<gpui::SharedString>,
     generation: u64,
+    /// The case's period of interest the list was last loaded with.
+    period: strata_workbench::Period,
     last_load: Instant,
     /// Bumped per reload; a slower earlier load that lands late is dropped.
     loads: u64,
@@ -61,8 +63,10 @@ impl EventEmitter<Jump> for HitBrowser {}
 impl HitBrowser {
     pub fn new(session: Entity<Session>, config: BrowserConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let workbench = session.read(cx).workbench().clone();
+        let period = session.read(cx).period();
         let query = HitQuery { categories: config.categories.clone(), ..HitQuery::default() };
         let mut delegate = HitTableDelegate::new(workbench, config.columns.clone(), query);
+        delegate.set_period(period);
         if let Some(col) = config.initial_sort {
             delegate.set_initial_sort(col);
         }
@@ -92,6 +96,7 @@ impl HitBrowser {
             loaded_total: 0,
             export_note: None,
             generation,
+            period,
             last_load: Instant::now(),
             loads: 0,
             loading: false,
@@ -188,6 +193,11 @@ impl HitBrowser {
             let wb = session.workbench().clone();
             self.selected = None;
             self.table.update(cx, |t, _| t.delegate_mut().set_workbench(wb));
+            self.reload(cx);
+        } else if session.period() != self.period {
+            self.period = session.period();
+            let period = self.period;
+            self.table.update(cx, |t, _| t.delegate_mut().set_period(period));
             self.reload(cx);
         } else if !self.loading && session.snapshot().total_hits != self.loaded_total && self.last_load.elapsed() >= LIVE_RELOAD {
             self.reload(cx);

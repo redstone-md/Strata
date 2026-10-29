@@ -19,13 +19,43 @@ pub struct CommandBar {
     case_name: String,
     snapshot: Snapshot,
     search: Entity<InputState>,
+    /// The period of interest in words (`All dates`, `2008 – 2013`).
+    period: String,
     on_case: ClickHandler,
     on_status: ClickHandler,
+    on_period: ClickHandler,
 }
 
 impl CommandBar {
     pub fn new(case_name: String, snapshot: Snapshot, search: &Entity<InputState>, on_case: ClickHandler, on_status: ClickHandler) -> Self {
-        Self { case_name, snapshot, search: search.clone(), on_case, on_status }
+        let none: ClickHandler = std::rc::Rc::new(|_, _, _| {});
+        Self { case_name, snapshot, search: search.clone(), period: String::new(), on_case, on_status, on_period: none }
+    }
+
+    /// The period button beside the search: its label and what a click does.
+    pub fn period(mut self, label: String, on_click: ClickHandler) -> Self {
+        self.period = label;
+        self.on_period = on_click;
+        self
+    }
+
+    fn period_button(&self) -> impl IntoElement {
+        let t = tokens();
+        let on_period = self.on_period.clone();
+        let narrowed = self.period != "All dates";
+        div()
+            .id("period")
+            .occlude()
+            .cursor_pointer()
+            .px(px(10.))
+            .py(px(4.))
+            .border_1()
+            .border_color(if narrowed { t.emphasis } else { t.rule })
+            .text_size(t.size_body)
+            .text_color(if narrowed { t.emphasis } else { t.text_secondary })
+            .hover(|s| s.text_color(t.emphasis))
+            .child(self.period.clone())
+            .on_click(move |e, w, cx| on_period(e, w, cx))
     }
 
     fn status(&self) -> impl IntoElement {
@@ -85,7 +115,12 @@ impl RenderOnce for CommandBar {
             .pr(px(16.))
             .gap(px(24.))
             .child(div().flex_1().min_w_0().child(self.case()))
-            .child(div().id("search").occlude().child(Field::new(&self.search).hint("Alt+F").width(px(SEARCH_WIDTH))))
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .child(div().id("search").occlude().child(Field::new(&self.search).hint("Alt+F").width(px(SEARCH_WIDTH))))
+                    .child(self.period_button()),
+            )
             .child(div().flex_1().min_w_0().child(self.status()))
     }
 }

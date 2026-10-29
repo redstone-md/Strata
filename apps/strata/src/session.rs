@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use strata_workbench::{
-    AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobKind, JobState, JobView, LogLine, MonitorView, Workbench,
+    AddressBalance, EvidenceId, EvidenceRecord, HitCategory, Period, JobId, JobKind, JobState, JobView, LogLine, MonitorView, Workbench,
 };
 
 const POLL: Duration = Duration::from_millis(500);
@@ -149,6 +149,8 @@ pub struct Session {
     ticks: u32,
     /// Set while another case is being opened (Settings).
     opening: Option<Opening>,
+    /// The period of interest every list is narrowed to (stored in the case).
+    period: Period,
     _poll: Task<()>,
 }
 
@@ -181,6 +183,7 @@ impl Session {
 
     pub fn new(opened: Opened, cx: &mut Context<Self>) -> Self {
         let Opened { workbench, snapshot, error } = opened;
+        let period = workbench.period();
         let poll = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(POLL).await;
@@ -203,6 +206,7 @@ impl Session {
             counting: false,
             ticks: 0,
             opening: None,
+            period,
             _poll: poll,
         }
     }
@@ -417,6 +421,19 @@ impl Session {
         self.refresh(cx);
     }
 
+    pub fn period(&self) -> Period {
+        self.period
+    }
+
+    /// Narrow every list to `period` and remember it in the case.
+    pub fn set_period(&mut self, period: Period, cx: &mut Context<Self>) {
+        if let Err(e) = self.workbench.set_period(period) {
+            self.error = Some(format!("Cannot save the period: {e}"));
+        }
+        self.period = period;
+        cx.notify();
+    }
+
     /// The case being opened instead of this one, if any.
     pub fn opening(&self) -> Option<&Opening> {
         self.opening.as_ref()
@@ -438,6 +455,7 @@ impl Session {
                         s.workbench.monitor().unwatch();
                         wb.monitor().watch();
                     }
+                    s.period = wb.period();
                     s.workbench = wb;
                     s.snapshot = snapshot;
                     s.generation += 1;

@@ -7,7 +7,7 @@ use gpui_component::h_flex;
 use gpui_component::table::{Column, TableDelegate, TableState};
 use std::collections::HashMap;
 use std::sync::Arc;
-use strata_workbench::{EventQuery, EvidenceId, TimelineEvent, Workbench};
+use strata_workbench::{EventQuery, EvidenceId, Period, TimelineEvent, Workbench};
 
 const PAGE: usize = 2000;
 const COLUMNS: [(&str, f32); 5] = [("Time", 170.), ("Kind", 150.), ("Event", 420.), ("Source", 380.), ("Disk", 110.)];
@@ -32,12 +32,14 @@ pub struct TimelineDelegate {
     has_more: bool,
     /// The first page has arrived; until then the empty state says "Loading".
     loaded: bool,
+    /// The case's period of interest, narrowing the day filter.
+    period: Period,
 }
 
 impl TimelineDelegate {
     pub fn new(workbench: Arc<Workbench>) -> Self {
         let query = EventQuery { skip_filesystem: true, limit: PAGE, ..EventQuery::default() };
-        Self { workbench, query, rows: Vec::new(), disks: HashMap::new(), has_more: false, loaded: false }
+        Self { workbench, query, rows: Vec::new(), disks: HashMap::new(), has_more: false, loaded: false, period: Period::ALL }
     }
 
     pub fn query_mut(&mut self) -> &mut EventQuery {
@@ -52,9 +54,18 @@ impl TimelineDelegate {
         self.workbench = workbench;
     }
 
+    pub fn set_period(&mut self, period: Period) {
+        self.period = period;
+    }
+
+    /// The query as run: the list's own filters inside the case's period.
+    fn effective(&self) -> EventQuery {
+        EventQuery { from: self.period.later_start(self.query.from), to: self.period.earlier_end(self.query.to), ..self.query.clone() }
+    }
+
     /// The query for the first page, to run off the UI thread.
     pub fn first_page(&self) -> EventQuery {
-        EventQuery { offset: 0, ..self.query.clone() }
+        EventQuery { offset: 0, ..self.effective() }
     }
 
     pub fn set_rows(&mut self, disks: HashMap<EvidenceId, String>, rows: Vec<(EvidenceId, TimelineEvent)>) {
@@ -135,7 +146,7 @@ impl TableDelegate for TimelineDelegate {
             return;
         }
         self.query.offset = self.rows.len();
-        let page = self.workbench.events(&self.query).unwrap_or_default();
+        let page = self.workbench.events(&self.effective()).unwrap_or_default();
         self.has_more = page.len() == PAGE;
         self.rows.extend(page);
         cx.notify();
