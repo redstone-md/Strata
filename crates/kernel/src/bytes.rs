@@ -20,7 +20,7 @@ macro_rules! readers {
     )*};
 }
 
-readers!(u16_le, u16_be => u16, u32_le, u32_be => u32, u64_le, u64_be => u64, i64_le, i64_be => i64);
+readers!(u16_le, u16_be => u16, u32_le, u32_be => u32, i32_le, i32_be => i32, u64_le, u64_be => u64, i64_le, i64_be => i64);
 
 /// Little-endian unsigned integer of `width` (1..=8) bytes, used by NTFS run lists.
 pub fn uint_le_var(data: &[u8], off: usize, width: usize) -> Option<u64> {

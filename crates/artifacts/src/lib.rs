@@ -13,6 +13,7 @@
 
 mod browser;
 mod extract;
+mod linux;
 mod mail;
 mod pidl;
 mod registry;

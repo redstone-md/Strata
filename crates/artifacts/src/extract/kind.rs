@@ -4,6 +4,7 @@ use crate::browser::{self, FirefoxLogins, IndexDat, OperaGlobalHistory, OperaTyp
 use crate::mail::{Dbx, Mailbox};
 use crate::registry::{self, RegistryHive};
 use crate::results::{ArtifactResults, Recorder};
+use crate::linux::{RecentlyUsed, ShellHistory, WalletDir, Wtmp};
 use crate::windows::{EventLog, Evtx, Info2, Lnk, Prefetch, RecycleI};
 use serde::{Deserialize, Serialize};
 
@@ -25,12 +26,25 @@ pub enum ArtifactKind {
     Evtx,
     OutlookDbx,
     Mailbox,
+    /// bash / zsh history.
+    ShellHistory,
+    /// GNOME `recently-used.xbel`.
+    RecentlyUsed,
+    /// `/var/log/wtmp` logins.
+    Wtmp,
+    /// `/var/log/btmp` failed logins.
+    Btmp,
+    /// Files inside a wallet program's data folder (`~/.bitcoin/debug.log`...).
+    WalletDir,
 }
 
 /// Chromium-family database file names (no extension).
 const CHROMIUM_DBS: &[&str] = &["history", "archived history", "login data", "web data", "cookies"];
 /// Path fragments of Chromium-family profiles.
-const CHROMIUM_DIRS: &[&str] = &["/user data/", "opera software/", "/yandex/", "/chrome/", "/chromium/", "/edge/", "/opera stable/"];
+const CHROMIUM_DIRS: &[&str] = &[
+    "/user data/", "opera software/", "/yandex/", "/chrome/", "/chromium/", "/edge/", "/opera stable/",
+    "/google-chrome/", "/yandex-browser/", "/microsoft-edge/", "/vivaldi/", "/bravesoftware/", "/opera/",
+];
 const FIREFOX_DBS: &[&str] = &["places.sqlite", "formhistory.sqlite", "cookies.sqlite", "signons.sqlite", "downloads.sqlite"];
 const HIVE_NAMES: &[&str] = &["system", "software", "sam"];
 
@@ -59,7 +73,12 @@ impl ArtifactKind {
             _ if ext == "evtx" => Self::Evtx,
             _ if ext == "dbx" => Self::OutlookDbx,
             _ if matches!(ext, "eml" | "mbx" | "mbox") => Self::Mailbox,
-            _ if ext.is_empty() && (under("/thunderbird/profiles/") && (under("/mail/") || under("/imapmail/"))) => Self::Mailbox,
+            _ if ext.is_empty() && ((under("/thunderbird/profiles/") || under("/.thunderbird/")) && (under("/mail/") || under("/imapmail/"))) => Self::Mailbox,
+            ".bash_history" | ".zsh_history" | ".history" | ".sh_history" => Self::ShellHistory,
+            "recently-used.xbel" | ".recently-used.xbel" => Self::RecentlyUsed,
+            n if (n == "wtmp" || n.starts_with("wtmp.")) && under("/var/log/") => Self::Wtmp,
+            n if (n == "btmp" || n.starts_with("btmp.")) && under("/var/log/") => Self::Btmp,
+            _ if crate::linux::WalletDir::software(&p).is_some() && (name == "debug.log" || matches!(ext, "conf" | "json" | "config")) => Self::WalletDir,
             _ => return None,
         })
     }
@@ -146,6 +165,11 @@ impl ArtifactKind {
             Self::Evtx => one("windows.evtx", &|r| Evtx::parse(data, r)),
             Self::OutlookDbx => one("mail.outlook_express", &|r| Dbx::parse(data, r)),
             Self::Mailbox => one("mail.mbox", &|r| Mailbox::parse(data, r)),
+            Self::ShellHistory => one("linux.shell_history", &|r| ShellHistory::parse(data, r)),
+            Self::RecentlyUsed => one("linux.recently_used", &|r| RecentlyUsed::parse(data, r)),
+            Self::Wtmp => one("linux.wtmp", &|r| Wtmp::parse(data, false, r)),
+            Self::Btmp => one("linux.btmp", &|r| Wtmp::parse(data, true, r)),
+            Self::WalletDir => one("linux.wallet_dir", &|r| WalletDir::parse(name_hint, data, r)),
         }
     }
 }
