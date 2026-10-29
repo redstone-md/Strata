@@ -16,7 +16,7 @@ pub fn stride_at(data: &[u8], pos: usize) -> usize {
 }
 
 /// Character at char index `i` relative to `pos` (negative = left), honouring the stride.
-fn char_at(data: &[u8], pos: usize, stride: usize, i: isize) -> Option<u8> {
+pub(crate) fn char_at(data: &[u8], pos: usize, stride: usize, i: isize) -> Option<u8> {
     let off = pos as isize + i * stride as isize;
     let off = usize::try_from(off).ok()?;
     let c = *data.get(off)?;

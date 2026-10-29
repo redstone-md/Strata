@@ -1,7 +1,7 @@
 //! Event tagging: known services (via `strata_accounts::Service`) and crypto keywords.
 
 use std::sync::OnceLock;
-use strata_accounts::{Service, ServiceKind};
+use strata_accounts::Service;
 use strata_timeline::{CRYPTO_TAG, TimelineEvent};
 
 /// Crypto keywords (lowercase). `btc` and `coin` are matched as whole words only, the rest as
@@ -39,7 +39,7 @@ impl Tagger {
     pub fn tags_for(&self, text: &str) -> Vec<String> {
         let mut tags = Vec::new();
         if let Some(service) = Service::classify(text) {
-            if let Some(kind) = kind_tag(service.kind) {
+            if let Some(kind) = service.kind.tag() {
                 tags.push(kind.to_string());
             }
             tags.push(service.name.to_string());
@@ -67,16 +67,6 @@ impl Tagger {
 
     pub fn service_name(&self, text: &str) -> Option<String> {
         Service::classify(text).map(|s| s.name.to_string())
-    }
-}
-
-fn kind_tag(kind: ServiceKind) -> Option<&'static str> {
-    match kind {
-        ServiceKind::Crypto => Some(CRYPTO_TAG),
-        ServiceKind::Payment => Some("payment"),
-        ServiceKind::Mail => Some("mail"),
-        ServiceKind::Social => Some("social"),
-        ServiceKind::Other => None,
     }
 }
 

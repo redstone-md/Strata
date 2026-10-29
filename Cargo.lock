@@ -6136,10 +6136,12 @@ dependencies = [
 name = "strata-accounts"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "memchr",
  "serde",
  "serde_json",
  "strata-kernel",
+ "toml 0.8.23",
 ]
 
 [[package]]

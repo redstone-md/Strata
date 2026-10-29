@@ -10,3 +10,5 @@ strata-kernel.workspace = true
 memchr.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+aho-corasick = "1"
+toml = "0.8"
