@@ -6,3 +6,4 @@ pub mod keys;
 pub use keys::bip32::{DerivationPlan, ExtendedKey};
 pub use keys::mnemonic::{Bip39Mnemonic, ElectrumSeed};
 pub use keys::{Address, AddressSet, Network, PrivateKey, ScriptType, Wif};
+pub mod wallets;
