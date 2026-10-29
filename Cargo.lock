@@ -6337,6 +6337,7 @@ dependencies = [
  "strata-chain",
  "strata-engine",
  "strata-fs",
+ "strata-graph",
  "strata-kernel",
  "strata-leads",
  "strata-mail",
