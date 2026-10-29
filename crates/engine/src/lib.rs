@@ -6,5 +6,5 @@
 mod control;
 mod scanner;
 
-pub use control::{ScanControl, ScanSnapshot};
+pub use control::{ScanControl, ScanSnapshot, ThreadHook};
 pub use scanner::{ScanSummary, Scanner};

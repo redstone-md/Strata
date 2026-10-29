@@ -219,7 +219,7 @@ fn analyse(wb: &std::sync::Arc<Workbench>, id: Option<u32>) -> Result<(), Box<dy
                     "\r{:<24} {:>6.2}%  {:>8.1} MB/s  hits {:<8}",
                     j.title,
                     j.fraction() * 100.0,
-                    p.bytes_per_sec / 1e6,
+                    p.per_sec / 1e6,
                     p.hits
                 );
             }

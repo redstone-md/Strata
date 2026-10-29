@@ -85,8 +85,8 @@ pub fn job_state(job: &JobView) -> String {
 
 /// Throughput, shown only for jobs that read the disk sequentially.
 pub fn job_rate(job: &JobView) -> Option<String> {
-    (job.kind == JobKind::Scan && job.progress.bytes_per_sec > 0.0)
-        .then(|| format!("{}/s", bytes(job.progress.bytes_per_sec as u64)))
+    (job.kind == JobKind::Scan && job.progress.per_sec > 0.0)
+        .then(|| format!("{}/s", bytes(job.progress.per_sec as u64)))
 }
 
 #[cfg(test)]

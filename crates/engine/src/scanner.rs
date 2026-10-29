@@ -54,8 +54,10 @@ impl Scanner {
         self.detectors.iter().map(|d| d.max_match()).max().unwrap_or(0)
     }
 
-    /// Scan `range` of `source`. `on_hits` is called from the collector thread with each
-    /// chunk's hits (already de-duplicated against chunk overlap), in no particular order.
+    /// Scan `range` of `source`. `on_hits` is called from the collector thread once per chunk,
+    /// after the chunk is counted (so the watermark already includes it), with the chunk's hits
+    /// (possibly none, already de-duplicated against chunk overlap). Chunks arrive in no
+    /// particular order. Progress counts from 0, so a resumed range starts part-way.
     pub fn run(
         &self,
         source: &dyn BlockSource,
@@ -64,7 +66,7 @@ impl Scanner {
         on_hits: impl FnMut(Vec<Hit>) + Send,
     ) -> Result<ScanSummary> {
         let range = range.intersect(&ByteRange::new(0, source.len())).unwrap_or(ByteRange::new(range.start(), 0));
-        control.begin(range.start(), range.len());
+        control.begin_at(range.start(), range.end());
         self.run_range(source, range, control, on_hits)
     }
 
@@ -75,27 +77,44 @@ impl Scanner {
         source: &dyn BlockSource,
         ranges: &[ByteRange],
         control: &ScanControl,
+        on_hits: impl FnMut(Vec<Hit>) + Send,
+    ) -> Result<ScanSummary> {
+        let ranges = Self::clip(source, ranges);
+        control.begin_at(0, ranges.iter().map(|r| r.len()).sum());
+        self.continue_ranges(source, &ranges, control, on_hits)
+    }
+
+    /// Like [`run_ranges`](Self::run_ranges) but adds to the progress the caller started with
+    /// [`ScanControl::begin_at`] — for steps that scan their ranges in resumable batches.
+    pub fn continue_ranges(
+        &self,
+        source: &dyn BlockSource,
+        ranges: &[ByteRange],
+        control: &ScanControl,
         mut on_hits: impl FnMut(Vec<Hit>) + Send,
     ) -> Result<ScanSummary> {
-        let bounds = ByteRange::new(0, source.len());
-        let ranges: Vec<ByteRange> = ByteRange::coalesce(ranges.iter().filter_map(|r| r.intersect(&bounds)).collect());
-        let total = ranges.iter().map(|r| r.len()).sum();
-        control.begin(0, total);
+        let ranges = Self::clip(source, ranges);
         let started = std::time::Instant::now();
+        let before = control.snapshot();
         for r in &ranges {
-            if control.is_cancelled() {
+            if control.should_stop() {
                 break;
             }
             self.run_range(source, *r, control, &mut on_hits)?;
         }
         let snap = control.snapshot();
         Ok(ScanSummary {
-            range: ByteRange::new(0, total),
-            scanned: snap.scanned,
-            hits: snap.hits,
+            range: ByteRange::new(0, ranges.iter().map(|r| r.len()).sum()),
+            scanned: snap.scanned - before.scanned,
+            hits: snap.hits - before.hits,
             completed: !control.is_cancelled(),
             elapsed_secs: started.elapsed().as_secs_f64(),
         })
+    }
+
+    fn clip(source: &dyn BlockSource, ranges: &[ByteRange]) -> Vec<ByteRange> {
+        let bounds = ByteRange::new(0, source.len());
+        ByteRange::coalesce(ranges.iter().filter_map(|r| r.intersect(&bounds)).collect())
     }
 
     fn run_range(
@@ -115,6 +134,7 @@ impl Scanner {
                 let rx = chunk_rx.clone();
                 let tx = hit_tx.clone();
                 scope.spawn(move || {
+                    control.enter_thread();
                     for chunk in rx {
                         let hits = self.scan_chunk(&chunk);
                         let end = chunk.base + chunk.owned as u64;
@@ -126,12 +146,11 @@ impl Scanner {
             }
             drop(hit_tx);
             let collector = scope.spawn(move || {
+                control.enter_thread();
                 for (start, end, hits) in hit_rx {
                     control.add_hits(hits.len() as u64);
-                    if !hits.is_empty() {
-                        on_hits(hits);
-                    }
                     control.chunk_done(start, end);
+                    on_hits(hits);
                 }
             });
             let result = self.read_loop(source, range, overlap, control, &chunk_tx);
@@ -143,7 +162,7 @@ impl Scanner {
         let snap = control.snapshot();
         Ok(ScanSummary {
             range,
-            scanned: snap.scanned,
+            scanned: snap.watermark.saturating_sub(range.start()),
             hits: snap.hits,
             completed: !control.is_cancelled() && snap.watermark >= range.end(),
             elapsed_secs: started.elapsed().as_secs_f64(),
@@ -160,13 +179,15 @@ impl Scanner {
     ) -> Result<()> {
         let mut pos = range.start();
         while pos < range.end() {
-            if control.is_cancelled() {
+            if control.should_stop() {
                 return Ok(());
             }
+            control.set_current(&format!("offset 0x{pos:X}"));
             let owned = ((range.end() - pos) as usize).min(self.chunk_size);
             let tail = ((range.end() - pos - owned as u64) as usize).min(overlap);
             let mut data = vec![0u8; owned + tail];
             let n = source.read_at(pos, &mut data)?;
+            control.add_read(n as u64);
             data.truncate(n);
             if tx.send(Chunk { base: pos, owned: owned.min(n), data }).is_err() {
                 return Err(Error::Other("scan workers stopped".into()));
