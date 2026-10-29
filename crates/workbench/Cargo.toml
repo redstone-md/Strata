@@ -25,6 +25,7 @@ strata-timeline = { path = "../timeline" }
 strata-leads = { path = "../leads" }
 strata-graph = { path = "../graph" }
 strata-machines = { path = "../machines" }
+strata-consistency = { path = "../consistency" }
 strata-report = { path = "../report" }
 strata-search.workspace = true
 sha2.workspace = true

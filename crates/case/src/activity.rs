@@ -197,7 +197,7 @@ impl Case {
     }
 }
 
-fn params<'a>(evidence: EvidenceId, args: &'a [String]) -> Vec<Box<dyn ToSql + 'a>> {
+pub(crate) fn params<'a>(evidence: EvidenceId, args: &'a [String]) -> Vec<Box<dyn ToSql + 'a>> {
     let mut out: Vec<Box<dyn ToSql + 'a>> = vec![Box::new(evidence.get())];
     out.extend(args.iter().map(|a| Box::new(a.as_str()) as Box<dyn ToSql + 'a>));
     out

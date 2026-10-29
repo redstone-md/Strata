@@ -6592,6 +6592,7 @@ dependencies = [
  "strata-carve",
  "strata-case",
  "strata-chain",
+ "strata-consistency",
  "strata-crypto",
  "strata-engine",
  "strata-fs",
