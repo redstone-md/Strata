@@ -193,3 +193,31 @@ fn recovery_writes_files_log_and_flags_overwritten_ones() {
     wait(&wb);
     assert!(matches!(wb.jobs().pop().unwrap().state, JobState::Failed(_)));
 }
+
+#[test]
+fn findings_export_carved_files_and_archive_members() {
+    use strata_identify::testkit;
+    use strata_workbench::{HitCategory, HitQuery};
+    let note = b"old note kept in an archive, write to demo.user@example.org\n".to_vec();
+    let zip = testkit::zip(&[("notes/old.txt", &note, true)]);
+    let mut image = vec![0u8; 2 * MIB];
+    image[0x10000..0x10000 + zip.len()].copy_from_slice(&zip);
+    let dir = tempfile::tempdir().unwrap();
+    let (wb, id) = case_with(dir.path(), &image);
+    done(&wb, JobKind::Carve, id);
+    done(&wb, JobKind::Archives, id);
+    let out = tempfile::tempdir().unwrap();
+
+    let all = wb.hits(&HitQuery { categories: vec![HitCategory::FileSignature], ..HitQuery::default() }).unwrap();
+    let carved = all.iter().find(|h| h.hit.detector == "carve.unallocated").expect("carved zip");
+    let written = wb.export_finding(carved, out.path()).unwrap();
+    assert_eq!(std::fs::read(&written.written_to).unwrap(), zip);
+    assert!(written.written_to.starts_with(out.path().canonicalize().unwrap().join("disk.img").join("$Carved")));
+
+    let member = wb.hits(&HitQuery::default()).unwrap().into_iter().find(|h| h.file_path.as_deref().is_some_and(|p| p.ends_with("!/notes/old.txt")));
+    let member = member.expect("a finding inside the member");
+    let written = wb.export_finding(&member, out.path()).unwrap();
+    assert_eq!(std::fs::read(&written.written_to).unwrap(), note);
+    let log = std::fs::read_to_string(out.path().join("recovery-log.csv")).unwrap();
+    assert_eq!(log.lines().count(), 3, "{log}");
+}
