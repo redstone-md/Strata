@@ -16,6 +16,9 @@ const POLL: Duration = Duration::from_millis(500);
 /// Counts and disks are rebuilt every this many polls while jobs run (3 s); job progress
 /// and resource use every poll.
 const FULL_EVERY: u32 = 6;
+/// Finding counts are recounted every this many polls while jobs run (10 s): on a large case
+/// counting distinct findings takes seconds.
+const COUNT_EVERY: u32 = 20;
 
 /// One disk as the overview shows it.
 #[derive(Clone)]
@@ -141,6 +144,8 @@ pub struct Session {
     /// A snapshot is being built; `stale` asks for another one when it lands.
     loading: bool,
     stale: bool,
+    /// Finding counts are being recounted.
+    counting: bool,
     ticks: u32,
     /// Set while another case is being opened (Settings).
     opening: Option<Opening>,
@@ -170,6 +175,7 @@ impl Session {
             progress.set("Resuming interrupted jobs");
             workbench.resume_interrupted();
         }
+        workbench.recheck_if_rules_changed()?;
         Ok((workbench, snapshot))
     }
 
@@ -194,6 +200,7 @@ impl Session {
             tasks_visible: false,
             loading: false,
             stale: false,
+            counting: false,
             ticks: 0,
             opening: None,
             _poll: poll,
@@ -265,6 +272,9 @@ impl Session {
         self.ticks = self.ticks.wrapping_add(1);
         let active = self.workbench.has_active_jobs();
         let settled = self.was_active && !active;
+        if settled || (active && self.ticks % COUNT_EVERY == 0) {
+            self.recount(cx);
+        }
         if settled || (active && !self.loading && self.ticks % FULL_EVERY == 0) {
             self.refresh(cx);
         } else if active || self.tasks_visible {
@@ -295,11 +305,36 @@ impl Session {
             let _ = this.update(cx, |s, cx| {
                 s.loading = false;
                 if s.generation == generation {
-                    s.snapshot = snapshot;
+                    s.snapshot = Snapshot { counts: std::mem::take(&mut s.snapshot.counts), total_hits: s.snapshot.total_hits, ..snapshot };
                     cx.notify();
                 }
                 if std::mem::take(&mut s.stale) || s.generation != generation {
                     s.refresh(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Recount findings above the noise floor in the background (skipped while a count runs).
+    pub fn recount(&mut self, cx: &mut Context<Self>) {
+        if self.counting {
+            return;
+        }
+        self.counting = true;
+        let wb = self.workbench.clone();
+        let generation = self.generation;
+        cx.spawn(async move |this, cx| {
+            let counts = cx.background_executor().spawn(async move { wb.hit_counts(None, Workbench::NOISE_FLOOR) }).await;
+            let _ = this.update(cx, |s, cx| {
+                s.counting = false;
+                if s.generation != generation {
+                    return s.recount(cx);
+                }
+                if let Ok(counts) = counts {
+                    s.snapshot.total_hits = counts.iter().map(|(_, n)| n).sum();
+                    s.snapshot.counts = counts;
+                    cx.notify();
                 }
             });
         })
@@ -326,12 +361,10 @@ impl Session {
                 DiskSummary { record, scanned, scan_complete, damaged }
             })
             .collect();
-        let counts = wb.hit_counts(None).unwrap_or_default();
-        let total_hits = counts.iter().map(|(_, n)| n).sum();
         let checked = wb.balances().unwrap_or_default();
         let mut balances: Vec<_> = checked.iter().filter(|b| b.ever_used()).cloned().collect();
         balances.sort_by(|a, b| b.balance_sat().cmp(&a.balance_sat()).then(b.tx_count.cmp(&a.tx_count)));
-        Snapshot { disks, counts, jobs, total_hits, balances, checked: Arc::new(checked) }
+        Snapshot { disks, jobs, balances, checked: Arc::new(checked), ..Snapshot::default() }
     }
 
     /// Add a disk; `deep` also probes old CHS cylinder boundaries for deleted partitions.
@@ -410,6 +443,9 @@ impl Session {
                     s.generation += 1;
                     s.error = None;
                 });
+                if result.is_ok() {
+                    s.recount(cx);
+                }
                 cx.notify();
                 result.map_err(|e| e.to_string())
             })

@@ -59,6 +59,7 @@ impl Boot {
             let opened = cx.background_executor().spawn(async move { Session::open(&case, &progress) }).await;
             let _ = this.update_in(cx, |boot, window, cx| {
                 let session = cx.new(|cx| Session::new(opened, cx));
+                session.update(cx, |s, cx| s.recount(cx));
                 let shell = cx.new(|cx| Shell::new(session.clone(), window, cx));
                 shell.update(cx, |s, cx| s.restore(window, cx));
                 boot.stage = Stage::Ready { session, shell };

@@ -73,6 +73,7 @@ pub fn job_name(kind: JobKind) -> &'static str {
         JobKind::RecoverPartitions => "Recover partitions",
         JobKind::Search => "Search",
         JobKind::Recover => "Recover files",
+        JobKind::Recheck => "Re-check findings",
     }
 }
 
@@ -109,6 +110,7 @@ pub fn items(kind: JobKind) -> &'static str {
         JobKind::CheckBalances => "addresses",
         JobKind::RecoverPartitions => "steps",
         JobKind::Recover => "items",
+        JobKind::Recheck => "findings",
         JobKind::Scan | JobKind::Carve | JobKind::Search => "bytes",
     }
 }

@@ -102,6 +102,16 @@ impl HitBrowser {
         self.table.read(cx).delegate().len()
     }
 
+    fn toggle_noise(&mut self, cx: &mut Context<Self>) {
+        self.selected = None;
+        self.table.update(cx, |t, _| {
+            let d = t.delegate_mut();
+            let show = !d.shows_noise();
+            d.set_show_noise(show);
+        });
+        self.reload(cx);
+    }
+
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
         self.table.update(cx, |t, _| t.delegate_mut().set_text(text));
         self.reload(cx);
@@ -192,6 +202,7 @@ impl HitBrowser {
                 .child(div().text_color(t.text).child(format!("Only {}", categories::label(c).to_lowercase())))
                 .child(TextButton::new("show-all", "Show all").on_click(cx.listener(|this, _, _, cx| this.show_category(None, cx))))
         });
+        let noise = if d.shows_noise() { "Hide low-confidence" } else { "Show low-confidence" };
         h_flex()
             .h(px(32.))
             .gap(px(16.))
@@ -200,6 +211,8 @@ impl HitBrowser {
             .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).child(self.config.title))
             .child(div().text_color(t.text_secondary).child(count))
             .children(filter)
+            .child(div().flex_1())
+            .child(TextButton::new("toggle-noise", noise).on_click(cx.listener(|this, _, _, cx| this.toggle_noise(cx))))
     }
 }
 

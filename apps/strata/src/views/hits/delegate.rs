@@ -26,11 +26,20 @@ pub struct HitTableDelegate {
 
 impl HitTableDelegate {
     pub fn new(workbench: Arc<Workbench>, columns: Vec<HitColumn>, query: HitQuery) -> Self {
-        Self { workbench, columns, query: HitQuery { limit: PAGE, group_by_value: true, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, loaded: false, sort: None }
+        Self { workbench, columns, query: HitQuery { limit: PAGE, group_by_value: true, min_confidence: Workbench::NOISE_FLOOR, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, loaded: false, sort: None }
     }
 
     pub fn set_text(&mut self, text: &str) {
         self.query.text = Some(text.trim().to_string()).filter(|t| !t.is_empty());
+    }
+
+    /// Show findings below the noise floor too.
+    pub fn set_show_noise(&mut self, show: bool) {
+        self.query.min_confidence = if show { 0.0 } else { Workbench::NOISE_FLOOR };
+    }
+
+    pub fn shows_noise(&self) -> bool {
+        self.query.min_confidence < Workbench::NOISE_FLOOR
     }
 
     pub fn set_categories(&mut self, categories: Vec<HitCategory>) {
