@@ -39,7 +39,7 @@ fn finding(r: &Row<'_>, times: Option<(Option<i64>, Option<i64>)>) -> rusqlite::
 pub(super) fn secrets(conn: &Connection, limits: &Limits) -> rusqlite::Result<Vec<FindingFact>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS}, MIN(f.created), MAX(f.modified)
-         FROM hits h LEFT JOIN files f
+         FROM hits h LEFT JOIN files f INDEXED BY files_path
            ON f.evidence_id = h.evidence_id AND f.volume_idx = h.volume_idx AND f.path = h.file_path
          WHERE h.category IN ('PrivateKey','ExtendedKey','Mnemonic','Wallet') AND h.confidence >= ?1
          GROUP BY h.id ORDER BY h.confidence DESC, h.id LIMIT ?2"

@@ -51,7 +51,8 @@ pub struct HitQuery {
 fn period_condition(p: &strata_kernel::Period) -> String {
     let from = p.from.map_or(i64::MIN, |t| t.unix_secs());
     let to = p.to.map_or(i64::MAX, |t| t.unix_secs());
-    let files = "FROM files f WHERE f.evidence_id = hits.evidence_id AND f.path = hits.file_path";
+    // Looked up by path: the (disk, volume) key prefix would scan a whole volume per finding.
+    let files = "FROM files f INDEXED BY files_path WHERE f.evidence_id = hits.evidence_id AND f.path = hits.file_path";
     format!(
         " AND (file_path IS NULL
            OR EXISTS (SELECT 1 {files} AND ((f.created >= {from} AND f.created < {to}) OR (f.modified >= {from} AND f.modified < {to})))

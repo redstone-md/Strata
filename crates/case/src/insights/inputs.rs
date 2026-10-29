@@ -23,7 +23,7 @@ impl Case {
         let sql = format!(
             "SELECT h.id, h.evidence_id, h.category, h.label, h.value, h.details, h.file_path, h.file_state,
                     MIN(f.created), MAX(f.modified)
-             FROM hits h LEFT JOIN files f
+             FROM hits h LEFT JOIN files f INDEXED BY files_path
                ON f.evidence_id = h.evidence_id AND f.volume_idx = h.volume_idx AND f.path = h.file_path
              WHERE h.confidence >= ?1
                AND (h.category IN ('PrivateKey','ExtendedKey','Mnemonic','Wallet')

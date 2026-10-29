@@ -14,35 +14,45 @@ use strata_kernel::{Result, Timestamp};
 impl Case {
     /// Facts for [`strata_graph::GraphBuilder`]: secrets and what sits beside them, artefact
     /// identities, used addresses, accounts, chain data, mail, mentions and leads, each bounded
-    /// by `limits`. Takes seconds on a large case; call it off the UI thread.
-    pub fn connection_facts(&self, limits: &Limits) -> Result<Facts> {
+    /// by `limits`. Takes seconds on a large case; call it off the UI thread. `step` is told
+    /// what is being read, for a progress line.
+    pub fn connection_facts(&self, limits: &Limits, step: &dyn Fn(&'static str)) -> Result<Facts> {
         let disks = self.evidence()?.into_iter().map(|e| DiskFact { id: e.id, label: e.info.label }).collect();
         let mut facts = self.with_conn(|conn| {
+            step("Reading keys, seeds and wallets");
             let secrets = findings::secrets(conn, limits)?;
+            step("Reading what sits beside them");
             let beside = findings::beside(conn, &secrets, limits)?;
+            step("Reading addresses used on chain");
             let used = findings::used_addresses(conn, limits)?;
             let mut seen = BTreeSet::new();
             let all = secrets.into_iter().chain(beside).chain(used).filter(|f| seen.insert(f.hit)).collect();
+            step("Reading balances, mail and accounts");
             Ok(Facts { findings: all, chain: chain(conn)?, mail: mail::messages(conn, limits)?, accounts: accounts(conn, limits)?, ..Facts::default() })
         })?;
         facts.disks = disks;
+        step("Reading leads");
         facts.leads = self.leads()?.into_iter().take(limits.leads).collect();
         let values = facts.identity_values(limits.spreads);
         let targets = facts.mention_targets();
-        let (spreads, mentions) = self.with_conn(|conn| Ok((findings::spreads(conn, &values, limits)?, mail::mentions(conn, &targets, limits)?)))?;
+        step("Checking how widely each identity is spread");
+        let spreads = self.with_conn(|conn| findings::spreads(conn, &values, limits))?;
+        step("Searching mail for known addresses and keys");
+        let mentions = self.with_conn(|conn| mail::mentions(conn, &targets, limits))?;
         facts.spreads = spreads;
         facts.mentions = mentions;
         Ok(facts)
     }
 
     /// Changes whenever findings, accounts, leads, mail, chain data or disks change: a graph
-    /// built at an equal stamp is still current.
+    /// built at an equal stamp is still current. Uses row counts and the largest row ids
+    /// (rebuilt rows get new ones), which SQLite reads without scanning the tables.
     pub fn connection_stamp(&self) -> Result<String> {
         self.with_conn(|conn| {
             conn.query_row(
-                "SELECT (SELECT IFNULL(MAX(id), 0) FROM hits) || ':' || (SELECT COUNT(*) || '/' || TOTAL(confidence) FROM accounts)
-                     || ':' || (SELECT COUNT(*) || '/' || TOTAL(score) FROM leads) || ':' || (SELECT IFNULL(MAX(id), 0) FROM messages)
-                     || ':' || (SELECT COUNT(*) || '/' || TOTAL(tx_count) FROM balances) || ':' || (SELECT COUNT(*) FROM address_history)
+                "SELECT (SELECT IFNULL(MAX(id), 0) FROM hits) || ':' || (SELECT IFNULL(MAX(rowid), 0) FROM accounts)
+                     || ':' || (SELECT IFNULL(MAX(rowid), 0) FROM leads) || ':' || (SELECT IFNULL(MAX(id), 0) FROM messages)
+                     || ':' || (SELECT IFNULL(MAX(rowid), 0) FROM balances) || ':' || (SELECT IFNULL(MAX(rowid), 0) FROM address_history)
                      || ':' || (SELECT COUNT(*) FROM evidence)",
                 [],
                 |r| r.get(0),

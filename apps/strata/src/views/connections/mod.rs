@@ -101,6 +101,10 @@ impl ConnectionsView {
             self.history.clear();
         }
         if self.started && (switched || (self.was_active && !active)) {
+            if !switched {
+                // Jobs ended: whatever they added belongs on the map now.
+                session.workbench().refresh_connections();
+            }
             self.reload(cx);
         }
         self.was_active = active;
@@ -243,7 +247,16 @@ impl ConnectionsView {
             }
             None => String::new(),
         };
-        let note = if self.loading { Some("Building the map…".to_string()) } else { self.note.clone() };
+        // The loading line animates every frame, which keeps this step and its time current.
+        let note = if self.loading {
+            Some(match self.session.read(cx).workbench().connections_step() {
+                Some((step, took)) if took.as_secs() >= 1 => format!("Building the map: {step}, {} s", took.as_secs()),
+                Some((step, _)) => format!("Building the map: {step}"),
+                None => "Building the map…".to_string(),
+            })
+        } else {
+            self.note.clone()
+        };
         let ego = self.centre != Centre::Overview;
         let this = cx.entity().downgrade();
         let depth = Choice::new("conn-depth", vec!["1 step".into(), "2 steps".into(), "3 steps".into()], self.depth as usize - 1, move |i, _, cx| {
