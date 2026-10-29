@@ -40,7 +40,10 @@ fn multipart_with_cyrillic_bodies_and_an_attachment() {
     let (meta, bytes) = Message::attachment(&raw, 0).unwrap();
     assert_eq!((meta.name, bytes), ("wallet.dat".to_string(), b"hello wallet".to_vec()));
     assert!(Message::attachment(&raw, 1).is_none());
-    assert!(m.headers.iter().any(|(n, v)| n == "Subject" && v == "Привет"));
+    let header = |name: &str| m.headers.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str());
+    assert_eq!(header("Subject"), Some("Привет"));
+    assert_eq!(header("From"), Some("Привет <sender@example.ru>"));
+    assert_eq!(header("Message-ID"), Some("<m1@example.ru>"), "undecoded headers stay as written");
     assert!(m.notes.is_empty(), "{:?}", m.notes);
 }
 

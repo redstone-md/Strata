@@ -24,6 +24,20 @@ impl fmt::Display for Party {
     }
 }
 
+/// The mailboxes of an address header (groups flattened).
+pub(crate) fn parties(list: Option<AddressList<'_>>) -> Vec<Party> {
+    list.map(|l| {
+        l.mailboxes()
+            .map(|m| Party {
+                name: m.name().map(str::trim).filter(|n| !n.is_empty()).map(str::to_string),
+                address: m.address().unwrap_or_default().trim().to_ascii_lowercase(),
+            })
+            .filter(|p| p.name.is_some() || !p.address.is_empty())
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 /// `a, Name <b>` for a list of parties.
 pub fn join(parties: &[Party]) -> String {
     parties.iter().map(Party::to_string).collect::<Vec<_>>().join(", ")
@@ -50,18 +64,6 @@ impl Envelope {
     }
 
     pub(crate) fn of(m: MessageRef<'_>) -> Self {
-        let parties = |list: Option<AddressList<'_>>| -> Vec<Party> {
-            list.map(|l| {
-                l.mailboxes()
-                    .map(|m| Party {
-                        name: m.name().map(str::trim).filter(|n| !n.is_empty()).map(str::to_string),
-                        address: m.address().unwrap_or_default().trim().to_ascii_lowercase(),
-                    })
-                    .filter(|p| p.name.is_some() || !p.address.is_empty())
-                    .collect()
-            })
-            .unwrap_or_default()
-        };
         Self {
             message_id: m.message_id().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()),
             date: m.date().filter(|d| d.is_valid()).and_then(|d| Timestamp::from_unix_secs(d.to_timestamp())),

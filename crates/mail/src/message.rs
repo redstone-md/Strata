@@ -125,16 +125,21 @@ fn attachment(index: usize, part: MessagePart<'_>) -> Attachment {
     Attachment { name, mime, size: part.decoded_len() as u64 }
 }
 
+/// Headers as written (unfolded); encoded words are decoded where the value parses as text or
+/// as addresses.
 fn headers(root: MessageRef<'_>) -> Vec<(String, String)> {
     root.headers()
         .iter()
         .take(HEADER_LIMIT)
         .map(|h| {
-            let value = match h.value().as_text() {
-                Some(t) => t.to_string(),
-                None => String::from_utf8_lossy(h.raw_value()).split_whitespace().collect::<Vec<_>>().join(" "),
+            let raw = String::from_utf8_lossy(h.raw_value()).split_whitespace().collect::<Vec<_>>().join(" ");
+            let value = h.value();
+            let decoded = if raw.contains("=?") {
+                value.as_text().map(str::to_string).or_else(|| value.as_address().map(|a| crate::envelope::join(&crate::envelope::parties(Some(a)))))
+            } else {
+                None
             };
-            (h.raw_name().to_string(), value)
+            (h.raw_name().to_string(), decoded.unwrap_or(raw))
         })
         .collect()
 }
