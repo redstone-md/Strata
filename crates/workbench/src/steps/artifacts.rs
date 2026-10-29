@@ -42,9 +42,10 @@ fn identity_hits(volume: u32, identities: &[IdentityRecord]) -> Vec<(Hit, Attrib
                     IdentityKind::Login => "login",
                     IdentityKind::Nickname => "nickname",
                     IdentityKind::Phone => "phone",
+                    IdentityKind::UserId => "user id",
                 })
                 .value(r.value.to_lowercase())
-                .confidence(Confidence::HIGH)
+                .confidence(if r.weak { Confidence::MEDIUM } else { Confidence::HIGH })
                 .details(serde_json::to_value(r).unwrap_or_default());
             let file = FileRef { path: r.source.clone(), state: EntryState::Allocated, file_offset: 0 };
             (hit, Attribution { volume: Some(volume), file: Some(file) })

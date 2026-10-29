@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use strata_identify::testkit;
-use strata_workbench::{CheckpointPolicy, EventQuery, EvidenceId, HitQuery, JobKind, JobState, Workbench};
+use strata_workbench::{
+    CheckpointPolicy, Encoding, EventQuery, EvidenceId, FileFilter, FileListQuery, HitQuery, JobKind, JobState, Pattern, Scope, SearchQuery,
+    Workbench,
+};
 use support::{Fat16, disk};
 
 const WIF: &str = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ";
@@ -148,4 +151,72 @@ fn shutdown_interrupts_and_auto_resume_is_a_case_setting() {
     wait_idle(&wb);
     assert!(wb.jobs().iter().all(|j| matches!(j.state, JobState::Done(_))), "{:?}", wb.jobs());
     assert!(!wb.hits(&HitQuery { evidence: Some(id), ..HitQuery::default() }).unwrap().is_empty());
+}
+
+fn files_under(dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(files_under(&p));
+        } else if p.file_name().is_some_and(|n| n != strata_workbench::explore::recovery::LOG_NAME) {
+            out.push(format!("{} {}", p.file_name().unwrap().to_string_lossy(), std::fs::read(&p).unwrap().len()));
+        }
+    }
+    out.sort();
+    out
+}
+
+#[test]
+fn search_and_file_recovery_resume_after_a_crash() {
+    let dir = tempfile::tempdir().unwrap();
+    let img = image(dir.path());
+    let query = || SearchQuery { pattern: Pattern::Text(WIF[..12].into()), encodings: vec![Encoding::Utf8], case_insensitive: false, scope: Scope::WholeDisk };
+    let matches = |wb: &Workbench, search: i64| -> Vec<u64> {
+        let record = wb.search_record(search).unwrap().unwrap();
+        assert_eq!(record.state, "done");
+        let mut offsets: Vec<u64> = wb.search_results(search, 0, 1000).unwrap().into_iter().map(|r| r.offset).collect();
+        offsets.sort();
+        offsets
+    };
+    let everything = |wb: &Workbench, id: EvidenceId| -> Vec<usize> {
+        let q = FileListQuery { evidence: id, volume: 0, dir: None, filter: FileFilter::All, name: String::new() };
+        let list = wb.list_files(&q, Arc::default()).unwrap();
+        (0..list.len()).filter_map(|i| list.row(i)).map(|r| r.index).collect()
+    };
+
+    let (clean, id) = open(&dir.path().join("clean.strata"), &img);
+    let (_, search) = clean.start_search(query(), None).unwrap();
+    wait_idle(&clean);
+    let expected = matches(&clean, search);
+    assert!(expected.len() >= 3, "{expected:?}");
+    // Recovery refuses folders next to the evidence.
+    let outputs = tempfile::tempdir().unwrap();
+    let clean_out = outputs.path().join("clean");
+    clean.recover_files(id, 0, everything(&clean, id), clean_out.clone()).unwrap();
+    wait_idle(&clean);
+    let expected_files = files_under(&clean_out);
+    assert!(expected_files.len() >= 4, "{expected_files:?}");
+    drop(clean);
+
+    let case = dir.path().join("crash.strata");
+    let out = outputs.path().join("crash");
+    let search = {
+        let (wb, id) = open(&case, &img);
+        wb.set_checkpoint_policy(tiny_batches());
+        wb.crash_after_commits(JobKind::Search, 3);
+        let (_, search) = wb.start_search(query(), None).unwrap();
+        wait_idle(&wb);
+        let all = everything(&wb, id);
+        wb.crash_after_commits(JobKind::Recover, 2);
+        wb.recover_files(id, 0, all, out.clone()).unwrap();
+        wait_idle(&wb);
+        assert!(wb.jobs().iter().all(|j| j.state == JobState::Interrupted), "{:?}", wb.jobs());
+        search
+    };
+    let wb = Workbench::open(&case).unwrap();
+    wait_idle(&wb);
+    assert!(wb.jobs().iter().all(|j| matches!(j.state, JobState::Done(_))), "{:?}", wb.jobs());
+    assert_eq!(matches(&wb, search), expected, "resumed search finds the same matches once");
+    assert_eq!(files_under(&out), expected_files, "every file once, none renamed as a second copy");
 }

@@ -1,14 +1,17 @@
 //! Screens reachable from the sidebar, and the navigation request views send to the shell.
 
 use crate::widgets::{Glyph, NavItem};
-use strata_workbench::HitCategory;
+use strata_workbench::{EvidenceId, HitCategory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Overview,
     Disks,
+    Files,
+    Search,
     Wallets,
     Accounts,
+    Leads,
     Timeline,
     Correlation,
     Tasks,
@@ -20,20 +23,38 @@ pub enum Screen {
 pub struct Navigate {
     pub screen: Screen,
     pub category: Option<HitCategory>,
+    /// Volume to open on the Files screen.
+    pub volume: Option<(EvidenceId, u32)>,
 }
 
 impl Navigate {
     pub fn to(screen: Screen) -> Self {
-        Self { screen, category: None }
+        Self { screen, category: None, volume: None }
+    }
+
+    pub fn files(evidence: EvidenceId, volume: u32) -> Self {
+        Self { screen: Screen::Files, category: None, volume: Some((evidence, volume)) }
     }
 }
 
+/// Emitted by a view that links to something on another screen.
+#[derive(Debug, Clone)]
+pub enum Jump {
+    /// The timeline, narrowed to the day of this time.
+    Day(strata_workbench::Timestamp),
+    /// Another screen with the command-bar search set to `text`.
+    Search { screen: Screen, text: String },
+}
+
 impl Screen {
-    const ALL: [Screen; 8] = [
+    const ALL: [Screen; 11] = [
         Self::Overview,
         Self::Disks,
+        Self::Files,
+        Self::Search,
         Self::Wallets,
         Self::Accounts,
+        Self::Leads,
         Self::Timeline,
         Self::Correlation,
         Self::Tasks,
@@ -44,8 +65,11 @@ impl Screen {
         match self {
             Self::Overview => "Overview",
             Self::Disks => "Disks",
+            Self::Files => "Files",
+            Self::Search => "Search",
             Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
+            Self::Leads => "Leads",
             Self::Timeline => "Timeline",
             Self::Correlation => "Across disks",
             Self::Tasks => "Tasks",
@@ -57,8 +81,11 @@ impl Screen {
         match self {
             Self::Overview => Glyph::LayoutDashboard,
             Self::Disks => Glyph::HardDrive,
+            Self::Files => Glyph::FolderTree,
+            Self::Search => Glyph::Search,
             Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
+            Self::Leads => Glyph::Lightbulb,
             Self::Timeline => Glyph::Clock,
             Self::Correlation => Glyph::GitCompare,
             Self::Tasks => Glyph::Activity,
@@ -75,8 +102,11 @@ impl Screen {
         match self {
             Self::Overview => "overview",
             Self::Disks => "disks",
+            Self::Files => "files",
+            Self::Search => "search",
             Self::Wallets => "wallets",
             Self::Accounts => "accounts",
+            Self::Leads => "leads",
             Self::Timeline => "timeline",
             Self::Correlation => "correlation",
             Self::Tasks => "tasks",
@@ -99,7 +129,7 @@ impl Screen {
 
     /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
-        matches!(self, Self::Wallets | Self::Accounts | Self::Timeline)
+        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Timeline)
     }
 
     pub fn nav_item(self) -> NavItem {

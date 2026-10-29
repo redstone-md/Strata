@@ -1,17 +1,22 @@
 //! Pipeline steps. Each one works through a [`StepContext`]: it resumes from its cursor,
 //! checks `should_stop` between units and commits results together with the next cursor.
 
-mod archives;
+pub(crate) mod archives;
 mod artifacts;
 mod balances;
 mod carve;
 mod classify;
 mod index;
+mod partitions;
+pub(crate) mod recover;
 mod scan;
+pub(crate) mod search;
+mod sweep;
 mod wallet_files;
 
 pub use archives::ArchiveSummary;
 
+use crate::Workbench;
 use crate::jobs::JobKind;
 use crate::jobs::context::StepContext;
 use strata_kernel::Result;
@@ -19,15 +24,18 @@ use strata_kernel::Result;
 pub(crate) use archives::PASSWORDS_KEY;
 
 /// Run one step; returns its summary in words.
-pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, chain_endpoint: &str) -> Result<String> {
+pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Result<String> {
     match kind {
         JobKind::IndexFiles => index::run(ctx),
-        JobKind::Scan => scan::run(ctx),
+        JobKind::Scan => scan::run(ctx, wb),
+        JobKind::RecoverPartitions => partitions::run(ctx),
         JobKind::Artifacts => artifacts::run(ctx),
         JobKind::ClassifyFiles => classify::run(ctx),
-        JobKind::Carve => carve::run(ctx),
+        JobKind::Carve => carve::run(ctx, wb),
         JobKind::Archives => archives::run(ctx),
-        JobKind::CheckBalances => balances::run(ctx, chain_endpoint),
+        JobKind::CheckBalances => balances::run(ctx, &wb.chain_endpoint()),
+        JobKind::Search => search::run(ctx),
+        JobKind::Recover => recover::run(ctx),
     }
 }
 

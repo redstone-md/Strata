@@ -3,6 +3,7 @@
 
 use crate::results::{IdentityKind, Recorder};
 use crate::text::{ansi, is_email, parse_rfc2822};
+use strata_accounts::{Catalogue, Service, ServiceKind};
 use strata_timeline::EventKind;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -59,12 +60,42 @@ impl MailHeaders {
     pub fn record(&self, rec: &mut Recorder, label: &str) {
         let at = parse_rfc2822(&self.date);
         let title = if self.subject.is_empty() { "(no subject)".to_string() } else { self.subject.clone() };
-        rec.emit(at, EventKind::Email, title, format!("{label}: from {} to {}", self.from, self.to));
+        let sender = self.service_sender();
+        let mut event = rec.make(at, EventKind::Email, title.clone()).map(|e| e.with_detail(format!("{label}: from {} to {}", self.from, self.to)));
+        if let (Some(e), Some(_)) = (event.as_mut(), sender)
+            && Catalogue::shared().is_money_subject(&self.subject)
+        {
+            e.add_tag("money");
+        }
+        match event {
+            Some(e) => rec.push(e),
+            None => rec.emit(None, EventKind::Email, title, ""),
+        }
         for field in [&self.from, &self.to, &self.cc] {
             for addr in addresses(field) {
                 rec.identity(IdentityKind::Email, &addr, None, at);
             }
         }
+        // Mail from a catalogued service to an address: that address has an account there; a
+        // welcome / confirmation subject dates when it was opened.
+        if let Some(service) = sender {
+            let signup = Catalogue::shared().is_signup_subject(&self.subject);
+            for addr in addresses(&self.to) {
+                let note = format!("mail from {}: {}", service.name, self.subject);
+                rec.identity_noted(IdentityKind::Email, &addr, Some(service.name), at, &note);
+                if signup {
+                    rec.dated(at, EventKind::AccountSeen, format!("{} account {addr}", service.name), format!("registration mail: {}", self.subject));
+                }
+            }
+        }
+    }
+
+    /// The service that sent the message, when it is catalogued and not a plain mailbox.
+    fn service_sender(&self) -> Option<Service> {
+        addresses(&self.from)
+            .first()
+            .and_then(|a| Service::classify_email(a))
+            .filter(|s| !matches!(s.kind, ServiceKind::Mail | ServiceKind::Other))
     }
 }
 
@@ -185,5 +216,21 @@ mod tests {
         assert!(MailHeaders::parse("garbage").is_none());
         let _ = quoted("=");
         let _ = quoted("=4");
+    }
+
+    #[test]
+    fn service_mail_names_the_account() {
+        let msg = "From: Mt.Gox <noreply@mtgox.com>\r\nTo: gox.tester@mail.ru\r\nSubject: Welcome to Mt.Gox\r\n\
+                   Date: Tue, 14 Jun 2011 10:00:00 +0000\r\n\r\nbody";
+        let mut rec = Recorder::new("mail");
+        MailHeaders::parse(msg).unwrap().record(&mut rec, "eml");
+        let out = rec.finish();
+        let gox = out.identities.iter().find(|i| i.service.as_deref() == Some("Mt. Gox")).unwrap();
+        assert_eq!(gox.value, "gox.tester@mail.ru");
+        assert!(out.events.iter().any(|e| e.kind() == EventKind::AccountSeen && e.title().contains("gox.tester@mail.ru")));
+        let money = "From: support@btc-e.com\r\nTo: a.test@mail.ru\r\nSubject: Withdrawal confirmed\r\nDate: Tue, 14 Jun 2011 10:00:00 +0000\r\n\r\n";
+        let mut rec = Recorder::new("mail");
+        MailHeaders::parse(money).unwrap().record(&mut rec, "eml");
+        assert!(rec.finish().events[0].has_tag("money"));
     }
 }

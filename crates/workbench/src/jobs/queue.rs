@@ -2,7 +2,7 @@
 //! they survive restarts; state changes are written through; jobs left queued or running by
 //! a process that is gone come back as interrupted.
 
-use super::context::Faults;
+use super::context::{Cursor, Faults};
 use super::{Checkpoint, Job, JobId, JobKind, JobState, JobTimes};
 use crate::monitor::is_strata_process;
 use parking_lot::Mutex;
@@ -48,7 +48,8 @@ impl JobQueue {
 
     fn restore(r: &JobRecord) -> Option<Job> {
         let kind = JobKind::parse(&r.kind)?;
-        let job = Job::new(JobId(r.id), kind, r.evidence, r.pipeline.map(JobId), JobState::from_record(&r.state, &r.detail));
+        let job = Job::new(JobId(r.id), kind, r.evidence, r.pipeline.map(JobId), JobState::from_record(&r.state, &r.detail))
+            .titled(r.title.clone());
         job.control.begin_at(r.done, r.total);
         let json = r.checkpoint.as_deref().and_then(|c| serde_json::from_str(c).ok());
         let saved_at = json.as_ref().map(|_| r.updated_at);
@@ -79,6 +80,20 @@ impl JobQueue {
             .collect();
         self.jobs.lock().extend(jobs.iter().cloned());
         Ok(jobs)
+    }
+
+    /// Queue one job with a title of its own and its starting cursor (jobs that carry
+    /// parameters, such as a search query or the files to recover).
+    pub fn enqueue_with<C: Cursor>(&self, case: &Case, evidence: EvidenceId, kind: JobKind, title: &str, cursor: &C) -> Result<Arc<Job>> {
+        let id = case.add_job(std::process::id(), evidence, kind.name(), title, "Queued")?;
+        let json = serde_json::json!({ "note": cursor.note(), "cursor": cursor });
+        case.write(|w| w.job_checkpoint(id, &json.to_string(), 0, 0))?;
+        let job = Job::new(JobId(id), kind, evidence, None, JobState::Queued).titled(title.to_string());
+        *job.checkpoint.lock() = Checkpoint { json: Some(json), saved_at: Some(unix_now()) };
+        job.times.lock().created = unix_now();
+        let job = Arc::new(job);
+        self.jobs.lock().push(job.clone());
+        Ok(job)
     }
 
     pub fn all(&self) -> Vec<Arc<Job>> {

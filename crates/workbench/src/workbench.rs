@@ -8,6 +8,7 @@ use std::sync::Arc;
 use strata_chain::{AddressBalance, EsploraBackend};
 use strata_case::{Case, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 use strata_kernel::scan::HitCategory;
+use strata_engine::Scanner;
 use strata_kernel::{EvidenceId, Result};
 
 /// Facade over one open case plus its background jobs.
@@ -16,6 +17,7 @@ pub struct Workbench {
     pub(crate) queue: Arc<JobQueue>,
     pub(crate) policy: Mutex<CheckpointPolicy>,
     monitor: Monitor,
+    indexes: crate::disk_index::IndexCache,
 }
 
 impl Workbench {
@@ -39,7 +41,7 @@ impl Workbench {
         let case = Arc::new(Case::open(case_dir)?);
         let queue = Arc::new(JobQueue::load(&case)?);
         let monitor = Monitor::start(Arc::downgrade(&queue));
-        Ok(Arc::new(Self { case, queue, policy: Mutex::new(CheckpointPolicy::default()), monitor }))
+        Ok(Arc::new(Self { case, queue, policy: Mutex::new(CheckpointPolicy::default()), monitor, indexes: Default::default() }))
     }
 
     pub fn auto_resume(&self) -> bool {
@@ -94,9 +96,32 @@ impl Workbench {
         self.case.facts(evidence)
     }
 
-    /// Disk overview grid with `cells` cells.
+    /// Disk overview grid with `cells` cells (with per-cell content once a disk index exists).
     pub fn sector_map(&self, id: EvidenceId, cells: usize) -> Result<crate::SectorMap> {
-        crate::SectorMap::build(&self.case, id, cells)
+        let map = crate::SectorMap::build(&self.case, id, cells)?;
+        Ok(map.with_index(self.index().load(id).as_deref()))
+    }
+
+    pub(crate) fn index(&self) -> crate::disk_index::IndexService<'_> {
+        crate::disk_index::IndexService::new(&self.case, &self.indexes)
+    }
+
+    /// Summary of the disk index and the dominant content class of `cells` equal slices of
+    /// the disk (`None` before any scan or import built one).
+    pub fn disk_index(&self, id: EvidenceId, cells: usize) -> Option<crate::DiskIndexView> {
+        self.index().view(id, cells)
+    }
+
+    /// Byte ranges worth searching according to the disk index (everything that is not
+    /// known to be empty or unreadable); `None` without an index.
+    pub fn interesting_ranges(&self, id: EvidenceId) -> Option<Vec<strata_kernel::ByteRange>> {
+        self.index().interesting_ranges(id)
+    }
+
+    /// Import the R-Studio scan file next to the evidence image, if there is one: verified
+    /// volumes join the case and the disk index is seeded. Also done by [`Self::add_evidence`].
+    pub fn import_scn(&self, id: EvidenceId) -> Result<Option<crate::ScnImport>> {
+        self.index().import_scn(id)
     }
 
     /// Bytes known to be unreadable or absent in one evidence item.
@@ -105,7 +130,12 @@ impl Workbench {
     }
 
     pub fn add_evidence(&self, location: &str) -> Result<EvidenceRecord> {
-        self.case.add_evidence(location)
+        let record = self.case.add_evidence(location)?;
+        // A broken scan file must not stop the evidence from being added; our scan covers it.
+        match self.import_scn(record.id) {
+            Ok(Some(_)) => self.case.record(record.id),
+            _ => Ok(record),
+        }
     }
 
     pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
@@ -162,6 +192,22 @@ impl Workbench {
     }
 
     pub const CHAIN_ENDPOINT_KEY: &'static str = "chain_endpoint";
+    pub const SCAN_THREADS_KEY: &'static str = "scan_threads";
+
+    /// Detector threads for the deep scan (case setting; default [`Scanner::DEFAULT_WORKERS`]).
+    pub fn scan_threads(&self) -> usize {
+        self.case
+            .setting(Self::SCAN_THREADS_KEY)
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(Scanner::DEFAULT_WORKERS)
+            .clamp(1, 64)
+    }
+
+    pub fn set_scan_threads(&self, threads: usize) -> Result<()> {
+        self.case.set_setting(Self::SCAN_THREADS_KEY, &threads.clamp(1, 64).to_string())
+    }
 
     /// Esplora endpoint used for balance checks (case setting, mempool.space by default).
     pub fn chain_endpoint(&self) -> String {
@@ -194,6 +240,9 @@ impl Workbench {
     /// Re-detect volumes, re-map stored hits to files, then re-run triage.
     pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
         self.case.refresh_volumes(evidence)?;
+        // Re-detection only knows table and sweep volumes; add back R-Studio and deep-scan ones.
+        let _ = self.import_scn(evidence);
+        crate::explore::PartitionRecovery::new(&self.case).run(evidence)?;
         let n = self.case.reattribute(evidence)?;
         Ok((n, self.triage(evidence)?))
     }

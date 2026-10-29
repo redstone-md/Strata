@@ -50,13 +50,17 @@ impl CaseWriter<'_> {
         Ok(())
     }
 
-    /// Store (or replace) the listing of one volume.
+    /// Store the listing of one volume; rows already there are updated and keep the content
+    /// types the classify step found.
     pub fn files(&self, id: EvidenceId, volume: u32, entries: &[FileEntry]) -> Result<usize> {
         let mut stmt = self
             .tx
             .prepare_cached(
-                "INSERT OR REPLACE INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state,
-                 created, modified, accessed, changed) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state,
+                 created, modified, accessed, changed) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ON CONFLICT (evidence_id, volume_idx, file_idx) DO UPDATE SET path = excluded.path, name = excluded.name,
+                 size = excluded.size, is_dir = excluded.is_dir, state = excluded.state, created = excluded.created,
+                 modified = excluded.modified, accessed = excluded.accessed, changed = excluded.changed",
             )
             .map_err(db)?;
         let t = |ts: Option<strata_kernel::Timestamp>| ts.map(|t| t.unix_secs());
@@ -97,6 +101,11 @@ impl CaseWriter<'_> {
     /// Result of an on-chain lookup (replaces an earlier one of the same address).
     pub fn balance(&self, b: &strata_chain::AddressBalance) -> Result<()> {
         crate::balances::insert_balance(&self.tx, b).map_err(db)
+    }
+
+    /// Results of a disk content search.
+    pub fn search_results(&self, rows: &[crate::SearchResultRow]) -> Result<usize> {
+        crate::search_store::insert_results(&self.tx, rows).map_err(db)
     }
 
     /// Resume point of the single-pass scan.

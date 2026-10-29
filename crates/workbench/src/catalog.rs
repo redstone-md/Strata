@@ -9,6 +9,7 @@ impl DetectorCatalog {
         let mut out = Vec::new();
         out.extend(strata_crypto::detectors().into_iter().map(Arc::from));
         out.extend(strata_accounts::detectors());
+        out.push(Arc::new(strata_volume::PartitionDetector));
         out
     }
 }

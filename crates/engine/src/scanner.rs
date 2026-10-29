@@ -1,4 +1,4 @@
-use crate::ScanControl;
+use crate::{ChunkObserver, ScanControl};
 use crossbeam_channel::bounded;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -26,14 +26,19 @@ struct Chunk {
 /// Streams a source once and runs every detector on every chunk.
 pub struct Scanner {
     detectors: Vec<Arc<dyn Detector>>,
+    observers: Vec<Arc<dyn ChunkObserver>>,
     chunk_size: usize,
     workers: usize,
 }
 
 impl Scanner {
+    /// Default worker count: evidence is read at disk speed (≈100–200 MB/s) and all detectors
+    /// together sustain ≈150 MB/s per core, so a few workers keep up without hogging the CPU.
+    pub const DEFAULT_WORKERS: usize = 3;
+
     pub fn new(detectors: Vec<Arc<dyn Detector>>) -> Self {
-        let workers = std::thread::available_parallelism().map_or(4, |n| n.get()).max(2) - 1;
-        Self { detectors, chunk_size: 16 << 20, workers }
+        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+        Self { detectors, observers: Vec::new(), chunk_size: 16 << 20, workers: Self::DEFAULT_WORKERS.min(cores.saturating_sub(1)).max(1) }
     }
 
     pub fn with_chunk_size(mut self, bytes: usize) -> Self {
@@ -46,14 +51,22 @@ impl Scanner {
         self
     }
 
+    /// Also hand every chunk to `observer` (no hits, no extra read). Observers do not take part
+    /// in [`Self::detector_ids`], so adding one does not invalidate a stored resume point.
+    pub fn with_observer(mut self, observer: Arc<dyn ChunkObserver>) -> Self {
+        self.observers.push(observer);
+        self
+    }
+
     pub fn detector_ids(&self) -> Vec<&'static str> {
         self.detectors.iter().map(|d| d.id()).collect()
     }
 
-    /// Longest match any detector reports: how far past a range end a caller must scan to
-    /// see every match that starts inside it.
+    /// Longest match any detector reports (or context any observer needs): how far past a
+    /// range end a caller must scan to see every match that starts inside it.
     pub fn overlap(&self) -> usize {
-        self.detectors.iter().map(|d| d.max_match()).max().unwrap_or(0)
+        let detectors = self.detectors.iter().map(|d| d.max_match());
+        detectors.chain(self.observers.iter().map(|o| o.lookahead())).max().unwrap_or(0)
     }
 
     /// Scan `range` of `source`. `on_hits` is called from the collector thread once per chunk,
@@ -136,6 +149,7 @@ impl Scanner {
                 let rx = chunk_rx.clone();
                 let tx = hit_tx.clone();
                 scope.spawn(move || {
+                    crate::priority::lower_current_thread();
                     control.enter_thread();
                     for chunk in rx {
                         let hits = self.scan_chunk(&chunk);
@@ -207,6 +221,9 @@ impl Scanner {
         for d in &self.detectors {
             d.scan(&chunk.data, chunk.base, &mut hits);
         }
+        for o in &self.observers {
+            o.observe(&chunk.data, chunk.base, chunk.owned);
+        }
         let limit = chunk.base + chunk.owned as u64;
         hits.retain(|h| h.offset < limit);
         hits
@@ -253,6 +270,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Records which offsets each observed chunk owned.
+    #[derive(Default)]
+    struct Owned(parking_lot::Mutex<Vec<(u64, u64, usize)>>);
+    impl ChunkObserver for Owned {
+        fn lookahead(&self) -> usize {
+            100
+        }
+        fn observe(&self, data: &[u8], base: u64, owned: usize) {
+            self.0.lock().push((base, base + owned as u64, data.len() - owned));
+        }
+    }
+
+    #[test]
+    fn observers_see_every_owned_byte_once_with_lookahead() {
+        let observer = Arc::new(Owned::default());
+        let scanner = Scanner::new(Vec::new()).with_chunk_size(4096).with_workers(2).with_observer(observer.clone());
+        let control = ScanControl::default();
+        scanner.run(&Mem(vec![1u8; 10_000]), ByteRange::new(0, 10_000), &control, |_| {}).unwrap();
+        let mut seen = observer.0.lock().clone();
+        seen.sort();
+        let spans: Vec<(u64, u64)> = seen.iter().map(|s| (s.0, s.1)).collect();
+        assert_eq!(spans, vec![(0, 4096), (4096, 8192), (8192, 10_000)]);
+        assert_eq!(seen.iter().map(|s| s.2).collect::<Vec<_>>(), vec![100, 100, 0]);
+        assert!(scanner.detector_ids().is_empty());
     }
 
     #[test]

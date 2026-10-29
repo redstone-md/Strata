@@ -112,6 +112,12 @@ impl<'a> StepContext<'a> {
         serde_json::from_value(saved.get("cursor")?.clone()).ok()
     }
 
+    /// The step is stopping because the app closes (or "crashed" in a test): it resumes later,
+    /// so it must not record a final outcome.
+    pub fn interrupted(&self) -> bool {
+        self.job.stop_reason() == super::StopReason::Shutdown || self.faults.is_dead()
+    }
+
     /// Between units of work: blocks while paused, true once the step must stop.
     pub fn should_stop(&self) -> bool {
         self.job.control.should_stop()

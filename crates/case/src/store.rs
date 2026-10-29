@@ -40,6 +40,8 @@ pub struct HitQuery {
     pub group_by_value: bool,
     /// Only this exact value (lists every place a grouped value was found).
     pub exact_value: Option<String>,
+    /// Only these hit ids (findings a lead points at).
+    pub ids: Vec<i64>,
 }
 
 /// Grouping key: equal values merge, except findings that describe one specific file.
@@ -111,6 +113,10 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
     if let Some(v) = &q.exact_value {
         args.push(Box::new(v.clone()));
         sql += &format!(" AND value = ?{}", args.len());
+    }
+    if !q.ids.is_empty() {
+        let ids: Vec<String> = q.ids.iter().map(i64::to_string).collect();
+        sql += &format!(" AND id IN ({})", ids.join(","));
     }
     sql += &grouping;
     sql += if q.group_by_value { " ORDER BY 7 DESC, 8 DESC, value" } else { " ORDER BY confidence DESC, evidence_id, offset" };

@@ -1,5 +1,6 @@
 //! Which parser a file goes to: by path (filesystem walk) or by content (carved bytes).
 
+use crate::configs::{MinerConfig, MozillaPrefs, OeAccount};
 use crate::browser::{self, FirefoxLogins, IndexDat, OperaGlobalHistory, OperaTypedHistory};
 use crate::mail::{Dbx, Mailbox};
 use crate::registry::{self, RegistryHive};
@@ -36,7 +37,16 @@ pub enum ArtifactKind {
     Btmp,
     /// Files inside a wallet program's data folder (`~/.bitcoin/debug.log`...).
     WalletDir,
+    /// Mozilla `prefs.js` (Thunderbird identities, Firefox Sync).
+    MozillaPrefs,
+    /// Windows Live Mail `.oeaccount`.
+    OeAccount,
+    /// Mining software config or launch script naming a pool login.
+    MinerConfig,
 }
+
+/// Mining software config file names.
+const MINER_CONFIGS: &[&str] = &["cgminer.conf", "bfgminer.conf", "sgminer.conf", "poclbm.ini", "guiminer.ini", "ccminer.conf", "config.json"];
 
 /// Chromium-family database file names (no extension).
 const CHROMIUM_DBS: &[&str] = &["history", "archived history", "login data", "web data", "cookies"];
@@ -78,6 +88,10 @@ impl ArtifactKind {
             "recently-used.xbel" | ".recently-used.xbel" => Self::RecentlyUsed,
             n if (n == "wtmp" || n.starts_with("wtmp.")) && under("/var/log/") => Self::Wtmp,
             n if (n == "btmp" || n.starts_with("btmp.")) && under("/var/log/") => Self::Btmp,
+            "prefs.js" if ["/mozilla/", "/thunderbird/", "/.thunderbird/", "/firefox/", "/.mozilla/"].iter().any(|d| under(d)) => Self::MozillaPrefs,
+            _ if ext == "oeaccount" => Self::OeAccount,
+            n if MINER_CONFIGS.contains(&n) && (n != "config.json" || ["miner", "xmrig"].iter().any(|d| under(d))) => Self::MinerConfig,
+            _ if matches!(ext, "bat" | "cmd") && !under("/windows/") => Self::MinerConfig,
             _ if crate::linux::WalletDir::software(&p).is_some() && (name == "debug.log" || matches!(ext, "conf" | "json" | "config")) => Self::WalletDir,
             _ => return None,
         })
@@ -127,6 +141,12 @@ impl ArtifactKind {
             Self::OperaGlobalHistory
         } else if Mailbox::looks_like_mail(data) {
             Self::Mailbox
+        } else if MozillaPrefs::looks_like(&text) {
+            Self::MozillaPrefs
+        } else if OeAccount::looks_like(&crate::configs::config_text(head)) {
+            Self::OeAccount
+        } else if text.contains("stratum+tcp://") && MinerConfig::looks_like(&text) {
+            Self::MinerConfig
         } else {
             return Self::from_path(name_hint);
         })
@@ -136,6 +156,8 @@ impl ArtifactKind {
     pub(crate) fn max_size(self) -> u64 {
         match self {
             Self::Lnk | Self::RecycleI | Self::Prefetch | Self::OperaTypedHistory | Self::FirefoxLoginsJson => 16 << 20,
+            Self::MozillaPrefs | Self::OeAccount => 4 << 20,
+            Self::MinerConfig => 64 << 10,
             Self::RegistryHive | Self::BrowserSqlite | Self::IeIndexDat => 512 << 20,
             _ => 256 << 20,
         }
@@ -170,7 +192,15 @@ impl ArtifactKind {
             Self::Wtmp => one("linux.wtmp", &|r| Wtmp::parse(data, false, r)),
             Self::Btmp => one("linux.btmp", &|r| Wtmp::parse(data, true, r)),
             Self::WalletDir => one("linux.wallet_dir", &|r| WalletDir::parse(name_hint, data, r)),
+            Self::MozillaPrefs => one("mozilla.prefs", &|r| MozillaPrefs::parse(data, r)),
+            Self::OeAccount => one("mail.oeaccount", &|r| OeAccount::parse(data, r)),
+            Self::MinerConfig => one("miner.config", &|r| MinerConfig::parse(data, r)),
         }
+    }
+
+    /// Config files carry no dates: their identities are dated by the file's own times.
+    pub(crate) fn dated_by_file(self) -> bool {
+        matches!(self, Self::MozillaPrefs | Self::OeAccount | Self::MinerConfig)
     }
 }
 
@@ -201,5 +231,11 @@ mod tests {
         assert_eq!(k("Program Files/app/History"), None);
         assert_eq!(k("Windows/System32/winevt/Logs/Security.evtx"), Some(ArtifactKind::Evtx));
         assert_eq!(k("Windows/System32/winevt/Logs/Security.evtx.bak"), None);
+        assert_eq!(k("Users/a/AppData/Roaming/Thunderbird/Profiles/x.default/prefs.js"), Some(ArtifactKind::MozillaPrefs));
+        assert_eq!(k("Users/a/AppData/Local/Microsoft/Windows Live Mail/mail.ru/account{1}.oeaccount"), Some(ArtifactKind::OeAccount));
+        assert_eq!(k("Program Files/cgminer/cgminer.conf"), Some(ArtifactKind::MinerConfig));
+        assert_eq!(k("Users/a/Desktop/start_mining.bat"), Some(ArtifactKind::MinerConfig));
+        assert_eq!(k("Windows/System32/setup.bat"), None);
+        assert_eq!(k("Users/a/Documents/config.json"), None);
     }
 }

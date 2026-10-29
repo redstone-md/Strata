@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 use strata_archive::{OpenOptions, SevenZipTool, UnpackLimits, Unpacker};
-use strata_case::{ArchiveMemberRow, Attribution};
-use strata_kernel::Result;
+use strata_case::{ArchiveMemberRow, Attribution, Case};
+use strata_kernel::{EvidenceId, Result};
 use strata_kernel::scan::Hit;
 use targets::{MAX_ARCHIVE_BYTES, TargetFinder};
 
@@ -76,8 +76,7 @@ impl Batch {
     }
 }
 
-fn options(ctx: &StepContext<'_>) -> OpenOptions {
-    let case = ctx.case();
+fn options(case: &Case) -> OpenOptions {
     let passwords = case
         .setting(PASSWORDS_KEY)
         .ok()
@@ -85,6 +84,26 @@ fn options(ctx: &StepContext<'_>) -> OpenOptions {
         .map(|s| s.lines().map(str::to_string).filter(|p| !p.is_empty()).collect())
         .unwrap_or_default();
     OpenOptions { passwords, scratch: Some(case.root().join("cache").join("archive-tmp")), external: SevenZipTool::detect() }
+}
+
+/// Bytes and damage notes of one member (`archive!/dir/file`, nested levels included),
+/// unpacked again from its archive on the evidence.
+pub(crate) fn extract_member(case: &Case, id: EvidenceId, member_path: &str) -> Result<(Vec<u8>, Vec<String>)> {
+    let not_found = || strata_kernel::Error::Other(format!("{member_path}: no such archive member"));
+    let archive = member_path.split_once("!/").map(|(a, _)| a).ok_or_else(not_found)?;
+    let finder = TargetFinder::new(case, case.source(id)?);
+    let target = finder.find(id)?.into_iter().find(|t| t.name == archive).ok_or_else(not_found)?;
+    let bytes = finder.read(id, &target)?;
+    let unpacker = Unpacker::new(UnpackLimits::default(), options(case));
+    let mut found = None;
+    unpacker.unpack(&target.name, &bytes, target.hint, &mut |m| {
+        if m.path == member_path {
+            found = Some((m.bytes.to_vec(), m.damage.iter().map(|d| d.note().to_string()).collect()));
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue(())
+    });
+    found.ok_or_else(not_found)
 }
 
 pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
@@ -101,7 +120,7 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
     };
     let control = ctx.control();
     control.begin_at(targets.iter().filter(|t| cur.done.contains(&t.name)).count() as u64, targets.len() as u64);
-    let unpacker = Unpacker::new(UnpackLimits::default(), options(ctx));
+    let unpacker = Unpacker::new(UnpackLimits::default(), options(ctx.case()));
     let analyzer = MemberAnalyzer::new(DetectorCatalog::all());
     let mut batch = Batch::default();
     let pending: Vec<_> = targets.iter().filter(|t| !cur.done.contains(&t.name)).collect();

@@ -1,10 +1,12 @@
 //! Headless front-end for long unattended runs and scripting.
 
+mod insights;
 mod jobs;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use strata_workbench::{EventQuery, EvidenceId, HitCategory, HitQuery, JobKind, Workbench};
+use std::time::Duration;
+use strata_workbench::{Encoding, EventQuery, EvidenceId, HitCategory, HitQuery, JobKind, JobState, Pattern, Scope, SearchQuery, Workbench};
 
 #[derive(Parser)]
 #[command(name = "strata-cli", about = "Strata forensic workbench (headless)")]
@@ -19,7 +21,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Register a disk image (.img/.dd/.001/.rdr) or \\.\PhysicalDriveN.
-    Add { location: String },
+    Add {
+        location: String,
+        /// Also probe old CHS cylinder starts and ends for deleted partitions.
+        #[arg(long)]
+        deep: bool,
+    },
     /// List evidence and volumes.
     List,
     /// Run the whole analysis pipeline. Interrupted jobs (a crash, a closed app) resume from
@@ -27,8 +34,11 @@ enum Command {
     Analyse {
         /// Evidence id; all evidence when omitted.
         id: Option<u32>,
+        /// Detector threads (saved in the case; default 3).
+        #[arg(long)]
+        threads: Option<usize>,
     },
-    /// Run a single step: IndexFiles, Scan, Artifacts, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
+    /// Run a single step: IndexFiles, Scan, RecoverPartitions, Artifacts, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
     Step { kind: String, id: u32 },
     /// Print stored findings.
     Hits {
@@ -81,10 +91,66 @@ enum Command {
         #[arg(long)]
         once: bool,
     },
+    /// Search disk content (deleted data included) for text, hex bytes or a regex.
+    Search {
+        /// Evidence id, or `all`.
+        id: String,
+        pattern: String,
+        /// The pattern is hex bytes (`4D 5A 90 00`).
+        #[arg(long)]
+        hex: bool,
+        /// The pattern is a regular expression (slower; UTF-16 runs decoded when selected).
+        #[arg(long)]
+        regex: bool,
+        /// disk | unallocated | deleted | volume:N
+        #[arg(long, default_value = "disk")]
+        scope: String,
+        /// Comma-separated: utf8, ascii, cp1251, cp866, utf16le, utf16be.
+        #[arg(long, default_value = "utf8,utf16le,cp1251")]
+        enc: String,
+        #[arg(long)]
+        case_sensitive: bool,
+        #[arg(long, default_value_t = 200)]
+        limit: usize,
+    },
+    /// Find files by name on every disk, deleted and orphaned entries included (`*`, `?` glob).
+    Names {
+        pattern: String,
+        #[arg(long, default_value_t = 200)]
+        limit: usize,
+    },
     /// Show looked-up address balances; `--endpoint` changes the Esplora server.
     Balances {
         #[arg(long)]
         endpoint: Option<String>,
+    },
+    /// Ranked leads: what may fit where (on-chain activity, accounts, wallet file times).
+    Leads {
+        /// Re-run the lead engine first (no network).
+        #[arg(long)]
+        rebuild: bool,
+        /// Fetch missing on-chain histories of used addresses first (network), then rebuild.
+        #[arg(long)]
+        fetch: bool,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Accounts per service, merged across findings, artefacts and disks.
+    Accounts {
+        #[arg(long)]
+        rebuild: bool,
+        /// Only services that hold funds (exchanges, web wallets, faucets, pools, dice...).
+        #[arg(long)]
+        funds: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The service catalogue: counts per kind, or every entry with --all.
+    Services {
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -100,8 +166,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     // Nothing resumes behind the user's back here; `analyse` resumes explicitly.
     let wb = Workbench::open_idle(&cli.case)?;
     match cli.command {
-        Command::Add { location } => {
-            let r = wb.add_evidence(&location)?;
+        Command::Add { location, deep } => {
+            let r = if deep { wb.add_evidence_deep(&location)? } else { wb.add_evidence(&location)? };
             println!("added {} {} ({} bytes, {} volumes)", r.id, r.info.label, r.info.len, r.volumes.len());
         }
         Command::List => list(&wb)?,
@@ -118,7 +184,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}: {:?}", view.title, view.state);
             }
         }
-        Command::Analyse { id } => jobs::analyse(&wb, id)?,
+        Command::Analyse { id, threads } => {
+            if let Some(t) = threads {
+                wb.set_scan_threads(t)?;
+            }
+            jobs::analyse(&wb, id)?
+        }
         Command::Jobs => jobs::list(&wb)?,
         Command::Top { once } => jobs::top(&wb, once)?,
         Command::Hits { category, text, min_confidence, limit, json, group } => {
@@ -188,6 +259,30 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:<62} {:>14.8} BTC  txs {:<6} {}", b.address, b.balance_btc(), b.tx_count, if b.ever_used() { "USED" } else { "" });
             }
         }
+        Command::Search { id, pattern, hex, regex, scope, enc, case_sensitive, limit } => {
+            let query = SearchQuery {
+                pattern: if hex {
+                    Pattern::hex(&pattern)?
+                } else if regex {
+                    Pattern::Regex(pattern)
+                } else {
+                    Pattern::Text(pattern)
+                },
+                encodings: enc.split(',').map(|e| Encoding::from_key(e).ok_or(format!("unknown encoding {e}"))).collect::<Result<_, _>>()?,
+                case_insensitive: !case_sensitive,
+                scope: Scope::parse(&scope).ok_or(format!("unknown scope {scope}"))?,
+            };
+            let evidence = if id.eq_ignore_ascii_case("all") { None } else { Some(EvidenceId::new(id.parse()?)) };
+            search(&wb, query, evidence, limit)?;
+        }
+        Command::Names { pattern, limit } => {
+            for f in wb.find_files_by_name(&pattern, None, limit)? {
+                println!("{} v{} {:<9} {:>12}  {}", f.evidence, f.volume, f.state, f.size, f.path);
+            }
+        }
+        Command::Leads { rebuild, fetch, limit, json } => insights::leads(&wb, rebuild, fetch, limit, json)?,
+        Command::Accounts { rebuild, funds, json } => insights::accounts(&wb, rebuild, funds, json)?,
+        Command::Services { all } => insights::services(all),
         Command::Correlate => {
             for s in wb.shared_findings()? {
                 let disks: Vec<String> = s.evidence.iter().map(|e| e.to_string()).collect();
@@ -199,6 +294,26 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    Ok(())
+}
+
+fn search(wb: &std::sync::Arc<Workbench>, query: SearchQuery, evidence: Option<EvidenceId>, limit: usize) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("searching {}", query.summary());
+    let (_, search) = wb.start_search(query, evidence)?;
+    while wb.has_active_jobs() {
+        std::thread::sleep(Duration::from_millis(500));
+        for j in wb.jobs().iter().filter(|j| j.state == JobState::Running) {
+            eprint!("\r{:>6.2}%  {:>8.1} MB/s  matches {:<8}", j.fraction() * 100.0, j.progress.per_sec / 1e6, j.progress.hits);
+        }
+    }
+    eprintln!();
+    let record = wb.search_record(search)?.ok_or("search vanished")?;
+    for r in wb.search_results(search, 0, limit)? {
+        let place = r.file_path.as_deref().map_or("free space".to_string(), |p| format!("{p} +{:#x}", r.file_offset.unwrap_or(0)));
+        println!("{} {:#012x} {:<9} {:<17} {:<40} {}", r.evidence, r.offset, r.encoding, r.location, place, r.preview);
+    }
+    let more = if record.truncated { " (limit reached, more exist)" } else { "" };
+    println!("{}: {} matches{more}", record.state, record.results);
     Ok(())
 }
 

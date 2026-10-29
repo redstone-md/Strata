@@ -45,13 +45,20 @@ pub enum JobKind {
     Scan,
     /// Look up on-chain balances of every found or derived address.
     CheckBalances,
+    /// Turn partition structures the deep scan found into recovered volumes.
+    RecoverPartitions,
+    /// Search the disk for text, bytes or a pattern.
+    Search,
+    /// Copy selected files (live or deleted) out of the evidence.
+    Recover,
 }
 
 impl JobKind {
     /// The "analyse this disk" pipeline, in order.
-    pub const PIPELINE: [JobKind; 7] = [
+    pub const PIPELINE: [JobKind; 8] = [
         Self::IndexFiles,
         Self::Scan,
+        Self::RecoverPartitions,
         Self::Artifacts,
         Self::ClassifyFiles,
         Self::Carve,
@@ -68,17 +75,20 @@ impl JobKind {
             Self::Carve => "Carve",
             Self::Scan => "Scan",
             Self::CheckBalances => "CheckBalances",
+            Self::RecoverPartitions => "RecoverPartitions",
+            Self::Search => "Search",
+            Self::Recover => "Recover",
         }
     }
 
     pub fn parse(name: &str) -> Option<Self> {
-        Self::PIPELINE.into_iter().find(|k| k.name().eq_ignore_ascii_case(name))
+        Self::PIPELINE.into_iter().chain([Self::Search, Self::Recover]).find(|k| k.name().eq_ignore_ascii_case(name))
     }
 
     /// What progress counts: bytes of the evidence or items (files, archives, addresses).
     pub fn unit(self) -> ProgressUnit {
         match self {
-            Self::Scan | Self::Carve => ProgressUnit::Bytes,
+            Self::Scan | Self::Carve | Self::Search => ProgressUnit::Bytes,
             _ => ProgressUnit::Items,
         }
     }
@@ -92,6 +102,9 @@ impl JobKind {
             Self::Carve => format!("Carve free space {evidence}"),
             Self::Artifacts => format!("Artefacts and timeline {evidence}"),
             Self::CheckBalances => "Check balances".to_string(),
+            Self::RecoverPartitions => format!("Recover partitions {evidence}"),
+            Self::Search => format!("Search {evidence}"),
+            Self::Recover => format!("Recover files {evidence}"),
         }
     }
 }
@@ -203,6 +216,12 @@ impl Job {
             foreign: None,
             stop: AtomicU8::new(StopReason::None as u8),
         }
+    }
+
+    /// Same job with a title of its own (jobs that carry parameters).
+    pub(crate) fn titled(mut self, title: String) -> Self {
+        self.title = title;
+        self
     }
 
     pub fn view(&self) -> JobView {

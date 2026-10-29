@@ -49,6 +49,8 @@ impl Snapshot {
     pub fn job_title(&self, job: &JobView) -> String {
         match job.kind {
             JobKind::CheckBalances => crate::format::job_name(job.kind).to_string(),
+            // These carry their own titles: the query, the files and where they go.
+            JobKind::Search | JobKind::Recover => job.title.clone(),
             kind => format!("{} {}", crate::format::job_name(kind), self.disk_label(job.evidence)),
         }
     }
@@ -223,12 +225,14 @@ impl Session {
         }
     }
 
-    pub fn add_evidence(&mut self, location: &str, cx: &mut Context<Self>) -> Result<(), String> {
+    /// Add a disk; `deep` also probes old CHS cylinder boundaries for deleted partitions.
+    pub fn add_evidence(&mut self, location: &str, deep: bool, cx: &mut Context<Self>) -> Result<(), String> {
         let location = location.trim().trim_matches('"');
         if location.is_empty() {
             return Err(r"Enter the path of a disk image, or \\.\PhysicalDrive1 for a drive.".into());
         }
-        self.workbench.add_evidence(location).map_err(|e| e.to_string())?;
+        let added = if deep { self.workbench.add_evidence_deep(location) } else { self.workbench.add_evidence(location) };
+        added.map_err(|e| e.to_string())?;
         self.refresh(cx);
         Ok(())
     }
@@ -237,6 +241,13 @@ impl Session {
         if let Err(e) = self.workbench.analyse(id) {
             self.error = Some(format!("Cannot start the analysis: {e}"));
         }
+        self.was_active = true;
+        self.refresh(cx);
+    }
+
+    /// A job was started elsewhere (search, recovery): poll until it settles, even if it
+    /// finishes before the next tick.
+    pub fn watch_jobs(&mut self, cx: &mut Context<Self>) {
         self.was_active = true;
         self.refresh(cx);
     }

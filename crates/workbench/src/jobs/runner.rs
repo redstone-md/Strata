@@ -117,8 +117,17 @@ impl Workbench {
         }
     }
 
+    /// Queue a job that carries parameters in its starting cursor and run it in the
+    /// background; it resumes like any other job.
+    pub(crate) fn start_job<C: super::context::Cursor>(self: &Arc<Self>, kind: JobKind, evidence: EvidenceId, title: &str, cursor: &C) -> Result<JobId> {
+        let job = self.queue.enqueue_with(&self.case, evidence, kind, title, cursor)?;
+        let id = job.id;
+        self.spawn(vec![job]);
+        Ok(id)
+    }
+
     fn run_job(&self, job: &Job) {
-        let resumed = job.checkpoint.lock().json.is_some();
+        let resumed = job.times.lock().started.is_some() && job.checkpoint.lock().json.is_some();
         if job.control.is_cancelled() {
             return self.finish(job, Ok(String::new()));
         }
@@ -130,7 +139,7 @@ impl Workbench {
         });
         let policy = *self.policy.lock();
         let ctx = StepContext::new(&self.case, job, policy, &self.queue.faults);
-        let result = crate::steps::run(&ctx, job.kind, &self.chain_endpoint());
+        let result = crate::steps::run(&ctx, job.kind, self);
         job.threads.release_current();
         job.control.set_current("");
         self.finish(job, result);

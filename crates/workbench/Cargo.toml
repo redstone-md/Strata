@@ -17,10 +17,14 @@ strata-fs.workspace = true
 strata-volume.workspace = true
 strata-identify = { path = "../identify" }
 strata-carve = { path = "../carve" }
+strata-index = { path = "../index" }
 strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
 strata-timeline = { path = "../timeline" }
+strata-leads = { path = "../leads" }
 strata-report = { path = "../report" }
+strata-search.workspace = true
+sha2.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -31,4 +35,6 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 
 [dev-dependencies]
 tempfile.workspace = true
+strata-fs = { workspace = true, features = ["testkit"] }
+rusqlite.workspace = true
 strata-identify = { path = "../identify" }

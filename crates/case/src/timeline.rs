@@ -30,6 +30,10 @@ pub struct HostFact {
 }
 
 impl Case {
+    pub fn store_events(&self, id: EvidenceId, events: &[TimelineEvent]) -> Result<usize> {
+        self.write(|w| w.events(id, events))
+    }
+
     pub fn events(&self, q: &EventQuery) -> Result<Vec<(EvidenceId, TimelineEvent)>> {
         let mut sql = String::from("SELECT evidence_id, data FROM events WHERE 1=1");
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();

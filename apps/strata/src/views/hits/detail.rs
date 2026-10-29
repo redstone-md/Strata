@@ -5,7 +5,7 @@ use crate::categories;
 use crate::theme::tokens;
 use crate::widgets::{ClickHandler, TextButton, mono, rule};
 use gpui::{
-    App, ClickEvent, ClipboardItem, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
+    App, ClickEvent, ClipboardItem, InteractiveElement as _, IntoElement, ParentElement, RenderOnce, SharedString,
     StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use gpui_component::{h_flex, v_flex};
@@ -19,11 +19,24 @@ pub struct HitDetailPanel {
     hit: StoredHit,
     tree: DetailTree,
     on_close: ClickHandler,
+    /// Extra action next to Copy value (export of carved data or an archive member).
+    action: Option<(SharedString, ClickHandler)>,
+    note: Option<SharedString>,
 }
 
 impl HitDetailPanel {
     pub fn new(hit: StoredHit, tree: DetailTree, on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
-        Self { hit, tree, on_close: Rc::new(on_close) }
+        Self { hit, tree, on_close: Rc::new(on_close), action: None, note: None }
+    }
+
+    pub fn action(mut self, label: impl Into<SharedString>, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
+        self.action = Some((label.into(), Rc::new(handler)));
+        self
+    }
+
+    pub fn note(mut self, note: Option<SharedString>) -> Self {
+        self.note = note;
+        self
     }
 }
 
@@ -63,10 +76,16 @@ impl RenderOnce for HitDetailPanel {
                             .child(TextButton::new("detail-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
                     )
                     .child(mono().text_size(t.size_body).text_color(t.emphasis).whitespace_normal().child(value.clone()))
-                    .child(h_flex().child(
-                        TextButton::new("copy-value", "Copy value")
-                            .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(value.clone()))),
-                    )),
+                    .child(
+                        h_flex()
+                            .gap(px(8.))
+                            .child(
+                                TextButton::new("copy-value", "Copy value")
+                                    .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(value.clone()))),
+                            )
+                            .children(self.action.map(|(label, handler)| TextButton::new("finding-action", label).on_click(move |e, w, cx| handler(e, w, cx)))),
+                    )
+                    .children(self.note.map(|n| div().text_size(t.size_body).text_color(t.text).whitespace_normal().child(n))),
             )
             .child(rule())
             .child(div().id("detail-tree").flex_1().min_h_0().overflow_y_scroll().px(px(12.)).py(px(8.)).child(self.tree))

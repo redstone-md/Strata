@@ -31,7 +31,7 @@ pub fn section(snapshot: &Snapshot, cx: &mut Context<Overview>) -> impl IntoElem
             .child(div().text_color(if n > 0 { t.text } else { t.text_secondary }).child(c.label))
             .child(div().text_color(color).child(n.to_string()))
             .on_click(cx.listener(move |_, _, _, cx| {
-                cx.emit(Navigate { screen: categories::screen(category), category: Some(category) });
+                cx.emit(Navigate { screen: categories::screen(category), category: Some(category), volume: None });
             }))
     });
     Section::new("Findings").w(px(300.)).flex_shrink_0().child(v_flex().border_t_1().border_color(t.row_rule).children(rows))

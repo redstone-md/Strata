@@ -1,6 +1,7 @@
 //! App shell: command bar across the top, sidebar on the left, the active screen beside it.
 
 mod command_bar;
+mod jump;
 mod screens;
 mod window_controls;
 
@@ -42,7 +43,7 @@ pub struct Shell {
 impl Shell {
     pub fn new(session: Entity<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search keys, addresses, files, accounts"));
-        let (screens, navigate) = Screens::new(&session, window, cx);
+        let (screens, screen_subscriptions) = Screens::new(&session, window, cx);
         let watch_views = [
             cx.observe(&screens.wallets, |this, _, cx| this.schedule_save(cx)),
             cx.observe(&screens.accounts, |this, _, cx| this.schedule_save(cx)),
@@ -50,14 +51,14 @@ impl Shell {
             cx.observe(&screens.tasks, |this, _, cx| this.schedule_save(cx)),
         ];
         let mut subscriptions = vec![
-            navigate,
             cx.observe(&session, |_, _, cx| cx.notify()),
-            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, _, cx| match event {
+            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, window, cx| match event {
                 InputEvent::Change => this.apply_search(cx),
-                InputEvent::PressEnter { .. } if !this.screen.searchable() => this.navigate(Navigate::to(Screen::Wallets), cx),
+                InputEvent::PressEnter { .. } => this.on_enter(window, cx),
                 _ => {}
             }),
         ];
+        subscriptions.extend(screen_subscriptions);
         subscriptions.extend(watch_views);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
@@ -66,7 +67,7 @@ impl Shell {
 
     /// What the user is looking at now.
     fn view_state(&self, cx: &gpui::App) -> ViewState {
-        let browser = self.screens.browser(self.screen).map(|b| b.read(cx));
+        let browser = self.screens.browser(self.screen, cx).map(|b| b.read(cx));
         ViewState {
             screen: Some(self.screen.name().to_string()),
             search: self.search.read(cx).value().to_string(),
@@ -109,8 +110,8 @@ impl Shell {
             self.screens.timeline.update(cx, |t, cx| t.restore_day((from, to), cx));
         }
         let screen = state.screen.as_deref().and_then(Screen::from_name).unwrap_or(Screen::Overview);
-        self.navigate(Navigate { screen, category: state.category }, cx);
-        if let (Some(id), Some(browser)) = (state.finding, self.screens.browser(screen).cloned()) {
+        self.navigate(Navigate { screen, category: state.category, volume: None }, cx);
+        if let (Some(id), Some(browser)) = (state.finding, self.screens.browser(screen, cx).cloned()) {
             browser.update(cx, |b, cx| b.select_id(id, cx));
         }
         self.screens.tasks.update(cx, |t, _| t.restore(state.task.map(strata_workbench::JobId)));
@@ -119,10 +120,23 @@ impl Shell {
 
     fn apply_search(&mut self, cx: &mut Context<Self>) {
         let text = self.search.read(cx).value().to_string();
-        if let Some(browser) = self.screens.browser(self.screen) {
+        if let Some(browser) = self.screens.browser(self.screen, cx).cloned() {
             browser.update(cx, |b, cx| b.set_search(&text, cx));
-        } else if self.screen == Screen::Timeline {
-            self.screens.timeline.update(cx, |v, cx| v.set_search(&text, cx));
+        }
+        self.screens.search(self.screen, &text, cx);
+    }
+
+    /// Enter in the command bar: show the findings that match; when none do, offer the disk
+    /// search for the text instead (its button is the first action on the Search screen).
+    fn on_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.search.read(cx).value().trim().to_string();
+        if !self.screen.searchable() {
+            self.navigate(Navigate::to(Screen::Wallets), cx);
+        }
+        let matches = self.screens.browser(self.screen, cx).map(|b| b.read(cx).result_count(cx));
+        if !text.is_empty() && matches == Some(0) {
+            self.screens.search.update(cx, |s, cx| s.prefill(&text, window, cx));
+            self.navigate(Navigate::to(Screen::Search), cx);
         }
         self.schedule_save(cx);
     }
@@ -131,11 +145,17 @@ impl Shell {
         self.screen = nav.screen;
         let tasks = nav.screen == Screen::Tasks;
         self.session.update(cx, |s, cx| s.set_tasks_visible(tasks, cx));
-        if let Some(browser) = self.screens.browser(nav.screen).cloned() {
+        if let (Screen::Files, Some((evidence, volume))) = (nav.screen, nav.volume) {
+            self.screens.files.update(cx, |f, cx| f.open_volume(evidence, volume, cx));
+        }
+        if let Some(browser) = self.screens.browser(nav.screen, cx).cloned() {
             browser.update(cx, |b, cx| b.show_category(nav.category, cx));
         }
+        if nav.screen == Screen::Accounts && nav.category.is_some() {
+            self.screens.accounts.update(cx, |v, cx| v.show_traces(cx));
+        }
         match nav.screen {
-            Screen::Wallets | Screen::Accounts | Screen::Timeline => self.apply_search(cx),
+            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Timeline => self.apply_search(cx),
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }

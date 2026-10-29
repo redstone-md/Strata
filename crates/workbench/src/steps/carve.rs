@@ -1,11 +1,14 @@
 //! Carve files out of unallocated space and look inside them for wallets.
 //!
-//! Free space is processed in pieces of at most `every_bytes`: signature pass, carving and
-//! wallet parsing of the pieces since the last checkpoint commit together with the position
-//! reached. Each piece is scanned a little past its end so no signature on the cut is missed,
-//! carved files stay bounded by their whole free range, and the end of the last carved file
-//! is carried over — so the pieces give exactly the files of one pass.
+//! Free space is processed in pieces of at most `every_bytes`: file starts (from the disk
+//! index of a complete scan when it kept every signature there, else from a signature pass
+//! over just that piece), carving and wallet parsing of the pieces since the last checkpoint
+//! commit together with the position reached. Carved files stay bounded by their whole free
+//! range and the end of the last carved file is carried over, so pieces give exactly the
+//! files of one pass.
 
+use super::sweep::{SweepPos, scan_piece};
+use crate::Workbench;
 use crate::jobs::context::{Cursor, StepContext};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -21,10 +24,8 @@ const MAX_PARSE_BYTES: usize = 256 << 20;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CarveCursor {
-    /// Free ranges (coalesced, in disk order) finished.
-    ranges: usize,
-    /// Where the next piece of the current range starts (0: its beginning).
-    offset: u64,
+    #[serde(flatten)]
+    pos: SweepPos,
     /// End of the last carved file: signatures before it lie inside that file.
     covered_until: u64,
     bytes: u64,
@@ -34,29 +35,11 @@ struct CarveCursor {
 
 impl Cursor for CarveCursor {
     fn note(&self) -> String {
-        match self.offset {
-            0 => format!("free range {} ({} files carved so far)", self.ranges + 1, self.carved),
-            at => format!("free range {} at 0x{at:X} ({} files carved so far)", self.ranges + 1, self.carved),
+        match self.pos.offset {
+            0 => format!("free range {} ({} files carved so far)", self.pos.range + 1, self.carved),
+            at => format!("free range {} at 0x{at:X} ({} files carved so far)", self.pos.range + 1, self.carved),
         }
     }
-}
-
-/// Free space of every parsed filesystem plus disk space outside all parsed volumes.
-fn free_ranges(layout: &EvidenceLayout, disk_len: u64) -> Vec<ByteRange> {
-    let mut ranges: Vec<ByteRange> = layout
-        .filesystems()
-        .flat_map(|(vol, fs)| fs.unallocated().into_iter().map(move |r| r.shifted(vol.range.start())))
-        .collect();
-    let mut covered: Vec<ByteRange> = layout.filesystems().map(|(v, _)| v.range).collect();
-    covered.sort();
-    let mut cursor = 0;
-    for c in covered.iter().chain(std::iter::once(&ByteRange::new(disk_len, 0))) {
-        if c.start() > cursor {
-            ranges.push(ByteRange::from_bounds(cursor, c.start()));
-        }
-        cursor = cursor.max(c.end());
-    }
-    ByteRange::coalesce(ranges)
 }
 
 /// Findings for the carved files worth keeping, and the number of wallets among them.
@@ -91,36 +74,43 @@ fn findings(carver: &Carver, layout: &EvidenceLayout, carved: &[CarvedFile]) -> 
     (hits, wallets)
 }
 
-pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
+pub(super) fn run(ctx: &StepContext<'_>, wb: &Workbench) -> Result<String> {
     let id = ctx.evidence();
     // The scanner counts what it reads; the carver reads through the job's counter.
     let source = ctx.case().source(id)?;
     let layout = ctx.case().layout(id)?;
-    let ranges = free_ranges(&layout, source.len());
+    let ranges = layout.free_space(source.len());
     let mut cur: CarveCursor = ctx.cursor().unwrap_or_default();
     ctx.control().begin_at(cur.bytes, ranges.iter().map(|r| r.len()).sum());
     let scanner = Scanner::new(vec![Arc::new(SignatureDetector::new())]);
     let carver = Carver::new(ctx.source()?);
+    let index = wb.index();
     let piece = ctx.policy().every_bytes.max(1 << 20);
     let mut pending: Vec<(Hit, Attribution)> = Vec::new();
-    while let Some(&range) = ranges.get(cur.ranges) {
-        let start = cur.offset.max(range.start());
-        let end = start.saturating_add(piece).min(range.end());
-        let scan_end = end.saturating_add(scanner.overlap() as u64).min(range.end());
-        let mut signatures: Vec<Hit> = Vec::new();
-        scanner.continue_ranges(source.as_ref(), &[ByteRange::from_bounds(start, scan_end)], ctx.control(), |h| {
-            signatures.extend(h.into_iter().filter(|h| h.offset < end && h.offset >= cur.covered_until));
-        })?;
+    let (mut indexed, mut read) = (0u64, 0u64);
+    while let Some((range, start, end)) = cur.pos.next(&ranges, piece) {
+        let mut signatures = match index.signatures_for(id, &[ByteRange::from_bounds(start, end)]) {
+            Some(hits) => {
+                ctx.control().items_done(end - start);
+                indexed += end - start;
+                hits.into_iter().filter(|h| h.offset >= start && h.offset < end).collect()
+            }
+            None => {
+                read += end - start;
+                scan_piece(&scanner, source.as_ref(), range, (start, end), ctx.control())?
+            }
+        };
         if ctx.should_stop() {
             break;
         }
+        signatures.retain(|h| h.offset >= cur.covered_until);
         signatures.sort_by_key(|h| h.offset);
         ctx.current(&format!("carving 0x{start:X}–0x{end:X}"));
         let carved = carver.carve_ranges(&[range], &signatures);
         let (hits, wallets) = findings(&carver, &layout, &carved);
         pending.extend(hits);
         cur.covered_until = carved.iter().map(|f| f.range.end()).fold(cur.covered_until, u64::max);
-        (cur.ranges, cur.offset) = if end >= range.end() { (cur.ranges + 1, 0) } else { (cur.ranges, end) };
+        cur.pos.advance(range, end);
         cur.bytes += end - start;
         cur.carved += carved.len();
         cur.wallets += wallets;
@@ -138,5 +128,8 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
     }
     let batch = std::mem::take(&mut pending);
     ctx.commit(&cur, |w| w.hits(id, &batch))?;
+    if indexed > 0 {
+        ctx.log(format!("file starts of {indexed} bytes taken from the disk index, {read} bytes read again"));
+    }
     Ok(format!("{} files carved, {} wallets", cur.carved, cur.wallets))
 }

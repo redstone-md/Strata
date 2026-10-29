@@ -19,6 +19,23 @@ pub enum FsKind {
     Unknown,
 }
 
+impl FsKind {
+    /// Name as people write it: `NTFS`, `FAT32`, `exFAT`, `ext4`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ntfs => "NTFS",
+            Self::Fat12 => "FAT12",
+            Self::Fat16 => "FAT16",
+            Self::Fat32 => "FAT32",
+            Self::ExFat => "exFAT",
+            Self::Ext2 => "ext2",
+            Self::Ext3 => "ext3",
+            Self::Ext4 => "ext4",
+            Self::Unknown => "Unknown filesystem",
+        }
+    }
+}
+
 /// Recognised boot sector and the volume size it declares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BootSector {

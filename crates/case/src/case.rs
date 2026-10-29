@@ -117,6 +117,31 @@ impl Case {
         Ok(volumes)
     }
 
+    /// Append volumes found outside the volume scanner (e.g. imported from an R-Studio scan
+    /// and verified by the caller); they get the next free indices. Returns them as stored.
+    pub fn add_volumes(&self, id: EvidenceId, volumes: &[Volume]) -> Result<Vec<Volume>> {
+        let mut stored = Vec::new();
+        {
+            let mut conn = self.conn.lock();
+            let next: u32 = conn
+                .query_row("SELECT COALESCE(MAX(idx) + 1, 0) FROM volumes WHERE evidence_id = ?1", [id.get()], |r| r.get(0))
+                .map_err(db)?;
+            let tx = conn.transaction().map_err(db)?;
+            for (i, v) in volumes.iter().enumerate() {
+                let v = Volume { index: next + i as u32, ..v.clone() };
+                tx.execute(
+                    "INSERT INTO volumes (evidence_id, idx, start, len, fs, origin, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id.get(), v.index, v.range.start() as i64, v.range.len() as i64, format!("{:?}", v.fs), format!("{:?}", v.origin), v.label],
+                )
+                .map_err(db)?;
+                stored.push(v);
+            }
+            tx.commit().map_err(db)?;
+        }
+        self.layouts.lock().remove(&id);
+        Ok(stored)
+    }
+
     pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare("SELECT id, info FROM evidence ORDER BY id").map_err(db)?;
@@ -165,6 +190,11 @@ impl Case {
 
     pub fn record(&self, id: EvidenceId) -> Result<EvidenceRecord> {
         self.evidence()?.into_iter().find(|e| e.id == id).ok_or_else(|| Error::Other(format!("no evidence {id}")))
+    }
+
+    /// Drop the cached layout so the next [`Case::layout`] parses the volumes again.
+    pub(crate) fn forget_layout(&self, id: EvidenceId) {
+        self.layouts.lock().remove(&id);
     }
 
     /// Parsed filesystems of an evidence item (built once, then shared).

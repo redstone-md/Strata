@@ -11,3 +11,6 @@ strata-source.workspace = true
 crossbeam-channel.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Threading"] }
