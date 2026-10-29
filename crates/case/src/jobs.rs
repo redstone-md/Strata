@@ -35,8 +35,10 @@ pub struct JobRecord {
 /// Timestamp written along with a state change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobStamp {
-    /// Started (or resumed) by this process.
+    /// Started (or resumed) by process `pid`.
     Started { pid: u32 },
+    /// Queued again by process `pid`, which now owns it.
+    Claimed { pid: u32 },
     Finished,
     None,
 }
@@ -65,14 +67,14 @@ fn record(r: &Row<'_>) -> rusqlite::Result<JobRecord> {
 }
 
 impl Case {
-    /// Queue a job; returns its id (stable across restarts).
-    pub fn add_job(&self, pipeline: Option<u32>, evidence: EvidenceId, kind: &str, title: &str, state: &str) -> Result<u32> {
+    /// Queue a job owned by process `owner`; returns its id (stable across restarts).
+    pub fn add_job(&self, owner: u32, evidence: EvidenceId, kind: &str, title: &str, state: &str) -> Result<u32> {
         self.with_conn(|conn| {
             let t = now();
             conn.execute(
-                "INSERT INTO jobs (pipeline, evidence_id, kind, title, state, created_at, updated_at)
+                "INSERT INTO jobs (evidence_id, kind, title, state, owner_pid, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                params![pipeline, evidence.get(), kind, title, state, t],
+                params![evidence.get(), kind, title, state, owner, t],
             )?;
             Ok(conn.last_insert_rowid() as u32)
         })
@@ -96,6 +98,10 @@ impl Case {
                 JobStamp::Started { pid } => conn.execute(
                     "UPDATE jobs SET state = ?2, detail = ?3, started_at = COALESCE(started_at, ?4), finished_at = NULL,
                      owner_pid = ?5, updated_at = ?4 WHERE id = ?1",
+                    params![id, state, detail, t, pid],
+                ),
+                JobStamp::Claimed { pid } => conn.execute(
+                    "UPDATE jobs SET state = ?2, detail = ?3, owner_pid = ?5, updated_at = ?4 WHERE id = ?1",
                     params![id, state, detail, t, pid],
                 ),
                 JobStamp::Finished => conn.execute(
@@ -150,8 +156,8 @@ mod tests {
         let ev = EvidenceId::new(1);
         {
             let case = Case::open(&root).unwrap();
-            let a = case.add_job(None, ev, "Scan", "Deep scan", "Queued").unwrap();
-            let b = case.add_job(None, ev, "Carve", "Carve", "Queued").unwrap();
+            let a = case.add_job(3, ev, "Scan", "Deep scan", "Queued").unwrap();
+            let b = case.add_job(3, ev, "Carve", "Carve", "Queued").unwrap();
             case.set_job_pipeline(&[a, b], a).unwrap();
             case.update_job(a, "Running", "", JobStamp::Started { pid: 7 }).unwrap();
             case.write(|w| w.job_checkpoint(a, r#"{"at":5}"#, 5, 10)).unwrap();

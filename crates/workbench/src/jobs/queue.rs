@@ -61,7 +61,7 @@ impl JobQueue {
     pub fn enqueue(&self, case: &Case, evidence: EvidenceId, kinds: &[JobKind]) -> Result<Vec<Arc<Job>>> {
         let mut ids = Vec::new();
         for kind in kinds {
-            ids.push(case.add_job(None, evidence, kind.name(), &kind.title(evidence), "Queued")?);
+            ids.push(case.add_job(std::process::id(), evidence, kind.name(), &kind.title(evidence), "Queued")?);
         }
         let pipeline = (ids.len() > 1).then(|| ids[0]);
         if let Some(p) = pipeline {
@@ -127,7 +127,8 @@ impl JobQueue {
                     times.finished = Some(now);
                     JobStamp::Finished
                 }
-                JobState::Queued | JobState::Interrupted => JobStamp::None,
+                JobState::Queued => JobStamp::Claimed { pid: std::process::id() },
+                JobState::Interrupted => JobStamp::None,
             }
         };
         if !self.faults.is_dead() {

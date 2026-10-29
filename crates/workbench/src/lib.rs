@@ -11,7 +11,7 @@ mod workbench;
 pub use catalog::DetectorCatalog;
 pub use jobs::context::CheckpointPolicy;
 pub use jobs::{CheckpointInfo, Job, JobId, JobKind, JobState, JobView, LogLine, ProgressUnit, eta};
-pub use monitor::{JobSample, Monitor, MonitorView, ResourceSample, SystemSample};
+pub use monitor::{JobSample, Monitor, MonitorView, ProcessWatch, ResourceSample, SystemSample};
 pub use steps::ArchiveSummary;
 pub use sector_map::{SectorCell, SectorMap};
 pub use workbench::Workbench;

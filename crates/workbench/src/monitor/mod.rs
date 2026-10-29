@@ -151,25 +151,66 @@ impl Monitor {
     }
 }
 
-struct Sampler {
-    shared: Arc<Shared>,
-    started: Instant,
-    last: Option<Instant>,
+/// Readings of one process (this one, or the one running a case's jobs): CPU, memory, disk
+/// I/O, threads and GPU, plus the machine around it.
+pub struct ProcessWatch {
     process: ProcessProbe,
     gpu: Option<GpuProbe>,
+    started: Instant,
+}
+
+impl ProcessWatch {
+    pub fn new(pid: u32) -> Self {
+        Self { process: ProcessProbe::new(pid), gpu: GpuProbe::open(pid), started: Instant::now() }
+    }
+
+    pub fn cores(&self) -> usize {
+        self.process.cores()
+    }
+
+    pub fn gpu_available(&self) -> bool {
+        self.gpu.is_some()
+    }
+
+    /// Reading since the previous call; the first call only primes the counters.
+    pub fn sample(&mut self) -> Option<(ResourceSample, SystemSample)> {
+        let (p, system) = self.process.sample()?;
+        let gpu = self.gpu.as_mut().map(GpuProbe::sample).unwrap_or_default();
+        let sample = ResourceSample {
+            at: self.started.elapsed().as_secs_f64(),
+            cpu: p.cpu,
+            working_set: p.working_set,
+            private_bytes: p.private_bytes,
+            read_per_sec: p.read_per_sec,
+            write_per_sec: p.write_per_sec,
+            threads: p.threads,
+            gpu: gpu.utilization,
+            gpu_memory: gpu.dedicated_bytes,
+        };
+        Some((sample, system))
+    }
+
+    /// Forget the previous reading (after an idle period, so rates do not average over it).
+    pub fn reset(&mut self) {
+        self.process.reset();
+    }
+}
+
+struct Sampler {
+    shared: Arc<Shared>,
+    last: Option<Instant>,
+    watch: ProcessWatch,
 }
 
 impl Sampler {
     fn new(shared: Arc<Shared>) -> Self {
-        let pid = std::process::id();
-        let process = ProcessProbe::new(pid);
-        let gpu = GpuProbe::open(pid);
+        let watch = ProcessWatch::new(std::process::id());
         {
             let mut s = shared.state.lock();
-            s.cores = process.cores();
-            s.gpu_available = gpu.is_some();
+            s.cores = watch.cores();
+            s.gpu_available = watch.gpu_available();
         }
-        Self { shared, started: Instant::now(), last: None, process, gpu }
+        Self { shared, last: None, watch }
     }
 
     fn run(mut self, queue: Weak<JobQueue>) {
@@ -180,7 +221,7 @@ impl Sampler {
             if wanted {
                 self.sample(&queue);
             } else if self.last.take().is_some() {
-                self.process.reset();
+                self.watch.reset();
             }
         }
     }
@@ -188,27 +229,15 @@ impl Sampler {
     fn sample(&mut self, queue: &JobQueue) {
         let now = Instant::now();
         let dt = self.last.replace(now).map(|t| now.duration_since(t).as_secs_f64());
-        let Some((p, system)) = self.process.sample() else { return };
-        let gpu = self.gpu.as_mut().map(GpuProbe::sample).unwrap_or_default();
-        let at = now.duration_since(self.started).as_secs_f64();
-        let sample = ResourceSample {
-            at,
-            cpu: p.cpu,
-            working_set: p.working_set,
-            private_bytes: p.private_bytes,
-            read_per_sec: p.read_per_sec,
-            write_per_sec: p.write_per_sec,
-            threads: p.threads,
-            gpu: gpu.utilization,
-            gpu_memory: gpu.dedicated_bytes,
-        };
+        let Some((sample, system)) = self.watch.sample() else { return };
+        let at = sample.at;
         let running: Vec<_> =
             queue.all().into_iter().filter(|j| j.foreign.is_none() && *j.state.lock() == JobState::Running).collect();
         let mut s = self.shared.state.lock();
         let cores = s.cores.max(1) as f64;
         s.process.push(sample);
         s.system = Some(system);
-        let share = if running.is_empty() { 0.0 } else { p.cpu / running.len() as f32 };
+        let share = if running.is_empty() { 0.0 } else { sample.cpu / running.len() as f32 };
         for job in &running {
             let snap = job.control.snapshot();
             let cpu = job.threads.cpu_time();
@@ -226,5 +255,30 @@ impl Sampler {
             });
             (track.cpu, track.read, track.units) = (cpu, snap.read_bytes, snap.scanned);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watch_sees_this_process_work() {
+        let mut watch = ProcessWatch::new(std::process::id());
+        assert!(watch.sample().is_none(), "the first reading only primes the counters");
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("blob");
+        std::fs::write(&file, vec![7u8; 8 << 20]).unwrap();
+        assert_eq!(std::fs::read(&file).unwrap().len(), 8 << 20);
+        let start = Instant::now();
+        let mut x = 0u64;
+        while start.elapsed() < Duration::from_millis(600) {
+            x = std::hint::black_box(x.wrapping_mul(31).wrapping_add(1));
+        }
+        let (p, s) = watch.sample().expect("second reading");
+        assert!(p.cpu > 0.5, "a busy thread shows: {p:?}");
+        assert!(p.working_set > 0 && s.total_ram > 0);
+        assert!(p.write_per_sec > 0.0, "the write shows: {p:?}");
+        assert!(p.read_per_sec > 0.0, "the read shows: {p:?}");
     }
 }

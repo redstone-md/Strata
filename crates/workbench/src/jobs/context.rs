@@ -204,7 +204,7 @@ mod tests {
     }
 
     fn job(case: &Case) -> Job {
-        let id = case.add_job(None, EvidenceId::new(1), "Carve", "t", "Running").unwrap();
+        let id = case.add_job(1, EvidenceId::new(1), "Carve", "t", "Running").unwrap();
         Job::new(JobId(id), JobKind::Carve, EvidenceId::new(1), None, JobState::Running)
     }
 

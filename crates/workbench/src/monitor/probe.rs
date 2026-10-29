@@ -1,7 +1,8 @@
-//! Process-wide and system readings: CPU, memory and disk I/O through `sysinfo`, thread count
-//! through a Toolhelp snapshot on Windows.
+//! Process-wide and system readings: memory, disk I/O and the machine through `sysinfo`; on
+//! Windows process CPU through `GetProcessTimes` and the thread count through a Toolhelp
+//! snapshot.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 /// One reading of a process.
@@ -30,6 +31,8 @@ pub struct ProcessProbe {
     pid: Pid,
     cores: usize,
     last: Option<Instant>,
+    /// Process CPU time at the previous reading.
+    cpu_time: Option<Duration>,
 }
 
 impl ProcessProbe {
@@ -37,7 +40,7 @@ impl ProcessProbe {
         let mut sys = System::new();
         sys.refresh_cpu_usage();
         let cores = sys.cpus().len().max(1);
-        Self { sys, pid: Pid::from_u32(pid), cores, last: None }
+        Self { sys, pid: Pid::from_u32(pid), cores, last: None, cpu_time: None }
     }
 
     pub fn cores(&self) -> usize {
@@ -51,12 +54,18 @@ impl ProcessProbe {
         self.sys.refresh_cpu_usage();
         self.sys.refresh_memory();
         let now = Instant::now();
+        let used = cpu_time(self.pid.as_u32());
+        let before = std::mem::replace(&mut self.cpu_time, used);
         let dt = self.last.replace(now).map(|t| now.duration_since(t).as_secs_f64())?;
         let p = self.sys.process(self.pid)?;
+        let cpu = match (used, before) {
+            (Some(now), Some(before)) if dt > 0.0 => (now.saturating_sub(before).as_secs_f64() / dt / self.cores as f64 * 100.0) as f32,
+            _ => p.cpu_usage() / self.cores as f32,
+        };
         let io = p.disk_usage();
         let per_sec = |bytes: u64| if dt > 0.0 { bytes as f64 / dt } else { 0.0 };
         let process = ProcessReading {
-            cpu: (p.cpu_usage() / self.cores as f32).clamp(0.0, 100.0),
+            cpu: cpu.clamp(0.0, 100.0),
             working_set: p.memory(),
             private_bytes: p.virtual_memory(),
             read_per_sec: per_sec(io.read_bytes),
@@ -74,6 +83,7 @@ impl ProcessProbe {
     /// Forget the previous reading (after an idle period, so rates do not average over it).
     pub fn reset(&mut self) {
         self.last = None;
+        self.cpu_time = None;
     }
 }
 
@@ -113,5 +123,30 @@ fn thread_count(pid: u32) -> Option<u32> {
 
 #[cfg(not(windows))]
 fn thread_count(_pid: u32) -> Option<u32> {
+    None
+}
+
+/// Kernel + user time of a process so far.
+#[cfg(windows)]
+fn cpu_time(pid: u32) -> Option<Duration> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
+    // SAFETY: the handle is checked before use and closed once; out-pointers are live locals.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let zero = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+        let ok = GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user);
+        CloseHandle(handle);
+        (ok != 0).then(|| Duration::from_nanos((ticks(kernel) + ticks(user)).saturating_mul(100)))
+    }
+}
+
+#[cfg(not(windows))]
+fn cpu_time(_pid: u32) -> Option<Duration> {
     None
 }
