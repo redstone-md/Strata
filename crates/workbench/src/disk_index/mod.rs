@@ -93,6 +93,12 @@ impl<'a> IndexService<'a> {
         })
     }
 
+    /// Ranges that may hold data (not zero/fill, not unreadable; unscanned blocks included),
+    /// so a search can skip the rest. `None` without an index.
+    pub fn interesting_ranges(&self, id: EvidenceId) -> Option<Vec<ByteRange>> {
+        Some(self.load(id)?.interesting_ranges())
+    }
+
     /// Signature hits of our own complete pass inside `ranges`, in the detector's hit form;
     /// `None` when no complete index exists (the caller then runs its own pass).
     pub fn signatures_for(&self, id: EvidenceId, ranges: &[ByteRange]) -> Option<Vec<Hit>> {

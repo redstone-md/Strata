@@ -84,6 +84,10 @@ fn sector_map_and_view_show_content_classes() {
     assert_eq!(content[4], Some(BlockClass::Random));
     let view = wb.disk_index(id, 6).unwrap();
     assert_eq!(view.runs.iter().map(|r| r.1).sum::<u32>(), 6);
+    let ranges = wb.interesting_ranges(id).unwrap();
+    let interesting: u64 = ranges.iter().map(|r| r.len()).sum();
+    assert!(interesting < (4 * MIB) as u64, "zero blocks are skipped: {ranges:?}");
+    assert!(ranges.iter().any(|r| r.contains((4 * MIB) as u64)));
     assert_eq!(view.stats.by_class[BlockClass::Text as usize], 12);
 }
 

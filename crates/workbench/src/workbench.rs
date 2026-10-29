@@ -67,6 +67,12 @@ impl Workbench {
         self.index().view(id, cells)
     }
 
+    /// Byte ranges worth searching according to the disk index (everything that is not
+    /// known to be empty or unreadable); `None` without an index.
+    pub fn interesting_ranges(&self, id: EvidenceId) -> Option<Vec<strata_kernel::ByteRange>> {
+        self.index().interesting_ranges(id)
+    }
+
     /// Import the R-Studio scan file next to the evidence image, if there is one: verified
     /// volumes join the case and the disk index is seeded. Also done by [`Self::add_evidence`].
     pub fn import_scn(&self, id: EvidenceId) -> Result<Option<crate::ScnImport>> {
