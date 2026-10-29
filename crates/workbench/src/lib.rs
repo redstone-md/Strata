@@ -3,6 +3,7 @@
 mod browser;
 mod catalog;
 mod connections;
+mod consistency;
 mod disk_index;
 pub mod explore;
 mod insights;
@@ -37,6 +38,7 @@ pub use strata_case::{
     BrowserFamily, BrowserFilter, BrowserOverview, BrowserQuery, BrowserRow, BrowserSegment, BrowserSpan, CookieSite, Credential, DownloadSource, ProfileKey, ProfileSummary, SiteSummary,
     site_key,
 };
+pub use strata_consistency::{Assessment, Figure, Observation, Severity, Signal, Verdict, VerdictKind};
 pub use strata_machines::{
     ActivityKind, CryptoSoftware, DiskMachines, InstallKind, Machine, MachineProfile, MonthActivity, NetworkProfile, OsFamily, Period as UsagePeriod, Provenance,
     UsageReport, UsbDevice, UserAccount, Values, first_source, utc_offset,

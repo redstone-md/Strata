@@ -4,6 +4,7 @@
 
 pub mod browser;
 pub mod chain;
+pub mod consistency;
 pub mod files;
 pub mod findings;
 pub mod graph;
@@ -30,6 +31,7 @@ pub(crate) fn router() -> ToolRouter<StrataServer> {
         + StrataServer::browser_tools()
         + StrataServer::graph_tools()
         + StrataServer::machine_tools()
+        + StrataServer::consistency_tools()
 }
 
 /// Disk id parameter as the workbench's evidence id.

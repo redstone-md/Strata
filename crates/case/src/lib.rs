@@ -12,6 +12,7 @@ mod browsing;
 mod case;
 mod connections;
 mod correlation;
+mod disk_stats;
 mod jobs;
 mod file_rows;
 mod insights;
@@ -29,6 +30,7 @@ mod timeline;
 mod writer;
 
 pub use activity::{EventFilter, FactGroup, HourlyEvents, TitledEvents};
+pub use disk_stats::{FileTally, FolderTally, HitTally, IndexedFile};
 pub use archives::ArchiveMemberRow;
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
 pub use browsing::{

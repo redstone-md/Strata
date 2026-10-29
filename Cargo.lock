@@ -6371,6 +6371,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-consistency"
+version = "0.0.7"
+dependencies = [
+ "serde",
+ "strata-kernel",
+]
+
+[[package]]
 name = "strata-crypto"
 version = "0.0.7"
 dependencies = [
@@ -6584,6 +6592,7 @@ dependencies = [
  "strata-carve",
  "strata-case",
  "strata-chain",
+ "strata-consistency",
  "strata-crypto",
  "strata-engine",
  "strata-fs",

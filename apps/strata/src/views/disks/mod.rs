@@ -1,7 +1,9 @@
-//! Disks: add images or drives, then each disk with its map, volumes, when it was in use and
-//! the computers found on it. Machine profiles and usage load off the UI thread after every
-//! analysis; raw host facts only load when asked for.
+//! Disks: add images or drives, then each disk with its map, volumes, when it was in use,
+//! whether its evidence is plausible and the computers found on it. Machine profiles, usage
+//! and the consistency assessment load off the UI thread after every analysis; raw host facts
+//! only load when asked for.
 
+pub(crate) mod consistency;
 mod detail;
 mod facts;
 mod machine;
@@ -21,7 +23,7 @@ use gpui_component::input::{InputEvent, InputState};
 use gpui_component::{h_flex, v_flex};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use strata_workbench::{DiskMachines, EvidenceId, FactGroup};
+use strata_workbench::{Assessment, DiskMachines, EvidenceId, FactGroup};
 
 /// Left indent of a disk's details (under the disk's facts column of [`DiskRow`]).
 const DETAIL_INDENT: f32 = 244.;
@@ -32,6 +34,7 @@ pub struct DisksView {
     path: Entity<InputState>,
     message: Option<SharedString>,
     machines: HashMap<EvidenceId, DiskMachines>,
+    assessments: HashMap<EvidenceId, Assessment>,
     /// Grouped raw facts of disks whose "Show all facts" is on (loaded on demand).
     facts: HashMap<EvidenceId, Vec<FactGroup>>,
     show_facts: HashSet<EvidenceId>,
@@ -64,6 +67,7 @@ impl DisksView {
             path,
             message: None,
             machines: HashMap::new(),
+            assessments: HashMap::new(),
             facts: HashMap::new(),
             show_facts: HashSet::new(),
             open_keys: HashMap::new(),
@@ -90,7 +94,7 @@ impl DisksView {
         cx.notify();
     }
 
-    /// Build every disk's machines and usage on a background thread.
+    /// Build every disk's machines, usage and consistency on a background thread.
     fn reload(&mut self, cx: &mut Context<Self>) {
         let session = self.session.read(cx);
         let wb = session.workbench().clone();
@@ -102,14 +106,25 @@ impl DisksView {
         cx.spawn(async move |this, cx| {
             let found = cx
                 .background_executor()
-                .spawn(async move { ids.into_iter().filter_map(|id| Some((id, wb.machines(id).ok()?))).collect::<HashMap<_, _>>() })
+                .spawn(async move {
+                    let mut machines = HashMap::new();
+                    let mut assessments = HashMap::new();
+                    for id in ids {
+                        let Ok(found) = wb.machines(id) else { continue };
+                        if let Ok(a) = wb.consistency_with(id, &found) {
+                            assessments.insert(id, a);
+                        }
+                        machines.insert(id, found);
+                    }
+                    (machines, assessments)
+                })
                 .await;
             let _ = this.update(cx, |v, cx| {
                 if v.loads != ticket {
                     return;
                 }
                 v.loading = false;
-                v.machines = found;
+                (v.machines, v.assessments) = found;
                 // Facts may have changed with the machines; lists that are shown load again.
                 v.facts.clear();
                 for id in v.show_facts.clone() {
@@ -241,8 +256,10 @@ impl Render for DisksView {
             .map(|d| {
                 let busy = snapshot.active_jobs().any(|j| j.evidence == d.id());
                 let usage = self.machines.get(&d.id()).map(|m| m.usage.clone());
+                let assessment = self.assessments.get(&d.id());
                 let row = DiskRow::new(d.clone(), self.maps.read(cx).get(d.id()), self.session.clone(), busy)
-                    .usage(usage.as_ref().and_then(usage::short_range).map(SharedString::from));
+                    .usage(usage.as_ref().and_then(usage::short_range).map(SharedString::from))
+                    .verdict(assessment.and_then(consistency::verdict_badge));
                 let volumes = detail::volumes(&d.record, {
                     let this = cx.entity().downgrade();
                     let id = d.id();
@@ -264,6 +281,7 @@ impl Render for DisksView {
                             .children(volumes)
                             .children(usage.as_ref().map(usage::section)),
                     )
+                    .children(assessment.map(|a| div().pl(px(DETAIL_INDENT)).child(consistency::section(a))))
                     .children(self.machines_section(d.id(), cx).map(|s| div().pl(px(DETAIL_INDENT)).child(s)))
             })
             .collect();

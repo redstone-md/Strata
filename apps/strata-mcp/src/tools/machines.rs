@@ -234,7 +234,8 @@ struct MachineUsage {
     usage: Usage,
 }
 
-fn disks(wb: &Workbench, disk: Option<u32>) -> Reply<Vec<(EvidenceId, String)>> {
+/// The case's disks as `(id, label)`, only `disk` when given (an error when there is none).
+pub(crate) fn disks(wb: &Workbench, disk: Option<u32>) -> Reply<Vec<(EvidenceId, String)>> {
     let all: Vec<_> = wb.evidence().map_err(fail)?.into_iter().map(|e| (e.id, e.info.label)).filter(|(id, _)| disk.is_none_or(|d| id.get() == d)).collect();
     match disk {
         Some(d) if all.is_empty() => Err(format!("no disk {d}; case_overview lists the disks")),
