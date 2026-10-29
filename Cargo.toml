@@ -19,6 +19,7 @@ strata-archive = { path = "crates/archive" }
 strata-crypto = { path = "crates/crypto" }
 strata-engine = { path = "crates/engine" }
 strata-case = { path = "crates/case" }
+strata-search = { path = "crates/search" }
 
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

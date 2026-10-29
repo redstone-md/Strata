@@ -1,0 +1,13 @@
+[package]
+name = "strata-search"
+description = "Disk content search: text in several encodings, hex, regex; result snippets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+aho-corasick = "1"
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
