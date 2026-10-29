@@ -187,6 +187,13 @@ impl DiskIndex {
         Ok(())
     }
 
+    /// True when every signature hit inside `ranges` is in the table: the builder only flags
+    /// (does not keep) hits in blocks wholly owned by live files, so this fails when a block
+    /// touching `ranges` was live-file space at scan time.
+    pub fn keeps_signatures_in(&self, ranges: &[ByteRange]) -> bool {
+        ranges.iter().all(|r| self.records[self.blocks_touching(*r)].iter().all(|b| b.ownership() != Ownership::LiveFile))
+    }
+
     /// Signature hits from `source` whose offset lies in one of `ranges` (sorted, any order
     /// in, offset order out).
     pub fn signatures_in(&self, ranges: &[ByteRange], source: EntrySource) -> Vec<&SignatureHit> {
