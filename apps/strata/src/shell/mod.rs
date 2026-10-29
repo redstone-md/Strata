@@ -59,6 +59,8 @@ impl Shell {
 
     pub fn navigate(&mut self, nav: Navigate, cx: &mut Context<Self>) {
         self.screen = nav.screen;
+        let tasks = nav.screen == Screen::Tasks;
+        self.session.update(cx, |s, cx| s.set_tasks_visible(tasks, cx));
         if let Some(browser) = self.screens.browser(nav.screen).cloned() {
             browser.update(cx, |b, cx| b.show_category(nav.category, cx));
         }
@@ -88,6 +90,10 @@ impl Shell {
         let on_case = Rc::new(move |_: &_, _: &mut Window, cx: &mut gpui::App| {
             let _ = this.update(cx, |shell, cx| shell.navigate(Navigate::to(Screen::Overview), cx));
         });
+        let this = cx.entity().downgrade();
+        let on_status = Rc::new(move |_: &_, _: &mut Window, cx: &mut gpui::App| {
+            let _ = this.update(cx, |shell, cx| shell.navigate(Navigate::to(Screen::Tasks), cx));
+        });
         // The whole bar is the window's caption: drag to move, double-click to maximize.
         // Interactive parts occlude it so they keep their clicks.
         h_flex()
@@ -107,7 +113,7 @@ impl Shell {
                     .text_color(t.emphasis)
                     .child("Strata"),
             )
-            .child(CommandBar::new(session.case_name(), session.snapshot().clone(), &self.search, on_case))
+            .child(CommandBar::new(session.case_name(), session.snapshot().clone(), &self.search, on_case, on_status))
             .child(WindowControls)
     }
 }

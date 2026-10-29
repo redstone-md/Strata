@@ -11,6 +11,7 @@ pub enum Screen {
     Accounts,
     Timeline,
     Correlation,
+    Tasks,
     Settings,
 }
 
@@ -28,8 +29,16 @@ impl Navigate {
 }
 
 impl Screen {
-    const ALL: [Screen; 7] =
-        [Self::Overview, Self::Disks, Self::Wallets, Self::Accounts, Self::Timeline, Self::Correlation, Self::Settings];
+    const ALL: [Screen; 8] = [
+        Self::Overview,
+        Self::Disks,
+        Self::Wallets,
+        Self::Accounts,
+        Self::Timeline,
+        Self::Correlation,
+        Self::Tasks,
+        Self::Settings,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -39,6 +48,7 @@ impl Screen {
             Self::Accounts => "Accounts",
             Self::Timeline => "Timeline",
             Self::Correlation => "Across disks",
+            Self::Tasks => "Tasks",
             Self::Settings => "Settings",
         }
     }
@@ -51,6 +61,7 @@ impl Screen {
             Self::Accounts => Glyph::Users,
             Self::Timeline => Glyph::Clock,
             Self::Correlation => Glyph::GitCompare,
+            Self::Tasks => Glyph::Activity,
             Self::Settings => Glyph::Settings,
         }
     }
@@ -59,13 +70,31 @@ impl Screen {
         self as usize
     }
 
+    /// Stable name for saved view state.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Overview => "overview",
+            Self::Disks => "disks",
+            Self::Wallets => "wallets",
+            Self::Accounts => "accounts",
+            Self::Timeline => "timeline",
+            Self::Correlation => "correlation",
+            Self::Tasks => "tasks",
+            Self::Settings => "settings",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.name() == name)
+    }
+
     pub fn from_key(key: usize) -> Option<Self> {
         Self::ALL.into_iter().find(|s| s.key() == key)
     }
 
     /// Long-form screens scroll as a page; table screens fill the window and scroll inside.
     pub fn scrolls(self) -> bool {
-        matches!(self, Self::Overview | Self::Disks | Self::Settings)
+        matches!(self, Self::Overview | Self::Disks | Self::Tasks | Self::Settings)
     }
 
     /// Screens whose list the command-bar search filters.

@@ -1,6 +1,7 @@
 //! Human-readable formatting shared by every view.
 
-use strata_workbench::{JobKind, JobState, JobView};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use strata_workbench::{JobKind, JobState, JobView, ProgressUnit};
 
 const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
 const SAT_PER_BTC: f64 = 100_000_000.0;
@@ -84,10 +85,74 @@ pub fn job_state(job: &JobView) -> String {
     }
 }
 
-/// Throughput, shown only for jobs that read the disk sequentially.
+/// Job state with its summary or reason: `done — 120 hits`, `failed — disk gone`.
+pub fn job_state_long(job: &JobView) -> String {
+    match &job.state {
+        JobState::Running if job.is_paused() => "paused".into(),
+        JobState::Running if job.foreign.is_some() => "running in another window".into(),
+        JobState::Running => "running".into(),
+        JobState::Done(s) if !s.is_empty() => format!("done — {s}"),
+        JobState::Failed(e) => format!("failed — {e}"),
+        _ => job_state(job),
+    }
+}
+
+/// What an item-counting job counts, plural.
+pub fn items(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::IndexFiles | JobKind::Artifacts => "volumes",
+        JobKind::ClassifyFiles => "files",
+        JobKind::Archives => "archives",
+        JobKind::CheckBalances => "addresses",
+        JobKind::Scan | JobKind::Carve => "bytes",
+    }
+}
+
+/// `per_sec` units of a job as throughput: `48.2 MB/s`, `310 files/s`.
+pub fn rate(job: &JobView, per_sec: f64) -> String {
+    match job.unit {
+        ProgressUnit::Bytes => format!("{}/s", bytes(per_sec.max(0.0) as u64)),
+        ProgressUnit::Items if per_sec >= 10.0 => format!("{per_sec:.0} {}/s", items(job.kind)),
+        ProgressUnit::Items => format!("{per_sec:.1} {}/s", items(job.kind)),
+    }
+}
+
+/// Throughput of a running job (command bar), when it has one.
 pub fn job_rate(job: &JobView) -> Option<String> {
-    (job.kind == JobKind::Scan && job.progress.per_sec > 0.0)
-        .then(|| format!("{}/s", bytes(job.progress.per_sec as u64)))
+    (job.state == JobState::Running && job.progress.per_sec > 0.0).then(|| rate(job, job.progress.per_sec))
+}
+
+/// `45s`, `3m 12s`, `1h 04m`.
+pub fn duration(d: Duration) -> String {
+    let s = d.as_secs();
+    match s {
+        0..60 => format!("{s}s"),
+        60..3600 => format!("{}m {:02}s", s / 60, s % 60),
+        _ => format!("{}h {:02}m", s / 3600, s % 3600 / 60),
+    }
+}
+
+/// Unix seconds as time ago: `just now`, `12s ago`, `4m 10s ago`.
+pub fn ago(unix: i64) -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    match (now - unix).max(0) {
+        0..2 => "just now".into(),
+        s => format!("{} ago", duration(Duration::from_secs(s as u64))),
+    }
+}
+
+/// Shorten to `max` characters by cutting the middle: `C:/Users/…/wallet.dat`.
+pub fn middle(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max || max < 5 {
+        return s.to_string();
+    }
+    let tail = (max - 1) / 2;
+    let head = max - 1 - tail;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('…');
+    out.extend(&chars[chars.len() - tail..]);
+    out
 }
 
 #[cfg(test)]
@@ -103,5 +168,15 @@ mod tests {
         assert_eq!(btc(150_000_000), "1.50000000 BTC");
         assert_eq!(count(1, "disk", "disks"), "1 disk");
         assert_eq!(volume_name("Fat32", "Recovered"), "FAT32, recovered");
+    }
+
+    #[test]
+    fn formats_durations_and_cuts_the_middle() {
+        assert_eq!(duration(Duration::from_secs(45)), "45s");
+        assert_eq!(duration(Duration::from_secs(192)), "3m 12s");
+        assert_eq!(duration(Duration::from_secs(3840)), "1h 04m");
+        assert_eq!(middle("abcdefghij", 7), "abc…hij");
+        assert_eq!(middle("short", 7), "short");
+        assert_eq!(middle("ab/cd/ef/gh", 6).chars().count(), 6);
     }
 }

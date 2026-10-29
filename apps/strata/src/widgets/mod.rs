@@ -6,6 +6,7 @@ mod field;
 mod section;
 mod sector_map;
 mod sidebar;
+mod sparkline;
 mod text_button;
 mod text_table;
 
@@ -15,6 +16,7 @@ pub use field::Field;
 pub use section::{Section, rule};
 pub use sector_map::{DiskMaps, SectorMapView, legend};
 pub use sidebar::{NavItem, Sidebar};
+pub use sparkline::Sparkline;
 pub use text_button::TextButton;
 pub use text_table::{Cell, TextTable, flat_table, table_empty, table_header};
 

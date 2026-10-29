@@ -8,6 +8,7 @@ use crate::views::disks::DisksView;
 use crate::views::hits::HitBrowser;
 use crate::views::overview::Overview;
 use crate::views::settings::SettingsView;
+use crate::views::tasks::TasksView;
 use crate::views::timeline::TimelineView;
 use crate::views::{accounts, wallets};
 use crate::widgets::DiskMaps;
@@ -20,6 +21,7 @@ pub struct Screens {
     pub accounts: Entity<HitBrowser>,
     pub timeline: Entity<TimelineView>,
     pub correlation: Entity<CorrelationView>,
+    pub tasks: Entity<TasksView>,
     pub settings: Entity<SettingsView>,
 }
 
@@ -35,6 +37,7 @@ impl Screens {
             accounts: cx.new(|cx| HitBrowser::new(session.clone(), accounts::config(), window, cx)),
             timeline: cx.new(|cx| TimelineView::new(session.clone(), window, cx)),
             correlation: cx.new(|cx| CorrelationView::new(session.clone(), window, cx)),
+            tasks: cx.new(|cx| TasksView::new(session.clone(), cx)),
             settings: cx.new(|cx| SettingsView::new(session.clone(), window, cx)),
         };
         (screens, navigate)
@@ -48,6 +51,7 @@ impl Screens {
             Screen::Accounts => self.accounts.clone().into(),
             Screen::Timeline => self.timeline.clone().into(),
             Screen::Correlation => self.correlation.clone().into(),
+            Screen::Tasks => self.tasks.clone().into(),
             Screen::Settings => self.settings.clone().into(),
         }
     }

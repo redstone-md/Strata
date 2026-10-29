@@ -1,5 +1,5 @@
-//! The 44px command bar: case and disk count, search, the running job in words, and a 2px
-//! progress line along its bottom edge across the whole window.
+//! The 44px command bar: case and disk count, search, the running job in words (click it for
+//! Tasks), and a 2px progress line along its bottom edge across the whole window.
 
 use crate::format;
 use crate::session::Snapshot;
@@ -21,11 +21,12 @@ pub struct CommandBar {
     snapshot: Snapshot,
     search: Entity<InputState>,
     on_case: ClickHandler,
+    on_status: ClickHandler,
 }
 
 impl CommandBar {
-    pub fn new(case_name: String, snapshot: Snapshot, search: &Entity<InputState>, on_case: ClickHandler) -> Self {
-        Self { case_name, snapshot, search: search.clone(), on_case }
+    pub fn new(case_name: String, snapshot: Snapshot, search: &Entity<InputState>, on_case: ClickHandler, on_status: ClickHandler) -> Self {
+        Self { case_name, snapshot, search: search.clone(), on_case, on_status }
     }
 
     fn job_title(&self, job: &JobView) -> String {
@@ -37,13 +38,24 @@ impl CommandBar {
 
     fn status(&self) -> impl IntoElement {
         let t = tokens();
-        let line = h_flex().gap(px(14.)).justify_end().text_size(t.size_body).text_color(t.text_secondary);
+        let on_status = self.on_status.clone();
+        let line = h_flex()
+            .id("job-status")
+            .occlude()
+            .cursor_pointer()
+            .gap(px(14.))
+            .justify_end()
+            .text_size(t.size_body)
+            .text_color(t.text_secondary)
+            .hover(|s| s.text_color(t.text))
+            .on_click(move |e, w, cx| on_status(e, w, cx));
         let Some(job) = self.snapshot.running_job() else {
             let queued = self.snapshot.active_jobs().count() as u64;
             return line.child(if queued > 0 { format!("{} queued", format::count(queued, "job", "jobs")) } else { "Idle".into() });
         };
+        let state = if job.is_paused() { "paused".to_string() } else { format::percent(job.fraction()) };
         line.child(div().text_color(t.text).truncate().child(self.job_title(job)))
-            .child(div().text_color(t.emphasis).child(format::percent(job.fraction())))
+            .child(div().text_color(t.emphasis).child(state))
             .children(format::job_rate(job))
     }
 

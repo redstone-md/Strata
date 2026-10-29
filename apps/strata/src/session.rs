@@ -1,11 +1,12 @@
 //! The open case as seen by the UI: the [`Workbench`] plus a cached snapshot that views render
-//! from. Polls every 500 ms while background jobs run; idle polling costs one atomic check.
+//! from. Polls every 500 ms while background jobs run or the Tasks screen is open; idle
+//! polling costs one atomic check.
 
 use gpui::{Context, Task};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use strata_workbench::{AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobState, JobView, Workbench};
+use strata_workbench::{AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobState, JobView, LogLine, MonitorView, Workbench};
 
 const POLL: Duration = Duration::from_millis(500);
 
@@ -52,7 +53,7 @@ impl Snapshot {
 
     /// The job currently doing work, if any.
     pub fn running_job(&self) -> Option<&JobView> {
-        self.jobs.iter().find(|j| j.state == JobState::Running)
+        self.jobs.iter().find(|j| j.state == JobState::Running && j.foreign.is_none())
     }
 }
 
@@ -65,6 +66,9 @@ pub struct Session {
     /// Bumped whenever the case is switched, so views can rebuild their state.
     generation: u64,
     was_active: bool,
+    /// Resource history, refreshed while the Tasks screen is open or jobs run.
+    monitor: MonitorView,
+    tasks_visible: bool,
     _poll: Task<()>,
 }
 
@@ -82,7 +86,17 @@ impl Session {
                 }
             }
         });
-        let mut session = Self { workbench, snapshot: Snapshot::default(), error, show_raw: false, generation: 0, was_active: false, _poll: poll };
+        let mut session = Self {
+            workbench,
+            snapshot: Snapshot::default(),
+            error,
+            show_raw: false,
+            generation: 0,
+            was_active: false,
+            monitor: MonitorView::default(),
+            tasks_visible: false,
+            _poll: poll,
+        };
         session.reload();
         session
     }
@@ -126,10 +140,36 @@ impl Session {
         self.error.as_deref()
     }
 
+    pub fn monitor(&self) -> &MonitorView {
+        &self.monitor
+    }
+
+    pub fn job_log(&self, id: JobId) -> Vec<LogLine> {
+        self.workbench.job_log(id)
+    }
+
+    /// The Tasks screen opened or closed: sample resources only while someone looks.
+    pub fn set_tasks_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if visible == self.tasks_visible {
+            return;
+        }
+        self.tasks_visible = visible;
+        if visible {
+            self.workbench.monitor().watch();
+        } else {
+            self.workbench.monitor().unwatch();
+        }
+        self.refresh(cx);
+    }
+
     fn tick(&mut self, cx: &mut Context<Self>) {
         let active = self.workbench.has_active_jobs();
         if active || self.was_active {
             self.refresh(cx);
+        } else if self.tasks_visible {
+            self.monitor = self.workbench.monitor().view();
+            self.snapshot.jobs = self.workbench.jobs();
+            cx.notify();
         }
         self.was_active = active;
     }
@@ -168,6 +208,9 @@ impl Session {
         let mut balances: Vec<_> = checked.iter().filter(|b| b.ever_used()).cloned().collect();
         balances.sort_by(|a, b| b.balance_sat().cmp(&a.balance_sat()).then(b.tx_count.cmp(&a.tx_count)));
         self.snapshot = Snapshot { disks, counts, jobs, total_hits, balances, checked: Arc::new(checked) };
+        if self.tasks_visible || self.was_active {
+            self.monitor = wb.monitor().view();
+        }
     }
 
     pub fn add_evidence(&mut self, location: &str, cx: &mut Context<Self>) -> Result<(), String> {
@@ -193,6 +236,16 @@ impl Session {
         self.refresh(cx);
     }
 
+    pub fn pause(&mut self, job: JobId, cx: &mut Context<Self>) {
+        self.workbench.pause_job(job);
+        self.refresh(cx);
+    }
+
+    pub fn resume(&mut self, job: JobId, cx: &mut Context<Self>) {
+        self.workbench.resume_job(job);
+        self.refresh(cx);
+    }
+
     /// Cancel every queued or running job of one disk.
     pub fn cancel_disk(&mut self, id: EvidenceId, cx: &mut Context<Self>) {
         for job in self.snapshot.active_jobs().filter(|j| j.evidence == id) {
@@ -203,6 +256,10 @@ impl Session {
 
     pub fn switch_case(&mut self, dir: &Path, cx: &mut Context<Self>) -> Result<(), String> {
         let wb = Workbench::open(dir).map_err(|e| e.to_string())?;
+        if self.tasks_visible {
+            self.workbench.monitor().unwatch();
+            wb.monitor().watch();
+        }
         self.workbench = wb;
         self.generation += 1;
         self.error = None;

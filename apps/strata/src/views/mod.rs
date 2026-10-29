@@ -8,5 +8,6 @@ pub mod disks;
 pub mod hits;
 pub mod overview;
 pub mod settings;
+pub mod tasks;
 pub mod timeline;
 pub mod wallets;
