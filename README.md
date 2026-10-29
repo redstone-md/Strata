@@ -81,6 +81,14 @@ click instead of a week of editing offsets by hand.
 - Windows artefacts: LNK, Prefetch, Recycle Bin, `.evt` and `.evtx` logs.
 - Linux artefacts: shell history, GNOME recent files, wtmp/btmp, wallet data folders.
 - Mail and IM traces.
+
+**Mail**
+- Messages are read whole (headers, body as text, attachments) from Thunderbird and Linux mbox,
+  Opera `.mbs`, `.eml` files and Outlook Express `.dbx` folders, live and deleted, in UTF-8,
+  Windows-1251, KOI8-R, CP866 and the other single-byte charsets.
+- Messages of deleted mail files whose clusters are free are carved from free space, guided by
+  the disk index; a message found twice is listed once with every place it was found.
+- From an e-mail address on the Accounts screen, **Show mail** lists the messages involving it.
 - Damaged SQLite databases are walked page by page, and deleted rows are recovered from free
   pages.
 
@@ -138,9 +146,10 @@ The same pipeline from the command line:
 
 ```sh
 strata-cli -c D:\cases\laptop.strata add "E:\images\laptop.rdr"
-strata-cli -c D:\cases\laptop.strata analyse            # index, scan, artefacts, carve, unpack, balances
+strata-cli -c D:\cases\laptop.strata analyse            # index, scan, artefacts, mail, carve, unpack, balances
 strata-cli -c D:\cases\laptop.strata hits --category PrivateKey --group
 strata-cli -c D:\cases\laptop.strata timeline --crypto
+strata-cli -c D:\cases\laptop.strata mail --address owner@example.com
 strata-cli -c D:\cases\laptop.strata correlate
 strata-cli -c D:\cases\laptop.strata report html
 ```
@@ -168,6 +177,7 @@ A Cargo workspace where each crate is one bounded context. GUI and CLI talk only
 | `accounts` | Service catalogue, account detection and merging |
 | `leads` | The date analyser |
 | `artifacts`, `timeline` | Browser, registry, Windows, Linux and mail artefacts as timeline events |
+| `mail` | E-mail messages: MIME parsing, mbox, `.eml`, `.dbx`, carving from free space |
 | `chain` | Address balances and transaction history through Esplora |
 | `engine` | The single-pass scanner |
 | `case` | The case database (SQLite), attribution, cross-disk correlation |
