@@ -1,0 +1,18 @@
+[package]
+name = "strata-carve"
+description = "File carving from raw evidence using the identify type registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-source.workspace = true
+strata-identify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+memchr.workspace = true
+flate2 = "1.1"
+
+[dev-dependencies]
+serde_json.workspace = true

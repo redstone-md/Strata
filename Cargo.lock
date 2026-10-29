@@ -4762,6 +4762,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-carve"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "memchr",
+ "serde",
+ "serde_json",
+ "strata-identify",
+ "strata-kernel",
+ "strata-source",
+]
+
+[[package]]
 name = "strata-case"
 version = "0.1.0"
 dependencies = [
@@ -4840,6 +4853,18 @@ dependencies = [
  "strata-kernel",
  "strata-source",
  "strata-volume",
+]
+
+[[package]]
+name = "strata-identify"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "memchr",
+ "serde",
+ "serde_json",
+ "strata-kernel",
 ]
 
 [[package]]
