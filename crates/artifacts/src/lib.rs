@@ -2,6 +2,7 @@
 //! evidence bytes into timeline events, identities and host facts.
 
 mod browser;
+mod mail;
 mod pidl;
 mod registry;
 mod results;
