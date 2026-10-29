@@ -28,7 +28,7 @@ pub use attribution::{Attribution, EvidenceLayout, FileRef};
 pub use case::{Case, EvidenceRecord, SAVE_EVERY, ScanCommit};
 pub use jobs::{JobRecord, JobStamp};
 pub use writer::CaseWriter;
-pub use file_rows::{FileRow, FileTypes};
+pub use file_rows::{FileRow, FileTypes, TypeCount};
 pub use recheck::{RecheckRow, Verdict};
 pub use recovered::DELETED_PARTITION;
 pub use search_store::{SearchRecord, SearchResultRow};

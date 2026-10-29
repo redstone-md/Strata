@@ -20,13 +20,47 @@ pub struct FileRow {
     /// `Allocated`, `Deleted`, `Orphan`.
     pub state: String,
     /// Unix seconds.
+    pub created: Option<i64>,
+    /// Unix seconds.
     pub modified: Option<i64>,
+    /// Unix seconds.
+    pub accessed: Option<i64>,
     pub detected_type: Option<String>,
     pub extension_mismatch: bool,
 }
 
 /// Content type and renamed-extension flag per `(volume, file index)`.
 pub type FileTypes = HashMap<(u32, usize), (String, bool)>;
+
+/// How many files the classify step identified as one content type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TypeCount {
+    pub detected_type: String,
+    pub files: u64,
+    /// Of those, files whose extension does not match the content.
+    pub renamed: u64,
+}
+
+const ROW_COLUMNS: &str =
+    "evidence_id, volume_idx, file_idx, path, name, size, is_dir, state, created, modified, accessed, detected_type, extension_mismatch";
+
+fn file_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<FileRow> {
+    Ok(FileRow {
+        evidence: EvidenceId::new(r.get(0)?),
+        volume: r.get(1)?,
+        file_idx: r.get::<_, i64>(2)? as usize,
+        path: r.get(3)?,
+        name: r.get(4)?,
+        size: r.get::<_, i64>(5)? as u64,
+        is_dir: r.get(6)?,
+        state: r.get(7)?,
+        created: r.get(8)?,
+        modified: r.get(9)?,
+        accessed: r.get(10)?,
+        detected_type: r.get(11)?,
+        extension_mismatch: r.get(12)?,
+    })
+}
 
 /// SQL condition for a name pattern: `*`/`?` make it a glob over the whole name, otherwise
 /// it matches anywhere in the name. ASCII letters match in any case.
@@ -45,26 +79,40 @@ impl Case {
     pub fn find_files_by_name(&self, pattern: &str, evidence: Option<EvidenceId>, limit: usize) -> Result<Vec<FileRow>> {
         let (condition, value) = name_condition(pattern.trim());
         let sql = format!(
-            "SELECT evidence_id, volume_idx, file_idx, path, name, size, is_dir, state, modified, detected_type, extension_mismatch
-             FROM files WHERE {condition} AND (?2 IS NULL OR evidence_id = ?2)
+            "SELECT {ROW_COLUMNS} FROM files WHERE {condition} AND (?2 IS NULL OR evidence_id = ?2)
              ORDER BY state = 'Allocated', evidence_id, path LIMIT ?3"
         );
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(params![value, evidence.map(|e| e.get()), limit.max(1) as i64], |r| {
-                Ok(FileRow {
-                    evidence: EvidenceId::new(r.get(0)?),
-                    volume: r.get(1)?,
-                    file_idx: r.get::<_, i64>(2)? as usize,
-                    path: r.get(3)?,
-                    name: r.get(4)?,
-                    size: r.get::<_, i64>(5)? as u64,
-                    is_dir: r.get(6)?,
-                    state: r.get(7)?,
-                    modified: r.get(8)?,
-                    detected_type: r.get(9)?,
-                    extension_mismatch: r.get(10)?,
-                })
+            let rows = stmt.query_map(params![value, evidence.map(|e| e.get()), limit.max(1) as i64], file_row)?;
+            rows.collect()
+        })
+    }
+
+    /// Files whose content does not match their extension (an archive named `.jpg`), on every
+    /// disk or one, a page at a time.
+    pub fn renamed_files(&self, evidence: Option<EvidenceId>, offset: usize, limit: usize) -> Result<Vec<FileRow>> {
+        let sql = format!(
+            "SELECT {ROW_COLUMNS} FROM files WHERE extension_mismatch = 1 AND (?1 IS NULL OR evidence_id = ?1)
+             ORDER BY evidence_id, path LIMIT ?2 OFFSET ?3"
+        );
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params![evidence.map(|e| e.get()), limit.max(1) as i64, offset as i64], file_row)?;
+            rows.collect()
+        })
+    }
+
+    /// Files per content type from the classify step, most common first.
+    pub fn type_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<TypeCount>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT detected_type, COUNT(*), SUM(extension_mismatch) FROM files
+                 WHERE detected_type IS NOT NULL AND (?1 IS NULL OR evidence_id = ?1)
+                 GROUP BY detected_type ORDER BY 2 DESC, 1",
+            )?;
+            let rows = stmt.query_map([evidence.map(|e| e.get())], |r| {
+                Ok(TypeCount { detected_type: r.get(0)?, files: r.get::<_, i64>(1)? as u64, renamed: r.get::<_, i64>(2)? as u64 })
             })?;
             rows.collect()
         })

@@ -10,7 +10,7 @@ use crate::steps::search::SearchCursor;
 use crate::workbench::Workbench;
 use std::path::PathBuf;
 use std::sync::Arc;
-use strata_case::{EvidenceRecord, FileRow, FileTypes, SearchRecord, SearchResultRow, StoredHit};
+use strata_case::{EvidenceRecord, FileRow, FileTypes, SearchRecord, SearchResultRow, StoredHit, TypeCount};
 use strata_fs::FileId;
 use strata_kernel::{Error, EvidenceId, Result};
 use strata_search::{SearchMatcher, SearchQuery};
@@ -62,6 +62,16 @@ impl Workbench {
     /// File entries (deleted and orphaned included) whose name matches; `*`/`?` glob.
     pub fn find_files_by_name(&self, pattern: &str, evidence: Option<EvidenceId>, limit: usize) -> Result<Vec<FileRow>> {
         self.case().find_files_by_name(pattern, evidence, limit)
+    }
+
+    /// Files whose content does not match their extension, on every disk or one.
+    pub fn renamed_files(&self, evidence: Option<EvidenceId>, offset: usize, limit: usize) -> Result<Vec<FileRow>> {
+        self.case().renamed_files(evidence, offset, limit)
+    }
+
+    /// Files per content type from the classify step, most common first.
+    pub fn type_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<TypeCount>> {
+        self.case().type_counts(evidence)
     }
 
     /// Content types from the classify step, for [`Workbench::list_files`].

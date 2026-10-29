@@ -20,7 +20,7 @@ pub use disk_index::{DiskIndexView, ScnImport};
 pub use sector_map::{SectorCell, SectorMap};
 pub use workbench::Workbench;
 pub use explore::{DirNode, FileFilter, FileListQuery, FileListing, FileView};
-pub use strata_case::{FileRow, FileTypes, SearchRecord, SearchResultRow};
+pub use strata_case::{FileRow, FileTypes, SearchRecord, SearchResultRow, TypeCount};
 pub use strata_fs::EntryState as FileEntryState;
 pub use strata_identify::Category as TypeCategory;
 pub use strata_volume::VolumeOrigin;
