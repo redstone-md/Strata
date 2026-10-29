@@ -1,0 +1,10 @@
+[package]
+name = "strata-timeline"
+description = "Timeline domain: dated events from artefacts and filesystems, histograms, bursts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+serde.workspace = true

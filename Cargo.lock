@@ -4764,6 +4764,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-timeline"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "strata-kernel",
+]
+
+[[package]]
 name = "strata-volume"
 version = "0.1.0"
 dependencies = [
