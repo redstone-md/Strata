@@ -4,7 +4,7 @@
 
 use super::context::{Context, CONTEXT_RADIUS};
 use super::report::{hit, key_details, with};
-use super::text::{RunScanner, ASCII_UTF16LE, HEX};
+use super::text::{Encoding, RunScanner, ASCII_UTF16LE, HEX};
 use crate::keys::{Network, PrivateKey};
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder};
 use serde_json::json;
@@ -26,6 +26,11 @@ const HASH_LABEL_LOOKBACK: usize = 16;
 const HEX_BLOCK_CONFIDENCE: f32 = 0.15;
 /// How far to look for the neighbouring lines.
 const LINE_LOOKAROUND: usize = 512;
+/// Bytes on each side checked for a binary surrounding.
+const BINARY_LOOKAROUND: usize = 64;
+/// Share of non-text bytes around a run that marks it as a string constant inside a binary
+/// (a library, an executable, its deleted copy in free space) rather than written text.
+const BINARY_SHARE: f32 = 0.25;
 
 /// Published constants that are valid scalars but never anyone's key: curve parameters
 /// shipped in every crypto library and well-known hashes (lower case).
@@ -91,6 +96,19 @@ impl HexKeyDetector {
         chunk.get(lo..start).is_some_and(|w| HASH_AC.is_match(w))
     }
 
+    /// The run sits inside binary data: a C string constant in a library or executable (test
+    /// vectors and curve parameters in crypto libraries), not something a person wrote down.
+    fn in_binary(chunk: &[u8], start: usize, end: usize) -> bool {
+        let before = &chunk[start.saturating_sub(BINARY_LOOKAROUND)..start];
+        let after = &chunk[end..(end + BINARY_LOOKAROUND).min(chunk.len())];
+        let total = before.len() + after.len();
+        if total == 0 {
+            return false;
+        }
+        let binary = before.iter().chain(after).filter(|b| !(b.is_ascii_graphic() || b.is_ascii_whitespace())).count();
+        binary as f32 / total as f32 > BINARY_SHARE
+    }
+
     /// The line before or after is hex too: the run is one row of a hex block.
     fn in_hex_block(chunk: &[u8], start: usize, end: usize) -> bool {
         fn hex_row(line: &[u8]) -> bool {
@@ -146,7 +164,8 @@ impl Detector for HexKeyDetector {
                 return;
             }
             let Some(mut confidence) = Self::confidence(&ctx) else { return };
-            if !ctx.strong() && Self::in_hex_block(chunk, run.start, end) {
+            let ascii = matches!(run.encoding, Encoding::Ascii);
+            if !ctx.strong() && (Self::in_hex_block(chunk, run.start, end) || ascii && Self::in_binary(chunk, run.start, end)) {
                 confidence = Confidence::new(HEX_BLOCK_CONFIDENCE);
             }
             let details = with(
@@ -204,5 +223,27 @@ mod context_tests {
         let alone = scan(&format!("my notes\n{KEY}\nend\n"));
         assert_eq!(alone.len(), 1);
         assert!(alone[0].confidence.get() > HEX_BLOCK_CONFIDENCE);
+    }
+}
+
+#[cfg(test)]
+mod binary_tests {
+    use super::*;
+    use strata_kernel::scan::Hit;
+
+    const KEY: &str = "0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d";
+
+    #[test]
+    fn string_constants_in_binaries_are_noise() {
+        let mut lib = vec![0x7fu8, b'E', b'L', b'F'];
+        lib.extend((0..64u8).map(|i| i.wrapping_mul(37)));
+        lib.extend(b" gcry_pk_testkey secret key ");
+        lib.extend(KEY.as_bytes());
+        lib.push(0);
+        lib.extend((0..64u8).map(|i| i.wrapping_mul(91) | 0x80));
+        let mut hits: Vec<Hit> = Vec::new();
+        HexKeyDetector::default().scan(&lib, 0, &mut hits);
+        assert_eq!(hits.len(), 1, "a wallet word nearby still reports it");
+        assert!(hits[0].confidence.get() <= HEX_BLOCK_CONFIDENCE + f32::EPSILON, "{hits:?}");
     }
 }

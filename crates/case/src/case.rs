@@ -328,6 +328,19 @@ impl Case {
         self.with_write(|conn| conn.execute(&sql, params![id.get(), factor]))
     }
 
+    /// Lower the confidence of raw hex "keys" whose value occurs at least `min_copies` times in
+    /// the case: string constants of crypto libraries copied all over a disk (and into its
+    /// free space), not a key someone saved. Tagged `repeated constant`; idempotent.
+    pub fn downgrade_repeated_constants(&self, id: EvidenceId, min_copies: u32, factor: f32) -> Result<usize> {
+        let details = "CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{}' END";
+        let sql = format!(
+            "UPDATE hits SET confidence = confidence * ?2, details = json_set({details}, '$.triage', 'repeated constant')
+             WHERE evidence_id = ?1 AND detector = 'crypto.hex_key' AND json_extract({details}, '$.triage') IS NULL
+               AND value IN (SELECT value FROM hits WHERE detector = 'crypto.hex_key' GROUP BY value HAVING COUNT(*) + SUM(repeats) >= ?3)"
+        );
+        self.with_write(|conn| conn.execute(&sql, params![id.get(), factor, min_copies]))
+    }
+
     /// Recompute volume/file attribution of stored raw-scan hits (after parser upgrades),
     /// without rescanning. File-level hits (wallet files, artefacts, archive members) keep theirs.
     pub fn reattribute(&self, id: EvidenceId) -> Result<usize> {

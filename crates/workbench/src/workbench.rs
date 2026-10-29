@@ -26,7 +26,7 @@ impl Workbench {
     /// Version of the detector and triage rules stored findings were made with. Bump it when
     /// a rule change alters what is a finding or adds a step older cases lack; older cases
     /// catch up on open (see [`Workbench::recheck_if_rules_changed`]).
-    pub const RULES_VERSION: u32 = 4;
+    pub const RULES_VERSION: u32 = 5;
     /// Findings below this confidence are noise: hashes, rows of hex blocks, prose that happens
     /// to pass a checksum, matches inside system files. Lists hide them unless asked.
     pub const NOISE_FLOOR: f32 = 0.2;

@@ -38,11 +38,10 @@ impl Workbench {
         for disk in self.case.evidence()? {
             let mut kinds = Vec::new();
             let scanned = self.case.scan_state(disk.id)?.is_some();
-            if stored < 2 && scanned {
+            // Detector rules changed in versions 2 and 5; Recheck also tidies (repeat cap and
+            // triage, changed in 4).
+            if stored < 5 && scanned {
                 kinds.push(JobKind::Recheck);
-            } else if stored < 4 && scanned {
-                // Recheck tidies too; otherwise only the repeat cap and triage changed.
-                kinds.push(JobKind::Tidy);
             }
             if stored < 3 && self.case.has_files(disk.id)? {
                 kinds.push(JobKind::Mail);
