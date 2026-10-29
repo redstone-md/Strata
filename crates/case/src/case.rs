@@ -397,10 +397,9 @@ impl Case {
     /// `bitcoin wallet backup.txt`, `ключ.txt`) to at least `floor`: a bare hex line or seed is
     /// noise anywhere else but not there. System files are left alone. Tagged; idempotent.
     pub fn promote_wallet_named_files(&self, id: EvidenceId, floor: f32) -> Result<usize> {
-        const WORDS: &[&str] = &["wallet", "priv", "bitcoin", "btc", "seed", "mnemonic", "backup", "ключ", "кошел", "биткоин"];
         let details = "CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{}' END";
         let name = "lower(replace(file_path, rtrim(file_path, replace(file_path, '/', '')), ''))";
-        let named: Vec<String> = WORDS.iter().map(|w| format!("{name} LIKE '%{w}%'")).collect();
+        let named: Vec<String> = strata_crypto::WalletFileName::name_words().map(|w| format!("{name} LIKE '%{w}%'")).collect();
         let sql = format!(
             "UPDATE hits SET confidence = MAX(confidence, ?2), details = json_set({details}, '$.triage', 'file named like a key backup')
              WHERE evidence_id = ?1 AND category IN ('PrivateKey','ExtendedKey','Mnemonic') AND confidence < ?2

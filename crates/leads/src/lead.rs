@@ -14,6 +14,8 @@ pub enum LeadRule {
     AccountCheck,
     /// A burst of crypto activity with no wallet or key from that time found.
     ActivityWithoutWallet,
+    /// The traces of a wallet file and where it went (built by the trails context).
+    WalletTrail,
 }
 
 impl LeadRule {
@@ -24,6 +26,7 @@ impl LeadRule {
             Self::SecretAfterInstall => "Secret after wallet install",
             Self::AccountCheck => "Account to check",
             Self::ActivityWithoutWallet => "Activity without a wallet",
+            Self::WalletTrail => "Wallet trail",
         }
     }
 }

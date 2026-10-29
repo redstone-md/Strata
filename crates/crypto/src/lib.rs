@@ -9,4 +9,4 @@ pub use detectors::{detectors, detectors_with};
 pub use keys::bip32::{DerivationPlan, ExtendedKey};
 pub use keys::mnemonic::{Bip39Mnemonic, ElectrumSeed};
 pub use keys::{Address, AddressSet, Network, PrivateKey, ScriptType, Wif};
-pub use wallets::{analyze as analyze_wallet, WalletKind, WalletReport};
+pub use wallets::{analyze as analyze_wallet, WalletFileName, WalletKind, WalletNameKind, WalletReport};

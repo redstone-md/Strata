@@ -6335,6 +6335,7 @@ dependencies = [
  "serde_json",
  "strata-accounts",
  "strata-chain",
+ "strata-crypto",
  "strata-engine",
  "strata-fs",
  "strata-graph",
@@ -6343,6 +6344,7 @@ dependencies = [
  "strata-mail",
  "strata-source",
  "strata-timeline",
+ "strata-trails",
  "strata-volume",
  "tempfile",
 ]
@@ -6477,6 +6479,7 @@ dependencies = [
  "serde_json",
  "strata-accounts",
  "strata-chain",
+ "strata-crypto",
  "strata-kernel",
  "strata-timeline",
 ]
@@ -6568,6 +6571,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-trails"
+version = "0.0.7"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strata-accounts",
+ "strata-crypto",
+ "strata-kernel",
+ "strata-leads",
+ "strata-timeline",
+]
+
+[[package]]
 name = "strata-volume"
 version = "0.0.7"
 dependencies = [
@@ -6607,6 +6623,7 @@ dependencies = [
  "strata-search",
  "strata-source",
  "strata-timeline",
+ "strata-trails",
  "strata-volume",
  "sysinfo 0.38.4",
  "tempfile",

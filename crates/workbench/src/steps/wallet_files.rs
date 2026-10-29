@@ -25,14 +25,7 @@ impl<'a, 'c> WalletFileAnalyzer<'a, 'c> {
         if e.is_dir || e.size == 0 || e.size > MAX_WALLET_BYTES {
             return false;
         }
-        let name = e.name.to_ascii_lowercase();
-        let path = e.path.to_ascii_lowercase();
-        name.contains("wallet")
-            || name.ends_with(".key")
-            || name.ends_with(".dat") && (path.contains("bitcoin") || path.contains("litecoin"))
-            || path.contains("electrum") && path.contains("wallets")
-            || path.contains("multibit")
-            || path.contains("armory")
+        strata_crypto::WalletFileName::is_parse_candidate(&e.path, &e.name)
     }
 
     /// Wallet files of the evidence, parsed whole, as findings to store.

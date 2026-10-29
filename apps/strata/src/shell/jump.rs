@@ -17,6 +17,10 @@ impl Shell {
                 self.screens.connections.update(cx, |v, cx| v.show(to.clone(), cx));
                 self.navigate(Navigate::to(Screen::Connections), cx);
             }
+            Jump::File { evidence, volume, name } => {
+                self.screens.files.update(cx, |f, cx| f.reveal(*evidence, *volume, name, window, cx));
+                self.navigate(Navigate::to(Screen::Files), cx);
+            }
             Jump::Search { screen, text } => {
                 self.search.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
                 self.navigate(Navigate::to(*screen), cx);

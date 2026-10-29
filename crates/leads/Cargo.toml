@@ -10,5 +10,6 @@ strata-kernel.workspace = true
 strata-timeline = { path = "../timeline" }
 strata-accounts = { path = "../accounts" }
 strata-chain = { path = "../chain" }
+strata-crypto = { path = "../crypto" }
 serde.workspace = true
 serde_json.workspace = true

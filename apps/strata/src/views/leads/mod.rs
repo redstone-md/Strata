@@ -1,13 +1,16 @@
 //! Leads: ranked hypotheses of where coins and keys may be ("what may fit where"), each with
-//! the facts behind it and links to the findings, days and accounts it rests on.
+//! the facts behind it and links to the findings, days and accounts it rests on. A second
+//! page lists wallet trails: where each wallet file went and the evidence chain behind it.
 
 mod detail;
+mod trail_detail;
+mod trails;
 
 use crate::format;
 use crate::nav::Jump;
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::{Cell, TextButton, TextTable, flat_table, quiet};
+use crate::widgets::{Cell, Choice, TextButton, TextTable, flat_table, quiet};
 use detail::{LeadDetail, LinkedItems};
 use gpui::{
     AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window,
@@ -17,6 +20,11 @@ use gpui_component::table::{TableEvent, TableState};
 use gpui_component::{h_flex, v_flex};
 use std::rc::Rc;
 use strata_workbench::{Lead, Timestamp};
+use trails::TrailsView;
+
+/// Pages of the screen.
+const PAGES: [&str; 2] = ["Ranked", "Wallet trails"];
+const TRAILS_PAGE: usize = 1;
 
 pub struct LeadsView {
     session: Entity<Session>,
@@ -31,6 +39,8 @@ pub struct LeadsView {
     was_active: bool,
     /// The period of interest the list was last filled with.
     period: strata_workbench::Period,
+    trails: Entity<TrailsView>,
+    page: usize,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -71,6 +81,9 @@ impl LeadsView {
             }),
             cx.observe(&session, |this, _, cx| this.on_session_changed(cx)),
         ];
+        let trails = cx.new(|cx| TrailsView::new(session.clone(), window, cx));
+        let mut subscriptions = subscriptions;
+        subscriptions.push(cx.subscribe(&trails, |_, _, jump: &Jump, cx| cx.emit(jump.clone())));
         let generation = session.read(cx).generation();
         let mut this = Self {
             session,
@@ -83,6 +96,8 @@ impl LeadsView {
             generation,
             was_active: false,
             period: strata_workbench::Period::ALL,
+            trails,
+            page: 0,
             _subscriptions: subscriptions,
         };
         this.reload(cx);
@@ -106,7 +121,16 @@ impl LeadsView {
 
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
         self.search = text.trim().to_lowercase();
+        self.trails.update(cx, |v, cx| v.set_search(text, cx));
         self.fill(cx);
+    }
+
+    fn show_page(&mut self, page: usize, cx: &mut Context<Self>) {
+        self.page = page;
+        if page == TRAILS_PAGE {
+            self.trails.update(cx, |v, cx| v.ensure_loaded(cx));
+        }
+        cx.notify();
     }
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {
@@ -201,23 +225,34 @@ impl LeadsView {
             format!("{shown} of {}", format::count(self.leads.len() as u64, "lead", "leads"))
         };
         let note = self.busy.map(|b| format!("{b}…")).or_else(|| self.status.clone());
+        let this = cx.entity().downgrade();
+        let pages = Choice::new("leads-page", PAGES.iter().map(|p| SharedString::from(*p)).collect(), self.page, move |i, _, cx| {
+            let _ = this.update(cx, |v, cx| v.show_page(i, cx));
+        });
+        let ranked = self.page != TRAILS_PAGE;
         h_flex()
             .h(px(32.))
             .gap(px(16.))
             .items_center()
             .text_size(t.size_body)
             .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).child("Leads"))
-            .child(div().text_color(t.text_secondary).child(count))
-            .children(note.map(|n| quiet().child(n)))
-            .child(div().flex_1())
-            .child(TextButton::new("leads-fetch", "Fetch chain history").on_click(cx.listener(|this, _, _, cx| this.fetch(cx))))
-            .child(TextButton::new("leads-rebuild", "Rebuild").on_click(cx.listener(|this, _, _, cx| this.rebuild(cx))))
+            .child(pages)
+            .when(ranked, |el| {
+                el.child(div().text_color(t.text_secondary).child(count))
+                    .children(note.map(|n| quiet().child(n)))
+                    .child(div().flex_1())
+                    .child(TextButton::new("leads-fetch", "Fetch chain history").on_click(cx.listener(|this, _, _, cx| this.fetch(cx))))
+                    .child(TextButton::new("leads-rebuild", "Rebuild").on_click(cx.listener(|this, _, _, cx| this.rebuild(cx))))
+            })
     }
 }
 
 impl Render for LeadsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = tokens();
+        if self.page == TRAILS_PAGE {
+            return v_flex().size_full().gap(px(12.)).child(self.header(cx)).child(div().flex_1().min_h_0().size_full().child(self.trails.clone())).into_any_element();
+        }
         let detail = self.selected.clone().map(|(lead, items)| {
             let this = cx.entity().downgrade();
             let jump_to = this.clone();
@@ -245,5 +280,6 @@ impl Render for LeadsView {
                     .child(div().flex_1().min_h_0().size_full().child(flat_table(&self.table))),
             )
             .when_some(detail, |el, d| el.child(d))
+            .into_any_element()
     }
 }
