@@ -48,6 +48,8 @@ pub enum Jump {
     Search { screen: Screen, text: String },
     /// The connection map, centred on an entity.
     Connections(ConnectTo),
+    /// The Files screen on one volume, listing the entries with this name.
+    File { evidence: EvidenceId, volume: u32, name: String },
 }
 
 /// What the connection map centres on when another screen links to it.

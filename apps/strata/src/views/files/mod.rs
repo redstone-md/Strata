@@ -149,6 +149,12 @@ impl FilesView {
         self.open_place(NodeKey::Volume(evidence, volume), cx);
     }
 
+    /// Open a volume listing every entry named `name` (from a wallet trail step).
+    pub fn reveal(&mut self, evidence: EvidenceId, volume: u32, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.name.update(cx, |i, cx| i.set_value(name.to_string(), window, cx));
+        self.open_volume(evidence, volume, cx);
+    }
+
     fn pick_node(&mut self, key: NodeKey, cx: &mut Context<Self>) {
         match key {
             NodeKey::Disk(_) => {

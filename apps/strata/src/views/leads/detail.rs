@@ -30,7 +30,36 @@ impl LinkedItems {
     }
 }
 
-type JumpHandler = Rc<dyn Fn(Jump, &mut Window, &mut App)>;
+pub(super) type JumpHandler = Rc<dyn Fn(Jump, &mut Window, &mut App)>;
+
+/// One linked item of a side panel: a small caption, the value, and a link button when there
+/// is somewhere to go.
+pub(super) fn linked_row(on_jump: &JumpHandler, id: impl Into<ElementId>, caption: String, value: String, data: bool, link: Option<(&'static str, Jump)>) -> impl IntoElement {
+    let t = tokens();
+    let value = div().text_size(t.size_body).text_color(t.text).truncate().child(value);
+    let on_jump = on_jump.clone();
+    h_flex()
+        .gap(px(12.))
+        .py(px(6.))
+        .items_center()
+        .border_b_1()
+        .border_color(t.row_rule)
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(2.))
+                .child(div().text_size(t.size_small).text_color(t.text_secondary).truncate().child(caption))
+                .child(if data { value.font_family(t.font_data) } else { value }),
+        )
+        .children(link.map(|(label, jump)| TextButton::new(id, label).on_click(move |_, w, cx| on_jump(jump.clone(), w, cx))))
+}
+
+/// Small secondary heading over a group of rows.
+pub(super) fn panel_section(title: &'static str) -> impl IntoElement {
+    let t = tokens();
+    div().pt(px(16.)).pb(px(4.)).text_size(t.size_small).text_color(t.text_secondary).child(title)
+}
 
 #[derive(IntoElement)]
 pub struct LeadDetail {
@@ -54,29 +83,11 @@ impl LeadDetail {
 
     /// One linked item: a small caption, the value, and a link button.
     fn row(&self, id: impl Into<ElementId>, caption: String, value: String, data: bool, link: &'static str, jump: Jump) -> impl IntoElement {
-        let t = tokens();
-        let on_jump = self.on_jump.clone();
-        let value = div().text_size(t.size_body).text_color(t.text).truncate().child(value);
-        h_flex()
-            .gap(px(12.))
-            .py(px(6.))
-            .items_center()
-            .border_b_1()
-            .border_color(t.row_rule)
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(2.))
-                    .child(div().text_size(t.size_small).text_color(t.text_secondary).truncate().child(caption))
-                    .child(if data { value.font_family(t.font_data) } else { value }),
-            )
-            .child(TextButton::new(id, link).on_click(move |_, w, cx| on_jump(jump.clone(), w, cx)))
+        linked_row(&self.on_jump, id, caption, value, data, Some((link, jump)))
     }
 
     fn section(title: &'static str) -> impl IntoElement {
-        let t = tokens();
-        div().pt(px(16.)).pb(px(4.)).text_size(t.size_small).text_color(t.text_secondary).child(title)
+        panel_section(title)
     }
 
     fn linked(&self) -> Vec<gpui::AnyElement> {
