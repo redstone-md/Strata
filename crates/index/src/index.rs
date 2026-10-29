@@ -167,7 +167,7 @@ impl DiskIndex {
 
     /// Fold `other` (same geometry) into this index. Our own content wins over seeded
     /// content, known content over unscanned; flags are combined and ownership keeps the
-    /// most interesting owner.
+    /// most interesting owner (see [`Ownership`]).
     pub fn merge(&mut self, other: &DiskIndex) -> Result<()> {
         if other.block_size != self.block_size || other.disk_len != self.disk_len {
             return Err(Error::Other("disk index merge: different geometry".into()));

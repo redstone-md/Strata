@@ -6,7 +6,7 @@
 //! bits 5-8   entropy bucket     (0..=15, half-bit steps of bits/byte)
 //! bit  9     has a file signature starting in the block
 //! bit  10    has a finding (key, wallet, seed, address, identity)
-//! bits 11-13 ownership          (Unknown, LiveFile, DeletedFile, Unallocated, OutsideVolumes)
+//! bits 11-13 ownership          (Unknown, LiveFile, Unallocated, DeletedFile, OutsideVolumes)
 //! bit  14    has a recognised boot sector / superblock
 //! bit  15    seeded             (content class came from an imported scan, not our own pass)
 //! ```
@@ -66,21 +66,22 @@ impl TextKind {
 }
 
 /// Who the block belongs to according to the parsed filesystems. When a block is shared, the
-/// most interesting owner wins (outside volumes > unallocated > deleted file > live file), so
-/// "live file" always means the whole block is allocated to live files.
+/// most interesting owner wins (outside volumes > deleted file > unallocated > live file), so
+/// "live file" always means the whole block is allocated. A deleted file's block is
+/// unallocated space a deleted entry still points to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ownership {
     Unknown = 0,
     LiveFile = 1,
-    DeletedFile = 2,
-    Unallocated = 3,
+    Unallocated = 2,
+    DeletedFile = 3,
     OutsideVolumes = 4,
 }
 
 impl Ownership {
     pub const ALL: [Ownership; 5] =
-        [Ownership::Unknown, Ownership::LiveFile, Ownership::DeletedFile, Ownership::Unallocated, Ownership::OutsideVolumes];
+        [Ownership::Unknown, Ownership::LiveFile, Ownership::Unallocated, Ownership::DeletedFile, Ownership::OutsideVolumes];
 
     fn from_bits(v: u16) -> Self {
         Self::ALL.get(usize::from(v)).copied().unwrap_or(Ownership::Unknown)
