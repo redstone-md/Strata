@@ -3,6 +3,7 @@
 use crate::configs::{MinerConfig, MozillaPrefs, OeAccount};
 use crate::browser::{self, FirefoxLogins, IndexDat, OperaGlobalHistory, OperaTypedHistory};
 use crate::mail::{Dbx, Mailbox};
+use strata_mail::Container;
 use crate::registry::{self, RegistryHive};
 use crate::results::{ArtifactResults, Recorder};
 use crate::linux::{RecentlyUsed, ShellHistory, WalletDir, Wtmp};
@@ -65,6 +66,7 @@ impl ArtifactKind {
         let name = p.rsplit('/').next().unwrap_or("");
         let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
         let under = |dir: &str| p.contains(dir);
+        let mail = Container::by_name(&p);
         Some(match name {
             n if CHROMIUM_DBS.contains(&n) && CHROMIUM_DIRS.iter().any(|d| under(d)) => Self::BrowserSqlite,
             n if FIREFOX_DBS.contains(&n) => Self::BrowserSqlite,
@@ -81,9 +83,8 @@ impl ArtifactKind {
             _ if ext == "pf" && under("/prefetch/") => Self::Prefetch,
             _ if ext == "evt" => Self::EventLog,
             _ if ext == "evtx" => Self::Evtx,
-            _ if ext == "dbx" => Self::OutlookDbx,
-            _ if matches!(ext, "eml" | "mbx" | "mbox") => Self::Mailbox,
-            _ if ext.is_empty() && ((under("/thunderbird/profiles/") || under("/.thunderbird/")) && (under("/mail/") || under("/imapmail/"))) => Self::Mailbox,
+            _ if mail == Some(Container::Dbx) => Self::OutlookDbx,
+            _ if mail.is_some() => Self::Mailbox,
             ".bash_history" | ".zsh_history" | ".history" | ".sh_history" => Self::ShellHistory,
             "recently-used.xbel" | ".recently-used.xbel" => Self::RecentlyUsed,
             n if (n == "wtmp" || n.starts_with("wtmp.")) && under("/var/log/") => Self::Wtmp,

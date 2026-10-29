@@ -58,30 +58,6 @@ fn tz_offset(tz: &str) -> Option<i64> {
     Some(sign * (h * 3600 + m * 60))
 }
 
-const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-
-/// RFC 2822 mail date: `Sat, 14 May 2011 17:36:09 +0400` (weekday optional).
-pub fn parse_rfc2822(s: &str) -> Option<Timestamp> {
-    let s = s.split_once(',').map_or(s, |(_, r)| r);
-    let mut it = s.split_whitespace();
-    let d = num(it.next()?)?;
-    let mon = it.next()?.to_ascii_lowercase();
-    let mo = MONTHS.iter().position(|m| mon.starts_with(m))? as u32 + 1;
-    let mut y = i64::from(num(it.next()?)?);
-    if y < 100 {
-        y += if y < 70 { 2000 } else { 1900 };
-    }
-    let mut hms = it.next()?.split(':');
-    let h = num(hms.next()?)?;
-    let mi = num(hms.next()?)?;
-    let sec = hms.next().and_then(num).unwrap_or(0);
-    let base = civil(y, mo, d, h, mi, sec)?;
-    match it.next() {
-        Some(tz) if tz.starts_with('+') || tz.starts_with('-') => shift(base, tz_offset(tz)?),
-        _ => Some(base),
-    }
-}
-
 /// ROT13 over ASCII letters (UserAssist value names).
 pub fn rot13(s: &str) -> String {
     s.chars()
@@ -175,9 +151,8 @@ mod tests {
         assert_eq!(parse_iso8601("2012-01-31T19:57:06.890Z").unwrap().to_string(), "2012-01-31 19:57:06");
         assert_eq!(parse_iso8601("2012-01-31T22:57:06+03:00").unwrap().to_string(), "2012-01-31 19:57:06");
         assert_eq!(parse_iso8601("20110514").unwrap().to_string(), "2011-05-14 00:00:00");
-        assert_eq!(parse_rfc2822("Sat, 14 May 2011 21:36:09 +0400").unwrap().to_string(), "2011-05-14 17:36:09");
         for bad in ["", "2011", "2011-13-40T99:99:99", "Sat, 99 Foo 2011", "\u{0430}\u{0431}\u{0432}\u{0433}-01"] {
-            assert!(parse_iso8601(bad).is_none() && parse_rfc2822(bad).is_none(), "{bad}");
+            assert!(parse_iso8601(bad).is_none(), "{bad}");
         }
     }
 
