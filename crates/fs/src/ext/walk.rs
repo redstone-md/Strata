@@ -207,9 +207,9 @@ impl<'r, 'a> Walker<'r, 'a> {
         let mut mapping = Mapping::default();
         if resident.is_none() {
             if deleted && !inode.has_pointers() {
-                if let Some((seq, copy)) = self.journal.get(inode.ino()) {
+                if let Some((_, copy)) = self.journal.get(inode.ino()) {
                     source = copy;
-                    damage.push(Damage::missing(None, format!("content pointers recovered from journal (transaction {seq})")));
+                    damage.push(Damage::missing(None, "content pointers recovered from an older journal copy of the inode"));
                 } else {
                     let when = inode.dtime().map(|t| format!(" on {t}")).unwrap_or_default();
                     damage.push(Damage::missing(None, format!("content pointers wiped (ext3/4 delete){when}")));
