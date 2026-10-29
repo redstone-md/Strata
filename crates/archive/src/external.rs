@@ -62,6 +62,13 @@ impl SevenZipTool {
         let mut c = Command::new(&self.exe);
         // An explicit empty password keeps 7-Zip from prompting on encrypted archives.
         c.args(args).arg("-sccUTF-8").arg("-p").arg("-y").arg(archive).stdin(Stdio::null()).stderr(Stdio::null());
+        // The GUI has no console, so Windows would open a terminal window for every call.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            c.creation_flags(CREATE_NO_WINDOW);
+        }
         c
     }
 
