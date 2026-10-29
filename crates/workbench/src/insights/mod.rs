@@ -30,7 +30,10 @@ impl<'a> Insights<'a> {
         let accounts = AccountsBuilder::build(self.case, &events)?;
         let stored_accounts = self.case.replace_accounts(&accounts)?;
         let inputs = LeadInputs { keys: self.case.key_findings(MIN_KEY_CONFIDENCE)?, histories: self.case.histories()?, events, accounts };
-        let leads = LeadEngine::new().run(&inputs);
+        let mut leads = LeadEngine::new().run(&inputs);
+        // Wallet trails rank among the leads; the trails screen lists them all.
+        leads.extend(crate::trails::leads(&crate::trails::build(self.case)?));
+        leads.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.id.cmp(&b.id)));
         Ok((stored_accounts, self.case.replace_leads(&leads)?))
     }
 

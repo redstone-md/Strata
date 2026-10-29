@@ -1,0 +1,15 @@
+[package]
+name = "strata-trails"
+description = "Wallet trails: every trace that a wallet file existed, linked across disks into the fate of that file and the evidence chain behind it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-crypto.workspace = true
+strata-timeline = { path = "../timeline" }
+strata-accounts = { path = "../accounts" }
+strata-leads = { path = "../leads" }
+serde.workspace = true
+serde_json.workspace = true

@@ -7,7 +7,7 @@
 //! explanations built only from facts in its inputs. Scoring rules are data in [`scoring`].
 
 mod engine;
-mod fmt;
+pub mod fmt;
 mod inputs;
 mod lead;
 mod rules;

@@ -25,6 +25,7 @@ mod search_store;
 mod store;
 mod system_paths;
 mod timeline;
+mod trails;
 mod writer;
 
 pub use activity::{EventFilter, FactGroup, HourlyEvents, TitledEvents};

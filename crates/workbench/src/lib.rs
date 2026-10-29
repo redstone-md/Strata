@@ -11,6 +11,7 @@ mod mail;
 mod monitor;
 mod sector_map;
 mod steps;
+mod trails;
 mod triage;
 mod workbench;
 
@@ -43,6 +44,7 @@ pub use strata_timeline::{EventKind, TimelineEvent};
 pub use strata_chain::{AddressBalance, AddressHistory};
 pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceKind, SourceRef, Years};
 pub use strata_leads::{EventRecord, Lead, LeadRef, LeadRule};
+pub use strata_trails::{Fate as TrailFate, StepKind as TrailStepKind, StepLink as TrailLink, Trail, TrailStep, describe_step};
 pub use strata_graph::{
     ChainState, EdgeKind, Evidence, Flags, Graph, GraphView, Layout, Link, Node, NodeDetail, NodeKey, NodeKind, ViewScope, ViewEdge, ViewNode,
 };
