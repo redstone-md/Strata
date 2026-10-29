@@ -14,6 +14,7 @@ pub(crate) struct FsTree {
     children: Vec<Vec<FileId>>,
     unallocated: Vec<ByteRange>,
     damage: Vec<Damage>,
+    label: Option<String>,
 }
 
 impl FsTree {
@@ -30,7 +31,12 @@ impl FsTree {
                 list.push(FileId::new(i));
             }
         }
-        Self { kind, source, entries, children, unallocated: ByteRange::coalesce(unallocated), damage }
+        Self { kind, source, entries, children, unallocated: ByteRange::coalesce(unallocated), damage, label: None }
+    }
+
+    pub(crate) fn with_label(mut self, label: Option<String>) -> Self {
+        self.label = label;
+        self
     }
 }
 
@@ -57,5 +63,9 @@ impl FileSystem for FsTree {
 
     fn damage(&self) -> &[Damage] {
         &self.damage
+    }
+
+    fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }

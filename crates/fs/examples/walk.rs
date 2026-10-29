@@ -54,6 +54,9 @@ fn report(fs: &dyn FileSystem, started: Instant) {
     let damaged = entries.iter().filter(|e| !e.damage.is_empty()).count();
     let free: u64 = fs.unallocated().iter().map(|r| r.len()).sum();
     println!("   parsed in {:.2?}: {} entries", elapsed, entries.len());
+    if let Some(label) = fs.label() {
+        println!("   label {label}");
+    }
     println!(
         "   allocated {} / deleted {} / orphan {}; dirs {} / files {}",
         count(EntryState::Allocated),
