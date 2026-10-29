@@ -2,6 +2,7 @@
 //! types and one `#[tool_router]` block on [`StrataServer`]; [`router`] joins them. A new
 //! area (mail, say) is a new module plus one line in [`router`].
 
+pub mod browser;
 pub mod chain;
 pub mod files;
 pub mod findings;
@@ -26,6 +27,7 @@ pub(crate) fn router() -> ToolRouter<StrataServer> {
         + StrataServer::file_tools()
         + StrataServer::search_tools()
         + StrataServer::mail_tools()
+        + StrataServer::browser_tools()
         + StrataServer::graph_tools()
         + StrataServer::machine_tools()
 }
