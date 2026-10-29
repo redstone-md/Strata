@@ -16,11 +16,18 @@ pub struct DiskRow {
     map: Option<Entity<SectorMapView>>,
     session: Entity<Session>,
     busy: bool,
+    /// When the disk was in use (`2009-03 – 2013-07`), once known.
+    usage: Option<SharedString>,
 }
 
 impl DiskRow {
     pub fn new(disk: DiskSummary, map: Option<Entity<SectorMapView>>, session: Entity<Session>, busy: bool) -> Self {
-        Self { disk, map, session, busy }
+        Self { disk, map, session, busy, usage: None }
+    }
+
+    pub fn usage(mut self, usage: Option<SharedString>) -> Self {
+        self.usage = usage;
+        self
     }
 
     /// Analyse, Resume or Cancel — whichever applies; nothing once the scan is complete.
@@ -50,6 +57,7 @@ impl DiskRow {
             .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).truncate().child(info.label.clone()))
             .child(quiet().child(format!("{}  {}", format::bytes(info.len), format::source_kind(&format!("{:?}", info.kind)))))
             .child(div().text_size(t.size_body).text_color(t.text).child(format!("{} scanned", format::percent(d.scanned))))
+            .children(self.usage.clone().map(|u| quiet().truncate().child(format!("in use {u}"))))
             .children((d.damaged > 0).then(|| h_flex().child(Badge::inverted(format!("{} unreadable", format::bytes(d.damaged))))))
             .child(h_flex().pt(px(8.)).children(self.action()))
     }

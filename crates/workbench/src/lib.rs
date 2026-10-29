@@ -32,8 +32,8 @@ pub use strata_search::{Encoding, Pattern, Scope, SearchQuery, Snippet};
 
 pub use strata_case::FactGroup;
 pub use strata_machines::{
-    ActivityKind, CryptoSoftware, DiskMachines, InstallKind, Machine, MachineProfile, NetworkProfile, OsFamily, Period, Provenance, UsageReport,
-    UsbDevice, UserAccount, Values, utc_offset,
+    ActivityKind, CryptoSoftware, DiskMachines, InstallKind, Machine, MachineProfile, MonthActivity, NetworkProfile, OsFamily, Period, Provenance,
+    UsageReport, UsbDevice, UserAccount, Values, first_source, utc_offset,
 };
 pub use strata_case::{EventQuery, HostFact, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 pub use strata_kernel::scan::HitCategory;
