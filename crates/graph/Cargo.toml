@@ -1,0 +1,12 @@
+[package]
+name = "strata-graph"
+description = "Connections: the entity graph of a case (owners, accounts, keys, files, addresses, mail) with evidenced, ranked links"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-accounts = { path = "../accounts" }
+strata-leads = { path = "../leads" }
+serde.workspace = true

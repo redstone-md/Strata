@@ -1,15 +1,15 @@
 //! `cargo run -p strata-workbench --example demo_case -- <dir>`: build a case of synthetic
 //! findings, events and chain histories (two blank disk images, no real evidence) for UI work
-//! on the Leads and Accounts screens.
+//! on the Leads, Accounts and Connections screens.
 
 use std::path::Path;
-use strata_case::{Attribution, FileRef};
+use strata_case::{Attribution, FileRef, FoundMessage, MessageLocation, MessageState};
 use strata_chain::{AddressBalance, AddressHistory, AddressTx};
 use strata_fs::EntryState;
 use strata_kernel::scan::{Hit, HitCategory};
 use strata_kernel::{Confidence, Timestamp};
 use strata_timeline::{CRYPTO_TAG, EventKind, EventSource, TimelineEvent};
-use strata_workbench::Workbench;
+use strata_workbench::{MailContainer, Message, Workbench};
 
 const A1: &str = "1DemoWa11etAddrAAAAAAAAAAAAAAAAAAA";
 const A2: &str = "1DemoWa11etAddrBBBBBBBBBBBBBBBBBBB";
@@ -37,6 +37,20 @@ fn hit(detector: &str, category: HitCategory, label: &str, value: &str, details:
 fn identity(value: &str, service: &str, kind: &str, detail: &str, seen: Timestamp) -> Hit {
     let record = serde_json::json!({"kind": kind, "value": value, "service": service, "source": "", "first_seen": seen, "last_seen": seen, "detail": detail, "weak": false});
     hit("artifacts.identity", HitCategory::Identity, if kind == "Email" { "e-mail (artefact)" } else { "login" }, &value.to_lowercase(), record)
+}
+
+fn mail(n: u32, from: &str, to: &str, subject: &str, body: &str) -> FoundMessage {
+    let raw = format!("Message-ID: <demo{n}@example.com>
+Date: Mon, 2{n} Feb 2012 10:00:00 +0000
+From: {from}
+To: {to}
+Subject: {subject}
+
+{body}
+");
+    let path = "Users/demo/AppData/Roaming/Thunderbird/Profiles/x.default/Mail/Inbox";
+    let location = MessageLocation { state: MessageState::Live, container: MailContainer::Mbox, volume: Some(0), file_idx: None, path: Some(path.into()), offset: n as u64 * 4096, len: raw.len() as u64 };
+    FoundMessage { location, folder: "Inbox".into(), message: Message::parse(raw.as_bytes()).expect("demo message parses") }
 }
 
 fn event(t: Timestamp, kind: EventKind, title: &str, artifact: &str) -> TimelineEvent {
@@ -74,6 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (identity("olga.test1@yandex.ru", "btc-e.com", "Email", "saved browser login", at(2013, 3, 4, 21)), in_file("Users/demo/AppData/Local/Google/Chrome/User Data/Default/Login Data", EntryState::Allocated)),
         (identity("miner_test_1", "BTC Guild", "Login", "mining pool login (worker miner_test_1.rig)", at(2012, 7, 1, 10)), in_file("Program Files/cgminer/cgminer.conf", EntryState::Allocated)),
         (identity("anna.test3@mail.ru", "Mail.ru", "Email", "mail identity (prefs.js)", at(2010, 9, 1, 9)), in_file("Users/demo/AppData/Roaming/Thunderbird/Profiles/x.default/prefs.js", EntryState::Allocated)),
+        (hit("accounts.login", HitCategory::Identity, "login", "olga_btc", serde_json::json!({"service": "BTC-e"})), in_file(keys, EntryState::Allocated)),
+        (hit("accounts.email", HitCategory::Identity, "e-mail", "maintainer.test@example.org", serde_json::Value::Null), in_file("Windows/System32/drivers/etc/readme.txt", EntryState::Allocated)),
         (hit("accounts.url", HitCategory::Url, "Bitcointalk", "https://bitcointalk.org/index.php?action=profile;u=424242", serde_json::json!({"service": "Bitcointalk"})), Attribution::default()),
         (hit("accounts.url", HitCategory::Url, "FreeBitco.in", "https://freebitco.in/?op=home", serde_json::json!({"service": "FreeBitco.in"})), Attribution::default()),
     ])?;
@@ -127,6 +143,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         case.store_balance(&AddressBalance { address: h.address.clone(), funded_sat: h.total_received_sat, spent_sat: spent, tx_count: h.tx_count, mempool_delta_sat: 0, source: "synthetic".into() })?;
         case.store_history(h)?;
     }
+    let me = "anna.test3@mail.ru";
+    let letters = [
+        mail(1, "ivan.test2@example.ru", me, "the wallet", "Did you back up the wallet.dat from the old laptop?"),
+        mail(2, me, "ivan.test2@example.ru", "re: the wallet", &format!("Yes, and the coins went to {A3} last spring.")),
+        mail(3, "ivan.test2@example.ru", me, "pool payout", "BTC Guild paid out again."),
+        mail(4, "support@btc-e.com", me, "BTC-e: confirm your registration", "Your login is olga_btc."),
+    ];
+    case.write(|w| w.messages(laptop, &letters))?;
     let (accounts, leads) = wb.rebuild_insights()?;
     println!("{}: {accounts} accounts, {leads} leads", dir.join("demo.strata").display());
     Ok(())

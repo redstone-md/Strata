@@ -7,7 +7,7 @@ use super::detail::HitDetailPanel;
 use super::detail_tree::{self, Chain, DetailTree, TreeState};
 use crate::categories;
 use crate::format;
-use crate::nav::{Jump, Screen};
+use crate::nav::{ConnectTo, Jump, Screen};
 use crate::session::Session;
 use crate::theme::tokens;
 use crate::widgets::{TextButton, flat_table, loading_edge};
@@ -240,6 +240,14 @@ impl HitBrowser {
     }
 }
 
+/// Findings that can be nodes of the connection map.
+fn on_the_map(hit: &StoredHit) -> bool {
+    matches!(
+        hit.hit.category,
+        HitCategory::PrivateKey | HitCategory::ExtendedKey | HitCategory::Mnemonic | HitCategory::Wallet | HitCategory::Address | HitCategory::Identity
+    )
+}
+
 /// The address of an e-mail identity finding.
 fn mail_address(hit: &StoredHit) -> Option<String> {
     let value = hit.hit.value.trim();
@@ -280,6 +288,14 @@ impl Render for HitBrowser {
                     })
                 }
                 None => panel,
+            };
+            let panel = if on_the_map(&hit) {
+                let (this, to) = (cx.entity().downgrade(), ConnectTo::Finding { hit: hit.id, value: hit.hit.value.clone() });
+                panel.action("Show connections", move |_, _, cx| {
+                    let _ = this.update(cx, |_, cx| cx.emit(Jump::Connections(to.clone())));
+                })
+            } else {
+                panel
             };
             match export {
                 Some(what) => {

@@ -12,6 +12,7 @@ pub enum Screen {
     Wallets,
     Accounts,
     Leads,
+    Connections,
     Timeline,
     Mail,
     Correlation,
@@ -45,10 +46,21 @@ pub enum Jump {
     Day(strata_workbench::Timestamp),
     /// Another screen with the command-bar search set to `text`.
     Search { screen: Screen, text: String },
+    /// The connection map, centred on an entity.
+    Connections(ConnectTo),
+}
+
+/// What the connection map centres on when another screen links to it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConnectTo {
+    /// A node key (`acct:…`, `lead:…`) or text the map resolves (an address, an e-mail).
+    Entity(String),
+    /// A stored finding: the node it became, else its value.
+    Finding { hit: i64, value: String },
 }
 
 impl Screen {
-    const ALL: [Screen; 12] = [
+    const ALL: [Screen; 13] = [
         Self::Overview,
         Self::Disks,
         Self::Files,
@@ -56,6 +68,7 @@ impl Screen {
         Self::Wallets,
         Self::Accounts,
         Self::Leads,
+        Self::Connections,
         Self::Timeline,
         Self::Mail,
         Self::Correlation,
@@ -72,6 +85,7 @@ impl Screen {
             Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
             Self::Leads => "Leads",
+            Self::Connections => "Connections",
             Self::Timeline => "Timeline",
             Self::Mail => "Mail",
             Self::Correlation => "Across disks",
@@ -89,6 +103,7 @@ impl Screen {
             Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
             Self::Leads => Glyph::Lightbulb,
+            Self::Connections => Glyph::Waypoints,
             Self::Timeline => Glyph::Clock,
             Self::Mail => Glyph::Mail,
             Self::Correlation => Glyph::GitCompare,
@@ -111,6 +126,7 @@ impl Screen {
             Self::Wallets => "wallets",
             Self::Accounts => "accounts",
             Self::Leads => "leads",
+            Self::Connections => "connections",
             Self::Timeline => "timeline",
             Self::Mail => "mail",
             Self::Correlation => "correlation",
@@ -134,7 +150,7 @@ impl Screen {
 
     /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
-        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Timeline | Self::Mail)
+        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Connections | Self::Timeline | Self::Mail)
     }
 
     pub fn nav_item(self) -> NavItem {

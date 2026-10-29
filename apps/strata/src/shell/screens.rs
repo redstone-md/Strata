@@ -3,6 +3,7 @@
 use super::Shell;
 use crate::nav::{Jump, Navigate, Screen};
 use crate::session::Session;
+use crate::views::connections::ConnectionsView;
 use crate::views::correlation::CorrelationView;
 use crate::views::disks::DisksView;
 use crate::views::files::FilesView;
@@ -27,6 +28,7 @@ pub struct Screens {
     pub wallets: Entity<HitBrowser>,
     pub accounts: Entity<AccountsView>,
     pub leads: Entity<LeadsView>,
+    pub connections: Entity<ConnectionsView>,
     pub timeline: Entity<TimelineView>,
     pub mail: Entity<MailView>,
     pub correlation: Entity<CorrelationView>,
@@ -51,6 +53,7 @@ impl Screens {
             wallets: cx.new(|cx| HitBrowser::new(session.clone(), wallets::config(), window, cx)),
             accounts: cx.new(|cx| AccountsView::new(session.clone(), window, cx)),
             leads: cx.new(|cx| LeadsView::new(session.clone(), window, cx)),
+            connections: cx.new(|cx| ConnectionsView::new(session.clone(), cx)),
             timeline: cx.new(|cx| TimelineView::new(session.clone(), window, cx)),
             mail: cx.new(|cx| MailView::new(session.clone(), window, cx)),
             correlation: cx.new(|cx| CorrelationView::new(session.clone(), window, cx)),
@@ -60,6 +63,7 @@ impl Screens {
         let mut subscriptions = navigate;
         subscriptions.extend([
             cx.subscribe_in(&screens.leads, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
+            cx.subscribe_in(&screens.connections, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.accounts, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.wallets, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
         ]);
@@ -77,6 +81,7 @@ impl Screens {
             Screen::Wallets => self.wallets.clone().into(),
             Screen::Accounts => self.accounts.clone().into(),
             Screen::Leads => self.leads.clone().into(),
+            Screen::Connections => self.connections.clone().into(),
             Screen::Timeline => self.timeline.clone().into(),
             Screen::Mail => self.mail.clone().into(),
             Screen::Correlation => self.correlation.clone().into(),
@@ -98,6 +103,7 @@ impl Screens {
         match screen {
             Screen::Accounts => self.accounts.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Leads => self.leads.update(cx, |v, cx| v.set_search(text, cx)),
+            Screen::Connections => self.connections.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Timeline => self.timeline.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Mail => self.mail.update(cx, |v, cx| v.set_search(text, cx)),
             _ => {}

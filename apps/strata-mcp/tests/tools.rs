@@ -7,6 +7,7 @@ use serde_json::Value;
 use strata_mcp::StrataServer;
 use strata_mcp::tools::chain::{AddressHistoryParams, BalancesParams};
 use strata_mcp::tools::files::{FileComplementsParams, FileState, FileTypesParams, FindFilesParams};
+use strata_mcp::tools::graph::ConnectionsParams;
 use strata_mcp::tools::findings::{Category, GetFindingParams, ListFindingsParams, SharedFindingsParams};
 use strata_mcp::tools::insights::{AccountsParams, LeadsParams};
 use strata_mcp::tools::overview::{JobsParams, OverviewParams};
@@ -123,4 +124,6 @@ async fn an_empty_case_answers_with_empty_lists() {
     assert!(items(&json(s.searches(Parameters(SearchesParams::default())).await)).is_empty());
     assert!(items(&json(s.list_findings(Parameters(ListFindingsParams::default())).await)).is_empty());
     assert!(items(&json(s.leads(Parameters(LeadsParams::default())).await)).is_empty());
+    assert!(json(s.connections(Parameters(ConnectionsParams::default())).await)["nodes"].as_array().unwrap().is_empty());
+    assert!(s.connections(Parameters(ConnectionsParams { owner: true, ..Default::default() })).await.is_err());
 }

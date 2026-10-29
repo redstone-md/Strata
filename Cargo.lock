@@ -6337,6 +6337,7 @@ dependencies = [
  "strata-chain",
  "strata-engine",
  "strata-fs",
+ "strata-graph",
  "strata-kernel",
  "strata-leads",
  "strata-mail",
@@ -6408,6 +6409,16 @@ dependencies = [
  "strata-kernel",
  "strata-source",
  "strata-volume",
+]
+
+[[package]]
+name = "strata-graph"
+version = "0.0.4"
+dependencies = [
+ "serde",
+ "strata-accounts",
+ "strata-kernel",
+ "strata-leads",
 ]
 
 [[package]]
@@ -6562,6 +6573,7 @@ dependencies = [
  "strata-crypto",
  "strata-engine",
  "strata-fs",
+ "strata-graph",
  "strata-identify",
  "strata-index",
  "strata-kernel",

@@ -2,6 +2,7 @@
 //! anything below the workbench facade.
 
 pub mod accounts;
+pub mod connections;
 pub mod correlation;
 mod disk_row;
 pub mod disks;

@@ -66,7 +66,7 @@ pub(crate) fn category_name(c: HitCategory) -> String {
     format!("{c:?}")
 }
 
-fn category_from(name: &str) -> HitCategory {
+pub(crate) fn category_from(name: &str) -> HitCategory {
     serde_json::from_value(serde_json::Value::String(name.to_string())).unwrap_or(HitCategory::Marker)
 }
 

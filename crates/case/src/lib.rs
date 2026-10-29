@@ -8,6 +8,7 @@ mod archives;
 mod attribution;
 mod balances;
 mod case;
+mod connections;
 mod correlation;
 mod jobs;
 mod file_rows;
