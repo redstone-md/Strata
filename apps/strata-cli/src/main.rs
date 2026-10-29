@@ -2,6 +2,7 @@
 
 mod insights;
 mod jobs;
+mod mail;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -38,7 +39,7 @@ enum Command {
         #[arg(long)]
         threads: Option<usize>,
     },
-    /// Run a single step: IndexFiles, Scan, RecoverPartitions, Artifacts, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
+    /// Run a single step: IndexFiles, Scan, RecoverPartitions, Artifacts, Mail, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
     Step { kind: String, id: u32 },
     /// Print stored findings.
     Hits {
@@ -75,6 +76,28 @@ enum Command {
         with_fs: bool,
         #[arg(long, default_value_t = 500)]
         limit: usize,
+    },
+    /// Recovered e-mail (the Mail step): live, deleted and carved messages, oldest first.
+    Mail {
+        /// Anywhere in subject, sender, recipients or body.
+        #[arg(long)]
+        text: Option<String>,
+        /// Messages from, to or copying this address.
+        #[arg(long)]
+        address: Option<String>,
+        #[arg(long, default_value_t = 200)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// One message: headers, body, attachments and every place it was found.
+    MailShow {
+        id: i64,
+        #[arg(long)]
+        json: bool,
+        /// Also write the message (.eml) and its attachments to this folder.
+        #[arg(long)]
+        export: Option<PathBuf>,
     },
     /// Host facts: computer name, users, USB devices, wallet folders...
     Facts,
@@ -227,6 +250,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{} {} {:<16} {}  ({}{deleted})", e.at(), ev, format!("{:?}", e.kind()), e.title(), e.source().path);
             }
         }
+        Command::Mail { text, address, limit, json } => mail::list(&wb, text, address, limit, json)?,
+        Command::MailShow { id, json, export } => mail::show(&wb, id, json, export.as_deref())?,
         Command::Facts => {
             for f in wb.host_facts(None)? {
                 println!("{} {:<24} {}  ({})", f.evidence, f.key, f.value, f.source);
