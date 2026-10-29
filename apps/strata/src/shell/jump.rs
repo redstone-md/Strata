@@ -1,5 +1,5 @@
-//! Links between screens: a lead or account pointing at a day of the timeline, a finding or
-//! another account.
+//! Links between screens: a lead or account pointing at a day of the timeline, a finding,
+//! another account or its place on the connection map.
 
 use super::Shell;
 use crate::nav::{Jump, Navigate, Screen};
@@ -12,6 +12,10 @@ impl Shell {
                 self.search.update(cx, |s, cx| s.set_value("", window, cx));
                 self.screens.timeline.update(cx, |v, cx| v.show_day(*at, cx));
                 self.navigate(Navigate::to(Screen::Timeline), cx);
+            }
+            Jump::Connections(to) => {
+                self.screens.connections.update(cx, |v, cx| v.show(to.clone(), cx));
+                self.navigate(Navigate::to(Screen::Connections), cx);
             }
             Jump::Search { screen, text } => {
                 self.search.update(cx, |s, cx| s.set_value(text.clone(), window, cx));

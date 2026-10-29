@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 const SPACING: f32 = 110.0;
 const STEPS: usize = 300;
 /// Pull towards the origin that keeps separate components on screen.
-const GRAVITY: f32 = 0.003;
+const GRAVITY: f32 = 0.008;
 const GOLDEN_ANGLE: f32 = 2.399_963;
 
 #[derive(Debug, Clone, PartialEq, Default)]

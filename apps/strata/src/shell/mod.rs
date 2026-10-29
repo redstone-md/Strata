@@ -130,6 +130,10 @@ impl Shell {
     /// search for the text instead (its button is the first action on the Search screen).
     fn on_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.search.read(cx).value().trim().to_string();
+        if self.screen == Screen::Connections {
+            self.screens.connections.update(cx, |v, cx| v.centre_on_search(cx));
+            return;
+        }
         if !self.screen.searchable() {
             self.navigate(Navigate::to(Screen::Wallets), cx);
         }
@@ -155,7 +159,7 @@ impl Shell {
             self.screens.accounts.update(cx, |v, cx| v.show_traces(cx));
         }
         match nav.screen {
-            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Timeline | Screen::Mail => self.apply_search(cx),
+            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Connections | Screen::Timeline | Screen::Mail => self.apply_search(cx),
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }
