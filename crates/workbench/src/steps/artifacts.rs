@@ -81,7 +81,14 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
         let facts: Vec<HostFact> = results
             .facts
             .iter()
-            .map(|f| HostFact { evidence: id, key: f.key.clone(), value: f.value.clone(), artifact: f.artifact.clone(), source: f.source.clone() })
+            .map(|f| HostFact {
+                evidence: id,
+                volume: Some(vol.index),
+                key: f.key.clone(),
+                value: f.value.clone(),
+                artifact: f.artifact.clone(),
+                source: f.source.clone(),
+            })
             .collect();
         if ctx.should_stop() {
             return Ok(String::new());
@@ -91,8 +98,8 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
         cur.identities += hits.len();
         cur.facts += facts.len();
         ctx.commit(&cur, |w| {
-            w.events(id, &results.events)?;
-            w.events(id, &fs_timeline)?;
+            w.volume_events(id, vol.index, &results.events)?;
+            w.volume_events(id, vol.index, &fs_timeline)?;
             w.facts(&facts)?;
             w.hits(id, &hits)
         })?;

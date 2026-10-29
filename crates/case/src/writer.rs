@@ -50,7 +50,12 @@ impl CaseWriter<'_> {
     }
 
     pub fn events(&self, id: EvidenceId, events: &[TimelineEvent]) -> Result<usize> {
-        timeline::insert_events(&self.tx, id, events).map_err(db)
+        timeline::insert_events(&self.tx, id, None, events).map_err(db)
+    }
+
+    /// Store events read from one volume (machine profiles tell installations apart by it).
+    pub fn volume_events(&self, id: EvidenceId, volume: u32, events: &[TimelineEvent]) -> Result<usize> {
+        timeline::insert_events(&self.tx, id, Some(volume), events).map_err(db)
     }
 
     pub fn facts(&self, facts: &[HostFact]) -> Result<()> {
