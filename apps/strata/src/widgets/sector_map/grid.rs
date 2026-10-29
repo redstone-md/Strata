@@ -2,7 +2,7 @@
 
 use crate::theme::{grey, tokens};
 use gpui::{Bounds, Hsla, Pixels, Point, Size, point, px, size};
-use strata_workbench::SectorCell;
+use strata_workbench::{BlockClass, SectorCell};
 
 const CELL: f32 = 8.;
 const GAP: f32 = 1.;
@@ -61,20 +61,32 @@ pub enum CellLook {
     Damaged,
 }
 
-/// Findings dominate (brightness up to white on a log scale), then damage, then coverage.
+/// Lightness of scanned cells by dominant content (from the disk index), all between the
+/// plain scanned tone and the findings range: empty is dim, text is brightest.
+pub fn content_tone(class: BlockClass) -> f32 {
+    match class {
+        BlockClass::Zero | BlockClass::Fill => 0.24,
+        BlockClass::Random => 0.42,
+        BlockClass::Text => 0.50,
+        _ => tokens().cell_scanned.l,
+    }
+}
+
+/// Findings dominate (brightness up to white on a log scale), then damage, then coverage
+/// (toned by content when the disk index knows it).
 pub fn look(cell: &SectorCell, max_findings: u32) -> CellLook {
     let t = tokens();
     if cell.findings > 0 {
         let scale = (1.0 + cell.findings as f32).ln() / (1.0 + max_findings.max(1) as f32).ln();
         return CellLook::Fill(grey(0.62 + 0.38 * scale));
     }
-    if cell.damaged > 0.0 {
+    if cell.damaged > 0.0 || cell.content == Some(BlockClass::Unreadable) {
         return CellLook::Damaged;
     }
     let s = cell.scanned.clamp(0.0, 1.0);
     let lerp = |a: f32, b: f32| a + (b - a) * s;
-    let (u, d) = (t.cell_unscanned, t.cell_scanned);
-    CellLook::Fill(Hsla { h: 0., s: 0., l: lerp(u.l, d.l), a: 1. })
+    let done = cell.content.map_or(t.cell_scanned.l, content_tone);
+    CellLook::Fill(Hsla { h: 0., s: 0., l: lerp(t.cell_unscanned.l, done), a: 1. })
 }
 
 #[cfg(test)]
@@ -82,7 +94,7 @@ mod tests {
     use super::*;
 
     fn cell(scanned: f32, damaged: f32, findings: u32) -> SectorCell {
-        SectorCell { scanned, damaged, findings, volume: None }
+        SectorCell { scanned, damaged, findings, volume: None, content: None }
     }
 
     #[test]
@@ -107,5 +119,17 @@ mod tests {
             panic!("plain cells are filled");
         };
         assert!(done.l > empty.l);
+    }
+
+    #[test]
+    fn content_tones_stay_below_findings() {
+        let toned = |class| {
+            let CellLook::Fill(c) = look(&SectorCell { content: Some(class), ..cell(1.0, 0.0, 0) }, 0) else { panic!("filled") };
+            c.l
+        };
+        assert!(toned(BlockClass::Zero) < toned(BlockClass::Binary));
+        assert!(toned(BlockClass::Binary) < toned(BlockClass::Random) && toned(BlockClass::Random) < toned(BlockClass::Text));
+        assert!(toned(BlockClass::Text) < 0.62);
+        assert!(matches!(look(&SectorCell { content: Some(BlockClass::Unreadable), ..cell(1.0, 0.0, 0) }, 0), CellLook::Damaged));
     }
 }

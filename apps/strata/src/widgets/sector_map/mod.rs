@@ -107,6 +107,9 @@ pub fn legend() -> impl gpui::IntoElement {
         .text_color(t.text_secondary)
         .child(item(swatch(t.cell_unscanned, false), "Not scanned"))
         .child(item(swatch(t.cell_scanned, false), "Scanned"))
+        .child(item(swatch(grey(grid::content_tone(strata_workbench::BlockClass::Zero)), false), "Empty"))
+        .child(item(swatch(grey(grid::content_tone(strata_workbench::BlockClass::Random)), false), "Compressed"))
+        .child(item(swatch(grey(grid::content_tone(strata_workbench::BlockClass::Text)), false), "Text"))
         .child(item(swatch(t.cell_damaged, true), "Unreadable"))
         .child(item(swatch(grey(1.0), false), "Findings"))
 }
