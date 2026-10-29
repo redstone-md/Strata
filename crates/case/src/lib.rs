@@ -8,6 +8,7 @@ mod activity;
 mod archives;
 mod attribution;
 mod balances;
+mod browsing;
 mod case;
 mod connections;
 mod correlation;
@@ -30,6 +31,10 @@ mod writer;
 pub use activity::{EventFilter, FactGroup, HourlyEvents, TitledEvents};
 pub use archives::ArchiveMemberRow;
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
+pub use browsing::{
+    BrowserFamily, BrowserFilter, BrowserOverview, BrowserQuery, BrowserRow, BrowserSegment, CookieSite, Credential, DownloadSource, ProfileKey, ProfileSummary, SiteSummary,
+    Span as BrowserSpan, site_key,
+};
 pub use case::{Case, EvidenceRecord, SAVE_EVERY, ScanCommit};
 pub use jobs::{JobRecord, JobStamp};
 pub use writer::CaseWriter;

@@ -1,5 +1,6 @@
 //! Application layer. GUI and CLI talk to Strata only through [`Workbench`].
 
+mod browser;
 mod catalog;
 mod connections;
 mod disk_index;
@@ -32,6 +33,10 @@ pub use strata_volume::VolumeOrigin;
 pub use strata_search::{Encoding, Pattern, Scope, SearchQuery, Snippet};
 
 pub use strata_case::FactGroup;
+pub use strata_case::{
+    BrowserFamily, BrowserFilter, BrowserOverview, BrowserQuery, BrowserRow, BrowserSegment, BrowserSpan, CookieSite, Credential, DownloadSource, ProfileKey, ProfileSummary, SiteSummary,
+    site_key,
+};
 pub use strata_machines::{
     ActivityKind, CryptoSoftware, DiskMachines, InstallKind, Machine, MachineProfile, MonthActivity, NetworkProfile, OsFamily, Period as UsagePeriod, Provenance,
     UsageReport, UsbDevice, UserAccount, Values, first_source, utc_offset,
@@ -41,7 +46,7 @@ pub use strata_kernel::scan::HitCategory;
 pub use strata_index::{BlockClass, CellContent, IndexStats, Ownership, TextKind};
 pub use strata_timeline::{EventKind, TimelineEvent};
 pub use strata_chain::{AddressBalance, AddressHistory};
-pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceKind, SourceRef, Years};
+pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, Service, ServiceEntry, ServiceKind, SourceRef, Years};
 pub use strata_leads::{EventRecord, Lead, LeadRef, LeadRule};
 pub use strata_graph::{
     ChainState, EdgeKind, Evidence, Flags, Graph, GraphView, Layout, Link, Node, NodeDetail, NodeKey, NodeKind, ViewScope, ViewEdge, ViewNode,
