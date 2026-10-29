@@ -6363,7 +6363,10 @@ version = "0.0.4"
 dependencies = [
  "clap",
  "serde_json",
+ "strata-kernel",
+ "strata-timeline",
  "strata-workbench",
+ "tempfile",
 ]
 
 [[package]]
@@ -6577,6 +6580,7 @@ dependencies = [
  "strata-index",
  "strata-kernel",
  "strata-leads",
+ "strata-machines",
  "strata-mail",
  "strata-report",
  "strata-search",
