@@ -137,7 +137,7 @@ impl Render for HitBrowser {
                             .flex_1()
                             .min_h_0()
                             .size_full()
-                            .child(DataTable::new(&self.table).stripe(true).bordered(false)),
+                            .child(DataTable::new(&self.table).stripe(false).bordered(false)),
                     ),
             )
             .when_some(detail, |el, d| el.child(d))

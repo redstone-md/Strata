@@ -74,7 +74,14 @@ impl Render for SettingsView {
             .child(
                 GlassCard::new()
                     .title("Case")
-                    .subtitle(format!("Current: {current}. A case is a folder; it is created if missing."))
+                    .subtitle("A case is a folder; it is created if missing.")
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .text_sm()
+                            .child(div().text_color(t.text_muted).child("Current"))
+                            .child(div().text_color(t.text).truncate().child(current)),
+                    )
                     .child(
                         h_flex()
                             .gap_3()

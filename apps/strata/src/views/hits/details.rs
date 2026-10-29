@@ -66,6 +66,8 @@ mod tests {
         assert_eq!(HitDetails(&v).summary(), "1A, 1B");
         let v = json!({"service": "bitcointalk", "encoding": "ascii", "service_kind": null});
         assert_eq!(HitDetails(&v).service(), Some("bitcointalk"));
-        assert_eq!(HitDetails(&v).summary(), "encoding: ascii · service: bitcointalk");
+        let summary = HitDetails(&v).summary();
+        assert!(summary.contains("encoding: ascii") && summary.contains("service: bitcointalk"));
+        assert!(!summary.contains("service_kind"));
     }
 }

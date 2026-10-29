@@ -73,8 +73,8 @@ static TOKENS: LazyLock<Tokens> = LazyLock::new(|| {
     Tokens {
         bg_top: hex(0x0b1424),
         bg_bottom: hex(0x101d36),
-        glow_blue: hexa(0x2563eb, 0.22),
-        glow_indigo: hexa(0x6366f1, 0.16),
+        glow_blue: hexa(0x2563eb, 0.30),
+        glow_indigo: hexa(0x6366f1, 0.22),
         card: hexa(0x14203a, 0.75),
         card_border: hexa(0xffffff, 0.10),
         glass: hexa(0xffffff, 0.04),
@@ -142,6 +142,14 @@ pub fn install(cx: &mut App) {
         c.primary_hover = hex(0x2f6fdc);
         c.primary_active = hex(0x2563eb);
         c.primary_foreground = hex(0xffffff);
+        c.button_primary = t.blue;
+        c.button_primary_hover = hex(0x2f6fdc);
+        c.button_primary_active = hex(0x2563eb);
+        c.button_primary_foreground = hex(0xffffff);
+        c.button = t.glass;
+        c.button_hover = t.glass_hover;
+        c.button_active = t.glass_active;
+        c.button_foreground = t.text;
         c.secondary = t.glass;
         c.secondary_hover = t.glass_hover;
         c.secondary_active = t.glass_active;

@@ -87,7 +87,7 @@ impl CorrelationView {
             .subtitle(subtitle)
             .flex_1()
             .min_h_0()
-            .child(div().flex_1().min_h_0().size_full().child(DataTable::new(table).stripe(true).bordered(false)))
+            .child(div().flex_1().min_h_0().size_full().child(DataTable::new(table).stripe(false).bordered(false)))
     }
 }
 
