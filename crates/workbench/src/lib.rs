@@ -2,6 +2,7 @@
 
 mod catalog;
 mod jobs;
+mod wallet_files;
 mod workbench;
 
 pub use catalog::DetectorCatalog;

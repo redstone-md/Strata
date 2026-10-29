@@ -13,6 +13,7 @@ strata-case.workspace = true
 strata-accounts = { path = "../accounts" }
 strata-chain = { path = "../chain" }
 strata-crypto = { path = "../crypto" }
+strata-fs.workspace = true
 strata-report = { path = "../report" }
 parking_lot.workspace = true
 serde.workspace = true

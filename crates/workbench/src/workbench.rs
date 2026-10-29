@@ -168,7 +168,10 @@ impl Workbench {
     fn run_job(&self, job: &Job) {
         *job.state.lock() = JobState::Running;
         let result = match job.kind {
-            JobKind::IndexFiles => self.case.index_files(job.evidence).map(|n| format!("{n} entries")),
+            JobKind::IndexFiles => self.case.index_files(job.evidence).and_then(|n| {
+                let wallets = crate::wallet_files::WalletFileAnalyzer::new(&self.case).run(job.evidence)?;
+                Ok(format!("{n} entries, {wallets} wallet files"))
+            }),
             JobKind::Scan => {
                 let scanner = Scanner::new(DetectorCatalog::all());
                 self.case

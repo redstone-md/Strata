@@ -242,6 +242,11 @@ impl Case {
         Ok(n)
     }
 
+    /// Store hits produced outside the raw scan (file-level parsers, carving).
+    pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
+        store::insert(&mut self.conn.lock(), id, hits).map_err(db)
+    }
+
     pub fn hits(&self, q: &HitQuery) -> Result<Vec<StoredHit>> {
         store::query(&self.conn.lock(), q).map_err(db)
     }
