@@ -179,6 +179,17 @@ fn profile_names() {
 }
 
 #[test]
+fn evtx_logs_and_carved_chunks_are_sniffed() {
+    let log = crate::windows::evtx_testkit::sample_log();
+    for data in [&log[..], &log[0x1000..]] {
+        let out = parse_bytes("carved", data).expect("sniffed");
+        assert_eq!(out.events.len(), 3);
+        assert!(out.events.iter().all(|e| e.source().artifact == "windows.evtx"));
+        assert!(out.events.iter().any(|e| e.kind() == EventKind::Login && e.title().contains("Admin")));
+    }
+}
+
+#[test]
 fn random_bytes_behind_every_signature_never_panic() {
     let mut seed = 0x9E37_79B9_7F4A_7C15u64;
     let mut noise = |n: usize| -> Vec<u8> {
@@ -201,6 +212,8 @@ fn random_bytes_behind_every_signature_never_panic() {
         vec![0xCF, 0xAD, 0x12, 0xFE],
         b"From x\nFrom: a@b.cd\nSubject: s\n".to_vec(),
         b"<typed_history_item content=\"".to_vec(),
+        b"ElfFile ".to_vec(),
+        crate::windows::evtx_testkit::sample_log()[0x1000..0x1300].to_vec(),
     ];
     for round in 0..40 {
         for (i, p) in prefixes.iter().enumerate() {

@@ -1,30 +1,8 @@
 //! Directory content: 32-byte slots into named records, long names reassembled and checked.
 
 use super::dirent::{ENTRY_SIZE, LfnSlot, ShortEntry, is_lfn};
+pub(super) use crate::dirbuf::DirBuffer;
 use strata_kernel::{ByteRange, Damage};
-
-/// Directory bytes plus where each piece came from on the volume.
-#[derive(Default)]
-pub(super) struct DirBuffer {
-    bytes: Vec<u8>,
-    pieces: Vec<(usize, u64)>,
-}
-
-impl DirBuffer {
-    pub(super) fn push(&mut self, volume_offset: u64, data: &[u8]) {
-        self.pieces.push((self.bytes.len(), volume_offset));
-        self.bytes.extend_from_slice(data);
-    }
-
-    pub(super) fn bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-
-    fn volume_offset(&self, pos: usize) -> u64 {
-        let i = self.pieces.partition_point(|p| p.0 <= pos).saturating_sub(1);
-        self.pieces.get(i).map_or(0, |(start, vol)| vol + (pos - start) as u64)
-    }
-}
 
 /// One file or directory found in a directory.
 pub(super) struct DirRecord {

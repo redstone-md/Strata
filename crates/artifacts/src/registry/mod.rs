@@ -4,11 +4,13 @@
 mod hive;
 mod mru;
 mod ntuser;
+mod shellbags;
 mod system;
 
 use crate::results::{ArtifactResults, Recorder};
 use hive::{Hive, Key};
 use ntuser::NtUser;
+use shellbags::ShellBags;
 use strata_kernel::{Damage, DamageKind};
 use strata_timeline::{CRYPTO_TAG, EventKind};
 use system::{SamHive, SoftwareHive, SystemHive};
@@ -24,6 +26,8 @@ const WALLET_KEYS: &[&str] = &["bitcoin", "bitcoin-qt", "bitcoin core", "electru
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HiveKind {
     NtUser,
+    /// Per-user classes hive (UsrClass.dat): Vista+ shellbags.
+    UsrClass,
     System,
     Software,
     Sam,
@@ -41,6 +45,8 @@ impl HiveKind {
             Self::Sam
         } else if has("software") && (has("control panel") || has("environment") || has("console")) {
             Self::NtUser
+        } else if has("local settings") {
+            Self::UsrClass
         } else if has("microsoft") && (has("classes") || has("policies")) {
             Self::Software
         } else {
@@ -51,6 +57,7 @@ impl HiveKind {
     fn artifact(self) -> &'static str {
         match self {
             Self::NtUser => "registry.ntuser",
+            Self::UsrClass => "registry.usrclass",
             Self::System => "registry.system",
             Self::Software => "registry.software",
             Self::Sam => "registry.sam",
@@ -59,7 +66,7 @@ impl HiveKind {
     }
 }
 
-/// Parse any registry hive.
+/// Parse any registry hive (shellbags are looked for in all of them).
 pub(crate) fn parse_hive(data: &[u8]) -> ArtifactResults {
     let Some(hive) = Hive::parse(data) else {
         let mut out = ArtifactResults::default();
@@ -73,13 +80,17 @@ pub(crate) fn parse_hive(data: &[u8]) -> ArtifactResults {
         HiveKind::System => SystemHive::new(&hive).parse(&mut rec),
         HiveKind::Software => SoftwareHive::new(&hive).parse(&mut rec),
         HiveKind::Sam => SamHive::new(&hive).parse(&mut rec),
-        HiveKind::Other => {}
+        HiveKind::UsrClass | HiveKind::Other => {}
     }
     WalletKeys::new(&hive).scan(&mut rec);
+    // Every hive is tried: renamed or carved user hives still carry their BagMRU keys.
+    let bags = ShellBags::new(&hive).scan();
     for d in hive.take_damage() {
         rec.damage(d);
     }
-    rec.finish()
+    let mut out = rec.finish();
+    out.merge(bags);
+    out
 }
 
 /// Wallet software traces: `Software\Bitcoin\Bitcoin-Qt` (`strDataDir`), Electrum, MultiBit,

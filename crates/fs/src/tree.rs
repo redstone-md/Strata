@@ -17,6 +17,7 @@ pub(crate) struct FsTree {
     children: Vec<Vec<FileId>>,
     unallocated: Vec<ByteRange>,
     damage: Vec<Damage>,
+    label: Option<String>,
 }
 
 impl FsTree {
@@ -33,7 +34,12 @@ impl FsTree {
                 list.push(FileId::new(i));
             }
         }
-        Self { kind, source, entries, children, unallocated: ByteRange::coalesce(unallocated), damage }
+        Self { kind, source, entries, children, unallocated: ByteRange::coalesce(unallocated), damage, label: None }
+    }
+
+    pub(crate) fn with_label(mut self, label: Option<String>) -> Self {
+        self.label = label;
+        self
     }
 }
 
@@ -60,6 +66,10 @@ impl FileSystem for FsTree {
 
     fn damage(&self) -> &[Damage] {
         &self.damage
+    }
+
+    fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 
@@ -96,12 +106,7 @@ pub(crate) fn resolve_paths(entries: &mut [FileEntry], root: usize, orphans: usi
         }
         for &i in chain.iter().rev() {
             let p = entries[i].parent.map_or(root, FileId::index);
-            let path = if entries[p].path.is_empty() {
-                entries[i].name.clone()
-            } else {
-                format!("{}/{}", entries[p].path, entries[i].name)
-            };
-            entries[i].path = path;
+            entries[i].path = crate::entry::join_path(&entries[p].path, &entries[i].name);
             if p == orphans && i != orphans {
                 entries[i].state = EntryState::Orphan;
             }

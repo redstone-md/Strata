@@ -107,7 +107,7 @@ impl NtfsFileSystem {
             let entry = built.entry_mut();
             entry.state = EntryState::Orphan;
             entry.parent = Some(FileId::new(orphans));
-            entry.path = format!("{}/{}", tree::ORPHANS, entry.name);
+            entry.path = crate::entry::join_path(tree::ORPHANS, &entry.name);
             entry.damage.push(Damage::corrupt(ByteRange::new(at, boot.record_size() as u64), "carved MFT record from free space"));
             if let Some(unit) = unit {
                 compressed.insert(entries.len(), unit);

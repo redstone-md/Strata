@@ -8,8 +8,8 @@
 //!
 //! Covered: Chromium-family History / Login Data / Web Data / Cookies, Firefox places /
 //! formhistory / cookies / signons / logins.json, IE `index.dat`, Opera Presto history,
-//! registry hives (NTUSER, SYSTEM, SOFTWARE, SAM, wallet keys), LNK, Prefetch, Recycle Bin
-//! INFO2/$I, XP `.evt` logs, Outlook Express `.dbx`, mbox/eml, IM account paths.
+//! registry hives (NTUSER, UsrClass shellbags, SYSTEM, SOFTWARE, SAM, wallet keys), LNK, Prefetch, Recycle Bin
+//! INFO2/$I, XP `.evt` and Vista+ `.evtx` logs (also carved chunks), Outlook Express `.dbx`, mbox/eml, IM account paths.
 
 mod browser;
 mod extract;

@@ -124,6 +124,16 @@ pub fn utf16_list(data: &[u8], max_items: usize) -> Vec<String> {
     units.split(|u| *u == 0).filter(|s| !s.is_empty()).take(max_items).map(String::from_utf16_lossy).collect()
 }
 
+/// Windows GUID at `off` (mixed-endian) as `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
+pub fn guid_at(data: &[u8], off: usize) -> Option<String> {
+    let raw: [u8; 16] = bytes::array(data, off)?;
+    let d1 = bytes::u32_le(&raw, 0)?;
+    let d2 = bytes::u16_le(&raw, 4)?;
+    let d3 = bytes::u16_le(&raw, 6)?;
+    let tail: String = raw[10..].iter().map(|x| format!("{x:02X}")).collect();
+    Some(format!("{{{d1:08X}-{d2:04X}-{d3:04X}-{:02X}{:02X}-{tail}}}", raw[8], raw[9]))
+}
+
 /// FILETIME at `off` as a timestamp.
 pub fn filetime_at(data: &[u8], off: usize) -> Option<Timestamp> {
     Timestamp::from_filetime(bytes::u64_le(data, off)?)

@@ -4,10 +4,13 @@
 //! shared [`ExtentReader`], so the rest of Strata never cares which filesystem a file came from.
 
 mod alloc;
+mod dirbuf;
 mod entry;
+mod exfat;
 mod ext;
 mod extent;
 mod fat;
+mod heap;
 mod ntfs;
 mod options;
 mod ownership;
@@ -52,6 +55,11 @@ pub trait FileSystem: Send + Sync {
     /// Problems met while parsing the metadata itself.
     fn damage(&self) -> &[Damage];
 
+    /// Volume label recorded by the filesystem, when it has one.
+    fn label(&self) -> Option<&str> {
+        None
+    }
+
     /// Read file content. Unrecoverable parts (overwritten clusters, bad sectors) read as zeros
     /// and are listed in the entry's damage.
     fn read(&self, id: FileId, offset: u64, buf: &mut [u8]) -> Result<usize> {
@@ -71,6 +79,7 @@ pub fn open_filesystem_with(source: Arc<dyn BlockSource>, kind: FsKind, options:
     match kind {
         FsKind::Ntfs => Ok(Box::new(ntfs::NtfsFileSystem::open(source, options)?)),
         FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 => Ok(Box::new(fat::open(source)?)),
+        FsKind::ExFat => Ok(Box::new(exfat::open(source)?)),
         FsKind::Ext2 | FsKind::Ext3 | FsKind::Ext4 => Ok(Box::new(ext::open(source)?)),
         other => Err(strata_kernel::Error::format(format!("filesystem {other:?} not supported yet"))),
     }

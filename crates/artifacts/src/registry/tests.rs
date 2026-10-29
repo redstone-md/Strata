@@ -159,3 +159,73 @@ fn garbage_hives_never_panic() {
     let _ = parse_hive(&junk);
     assert!(!parse_hive(b"not a hive").damage.is_empty());
 }
+
+/// One shell item plus the list terminator, as BagMRU values store them.
+fn bag(item: Vec<u8>) -> Vec<u8> {
+    [item, vec![0, 0]].concat()
+}
+
+#[test]
+fn usrclass_shellbags_rebuild_folder_paths() {
+    const BAGS: &str = "Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU";
+    const FT3: u64 = FT2 + 36_000_000_000;
+    let date = ((2011 - 1980) << 9) | (5 << 5) | 14;
+    let time = (17 << 11) | (36 << 5) | 4;
+    let mut b = HiveBuilder::new();
+    b.key("CLSID");
+    b.value(BAGS, "0", 3, &bag(crate::pidl::my_computer_item()));
+    b.value(BAGS, "MRUListEx", 3, &mru_ex(&[0]));
+    let computer = format!("{BAGS}\\0");
+    b.value(&computer, "0", 3, &bag(crate::pidl::volume_item('C')));
+    b.value(&computer, "1", 3, &bag(crate::pidl::volume_item('E')));
+    b.value(&computer, "MRUListEx", 3, &mru_ex(&[1, 0]));
+    b.key_time(&computer, FT2);
+    let usb = format!("{computer}\\1");
+    b.value(&usb, "0", 3, &bag(crate::pidl::file_item_at("BITCOI~1", "Bitcoin wallets", true, (date, time))));
+    b.value(&usb, "1", 3, &[0xFF, 0xFF]);
+    b.value(&usb, "MRUListEx", 3, &mru_ex(&[0, 1]));
+    b.key_time(&usb, FT3);
+    b.value(&format!("{computer}\\0"), "0", 3, &bag(crate::pidl::file_item_at("Users", "Users", true, (date, time))));
+    let out = parse_hive(&b.build());
+    assert!(out.damage.is_empty(), "{:?}", out.damage);
+    let opened: Vec<(&str, String)> =
+        out.events.iter().filter(|e| e.kind() == EventKind::DocumentOpened).map(|e| (e.title(), e.at().to_string())).collect();
+    assert_eq!(
+        opened,
+        vec![
+            ("My Computer", "2011-05-14 17:36:09".to_string()),
+            ("E:", "2012-01-31 19:57:06".to_string()),
+            ("E:\\Bitcoin wallets", "2012-01-31 20:57:06".to_string()),
+        ]
+    );
+    let wallet = out.events.iter().find(|e| e.title() == "E:\\Bitcoin wallets" && e.kind() == EventKind::DocumentOpened).unwrap();
+    for tag in ["folder", "shellbag", "drive:E", "crypto", "wallet-folder"] {
+        assert!(wallet.has_tag(tag), "{tag} missing: {:?}", wallet.tags());
+    }
+    assert!(wallet.source().artifact == "registry.shellbags");
+    let created = out.events.iter().find(|e| e.title() == "E:\\Bitcoin wallets" && e.kind() == EventKind::FileCreated).unwrap();
+    assert_eq!(created.at().to_string(), "2011-05-14 17:36:08");
+    // Older MRU entries and undecodable items are kept as undated facts.
+    let facts: Vec<&str> = out.facts.iter().filter(|f| f.key == "shellbag_folder").map(|f| f.value.as_str()).collect();
+    assert_eq!(facts, vec!["E:\\<unreadable item 1>", "C:", "C:\\Users"]);
+}
+
+#[test]
+fn xp_shellbags_mark_portable_devices() {
+    const BAGS: &str = "Software\\Microsoft\\Windows\\ShellNoRoam\\BagMRU";
+    let mut root = vec![0x14, 0, 0x1F, 0x50];
+    root.extend_from_slice(&[0x3C, 0x6D, 0x78, 0x35, 0x75, 0xB0, 0xB9, 0x49, 0x88, 0xDD, 0x02, 0x98, 0x76, 0xE1, 0x1C, 0x01]);
+    let mut device = vec![0, 0, 0x00, 0x00, 0x11, 0x22];
+    device.extend("Apple iPhone".encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+    let len = device.len() as u16;
+    device[..2].copy_from_slice(&len.to_le_bytes());
+    let mut b = HiveBuilder::new();
+    b.key("Control Panel").key("Environment");
+    b.value(BAGS, "0", 3, &bag(root));
+    b.value(BAGS, "MRUListEx", 3, &mru_ex(&[0]));
+    b.value(&format!("{BAGS}\\0"), "0", 3, &bag(device));
+    b.value(&format!("{BAGS}\\0"), "MRUListEx", 3, &mru_ex(&[0]));
+    let out = parse_hive(&b.build());
+    let phone = out.events.iter().find(|e| e.title() == "Portable Devices\\Apple iPhone").expect("device folder");
+    assert!(phone.has_tag("removable"), "{:?}", phone.tags());
+}

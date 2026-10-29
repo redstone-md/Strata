@@ -5,21 +5,22 @@ use strata_kernel::{ByteRange, Damage};
 use strata_source::BlockSource;
 use strata_volume::FsKind;
 
+use super::table::{FatLayout, FatWidth};
+use crate::heap::ClusterHeap;
+
 /// FAT32 keeps a backup boot sector at sector 6.
 const FAT32_BACKUP_SECTOR: u64 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Bpb {
     kind: FsKind,
-    cluster_size: u64,
     fat_offset: u64,
     fat_bytes: u64,
     fat_count: u32,
     root_offset: u64,
     root_bytes: u64,
     root_cluster: u32,
-    data_start: u64,
-    cluster_count: u32,
+    heap: ClusterHeap,
 }
 
 impl Bpb {
@@ -67,15 +68,13 @@ impl Bpb {
         let cluster_count = u32::try_from(clusters.min(addressable).min(0x0FFF_FFF5)).ok()?;
         Some(Self {
             kind,
-            cluster_size: bps * spc,
             fat_offset: reserved * bps,
             fat_bytes,
             fat_count,
             root_offset: (reserved + u64::from(fat_count) * fat_sectors) * bps,
             root_bytes: root_sectors * bps,
             root_cluster: if fat32 { u32_le(s, 44)? } else { 0 },
-            data_start: first_data * bps,
-            cluster_count,
+            heap: ClusterHeap::new(first_data * bps, bps * spc, cluster_count),
         })
     }
 
@@ -94,10 +93,8 @@ impl Bpb {
         (None, vec![note])
     }
 
-    /// Never trust more clusters than the source can hold (bounds the FAT read and maps).
     fn clamped(mut self, source_len: u64) -> Self {
-        let fit = source_len.saturating_sub(self.data_start).div_ceil(self.cluster_size);
-        self.cluster_count = self.cluster_count.min(u32::try_from(fit).unwrap_or(u32::MAX));
+        self.heap = self.heap.clamped(source_len);
         self
     }
 
@@ -105,17 +102,19 @@ impl Bpb {
         self.kind
     }
 
-    pub(super) fn cluster_size(&self) -> u64 {
-        self.cluster_size
+    pub(super) fn heap(&self) -> &ClusterHeap {
+        &self.heap
     }
 
-    /// Byte offset of FAT copy `index` (0-based).
-    pub(super) fn fat_offset(&self, index: u32) -> Option<u64> {
-        (index < self.fat_count).then(|| self.fat_offset + u64::from(index) * self.fat_bytes)
-    }
-
-    pub(super) fn fat_bytes(&self) -> u64 {
-        self.fat_bytes
+    /// Where the FAT copies live and how wide their entries are.
+    pub(super) fn fat_layout(&self) -> FatLayout {
+        let width = match self.kind {
+            FsKind::Fat12 => FatWidth::Fat12,
+            FsKind::Fat16 => FatWidth::Fat16,
+            _ => FatWidth::Fat32,
+        };
+        let copies = (0..self.fat_count).map(|i| self.fat_offset + u64::from(i) * self.fat_bytes).collect();
+        FatLayout::new(width, copies, self.fat_bytes, self.heap.max_cluster())
     }
 
     /// FAT12/16 fixed root directory region; empty on FAT32.
@@ -125,22 +124,5 @@ impl Bpb {
 
     pub(super) fn root_cluster(&self) -> u32 {
         self.root_cluster
-    }
-
-    pub(super) fn data_start(&self) -> u64 {
-        self.data_start
-    }
-
-    /// Highest valid cluster number (clusters are numbered from 2).
-    pub(super) fn max_cluster(&self) -> u32 {
-        self.cluster_count + 1
-    }
-
-    pub(super) fn is_cluster(&self, cluster: u32) -> bool {
-        (2..=self.max_cluster()).contains(&cluster)
-    }
-
-    pub(super) fn cluster_offset(&self, cluster: u32) -> Option<u64> {
-        self.is_cluster(cluster).then(|| self.data_start + u64::from(cluster - 2) * self.cluster_size)
     }
 }
