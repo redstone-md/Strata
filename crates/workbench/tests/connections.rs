@@ -104,5 +104,7 @@ fn builds_a_ranked_graph_of_the_case_and_caches_it() {
     assert_eq!(wb.connection_of_finding(stored[0].id, WIF).unwrap(), Some(key));
 
     wb.case().store_hits(usb, &[(hit("accounts.email", HitCategory::Identity, "e-mail", "new.test3@example.ru", 0.8), in_file("Users/olga/a.txt"))]).unwrap();
-    assert!(!Arc::ptr_eq(&graph, &wb.connections().unwrap()), "new findings rebuild the graph");
+    assert!(Arc::ptr_eq(&graph, &wb.connections().unwrap()), "a young graph is reused while findings keep coming");
+    wb.refresh_connections();
+    assert!(!Arc::ptr_eq(&graph, &wb.connections().unwrap()), "after a refresh the new findings rebuild the graph");
 }
