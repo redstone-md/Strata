@@ -16,6 +16,7 @@ strata-crypto = { path = "../crypto" }
 strata-fs.workspace = true
 strata-identify = { path = "../identify" }
 strata-carve = { path = "../carve" }
+strata-index = { path = "../index" }
 strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
 strata-timeline = { path = "../timeline" }

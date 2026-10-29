@@ -6290,6 +6290,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-index"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "strata-engine",
+ "strata-identify",
+ "strata-kernel",
+ "strata-source",
+ "strata-volume",
+ "tempfile",
+]
+
+[[package]]
 name = "strata-kernel"
 version = "0.1.0"
 dependencies = [
@@ -6370,6 +6386,7 @@ dependencies = [
  "strata-engine",
  "strata-fs",
  "strata-identify",
+ "strata-index",
  "strata-kernel",
  "strata-report",
  "strata-search",

@@ -14,6 +14,8 @@ pub enum VolumeOrigin {
     Recovered,
     /// The evidence itself is a single filesystem (volume image).
     WholeSource,
+    /// Recognised by R-Studio (its `.scn` scan file) and confirmed by our boot-sector check.
+    RStudioScan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

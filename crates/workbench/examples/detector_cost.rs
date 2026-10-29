@@ -1,6 +1,9 @@
 //! `cargo run --release -p strata-workbench --example detector_cost [MiB] [text%]`: single-thread
-//! throughput of every catalogued detector on disk-like data (binary + text + UTF-16 text).
+//! throughput of every catalogued detector on disk-like data (binary + text + UTF-16 text),
+//! and of the disk index profiler that rides along the same pass.
 use std::time::Instant;
+use strata_engine::ChunkObserver;
+use strata_index::{DEFAULT_BLOCK_SIZE, DiskIndex, IndexBuilder};
 use strata_kernel::scan::Hit;
 use strata_workbench::DetectorCatalog;
 
@@ -41,5 +44,16 @@ fn main() {
         total += secs;
         println!("{:<24} {:>9.0} MB/s  {:>7} hits", d.id(), data.len() as f64 / secs / 1e6, hits.len());
     }
-    println!("{:<24} {:>9.0} MB/s  (all detectors, one thread)", "combined", data.len() as f64 / total / 1e6);
+    let mb_s = |secs: f64| data.len() as f64 / secs / 1e6;
+    println!("{:<24} {:>9.0} MB/s  (all detectors, one thread)", "combined", mb_s(total));
+    // Block classes, signatures and boot records, as the scan's chunk observer.
+    let index = IndexBuilder::new(DiskIndex::new(data.len() as u64, DEFAULT_BLOCK_SIZE));
+    let start = Instant::now();
+    for (i, chunk) in data.chunks(16 << 20).enumerate() {
+        index.observe(chunk, (i as u64) << 24, chunk.len());
+    }
+    let secs = start.elapsed().as_secs_f64();
+    println!("{:<24} {:>9.0} MB/s  {:>7} signatures", "index.profiler", mb_s(secs), index.snapshot(0).signatures().len());
+    let with_index = mb_s(total + secs);
+    println!("{:<24} {:>9.0} MB/s  ({:+.1} % with the index profiler)", "combined + index", with_index, (with_index / mb_s(total) - 1.0) * 100.0);
 }
