@@ -241,6 +241,11 @@ impl<'a> Hive<'a> {
         self.values(key).into_iter().find(|v| v.name.eq_ignore_ascii_case(name))
     }
 
+    /// Trimmed, non-empty string value `name` of `key`.
+    pub fn text(&self, key: &Key, name: &str) -> Option<String> {
+        self.value(key, name).and_then(|v| v.string()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
     fn value_at(&self, off: u32) -> Option<Value> {
         let c = self.cell(off)?;
         if c.get(0..2)? != b"vk" {

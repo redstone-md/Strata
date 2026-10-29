@@ -14,6 +14,7 @@
 mod browser;
 mod configs;
 mod extract;
+pub mod host;
 mod linux;
 mod mail;
 mod pidl;
