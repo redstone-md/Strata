@@ -1,7 +1,7 @@
 //! Address balances found for recovered keys and addresses.
 
 use crate::Case;
-use rusqlite::params;
+use rusqlite::{Connection, params};
 use strata_chain::{AddressBalance, addresses_in};
 use strata_kernel::Result;
 
@@ -33,15 +33,7 @@ impl Case {
     }
 
     pub fn store_balance(&self, b: &AddressBalance) -> Result<()> {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-        self.with_conn(|conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO balances (address, funded_sat, spent_sat, tx_count, mempool_delta_sat, source, checked_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![b.address, b.funded_sat as i64, b.spent_sat as i64, b.tx_count as i64, b.mempool_delta_sat, b.source, now],
-            )
-            .map(|_| ())
-        })
+        self.write(|w| w.balance(b))
     }
 
     /// Looked-up addresses, used ones first, richest first.
@@ -73,4 +65,21 @@ impl Case {
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         self.with_conn(|conn| conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", [key, value]).map(|_| ()))
     }
+}
+
+pub(crate) fn insert_balance(conn: &Connection, b: &AddressBalance) -> rusqlite::Result<()> {
+    conn.prepare_cached(
+        "INSERT OR REPLACE INTO balances (address, funded_sat, spent_sat, tx_count, mempool_delta_sat, source, checked_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?
+    .execute(params![
+        b.address,
+        b.funded_sat as i64,
+        b.spent_sat as i64,
+        b.tx_count as i64,
+        b.mempool_delta_sat,
+        b.source,
+        crate::case::now()
+    ])
+    .map(|_| ())
 }

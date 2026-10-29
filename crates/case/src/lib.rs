@@ -9,13 +9,17 @@ mod attribution;
 mod balances;
 mod case;
 mod correlation;
+mod jobs;
 mod schema;
 mod store;
 mod timeline;
+mod writer;
 
 pub use archives::ArchiveMemberRow;
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
-pub use case::{Case, EvidenceRecord};
+pub use case::{Case, EvidenceRecord, SAVE_EVERY, ScanCommit};
+pub use jobs::{JobRecord, JobStamp};
+pub use writer::CaseWriter;
 pub use correlation::{CorrelationService, FileComplement, SameMedium, SharedFinding};
 pub use store::{HitQuery, StoredHit};
 pub use timeline::{EventQuery, HostFact};

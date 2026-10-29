@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use strata_engine::{ScanControl, ScanSummary, Scanner};
 use strata_kernel::scan::HitCategory;
 use strata_kernel::{ByteRange, Error, EvidenceId, Result};
@@ -21,6 +21,12 @@ pub struct EvidenceRecord {
     pub volumes: Vec<Volume>,
 }
 
+/// How often a scan saves its watermark when no hits force a commit.
+pub const SAVE_EVERY: Duration = Duration::from_secs(3);
+
+/// Hook run inside each scan commit with the saved watermark (see [`Case::scan_with`]).
+pub type ScanCommit<'a> = &'a mut (dyn FnMut(&crate::CaseWriter<'_>, u64) -> Result<()> + Send);
+
 pub(crate) fn db(e: rusqlite::Error) -> Error {
     Error::Other(format!("case database: {e}"))
 }
@@ -29,7 +35,7 @@ fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(s)).ok()
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
@@ -173,6 +179,21 @@ impl Case {
 
     /// Run (or resume) the single-pass scan of one evidence item and store attributed hits.
     pub fn scan(&self, id: EvidenceId, scanner: &Scanner, control: &ScanControl) -> Result<ScanSummary> {
+        self.scan_with(id, scanner, control, SAVE_EVERY, &mut |_, _| Ok(()))
+    }
+
+    /// [`scan`](Self::scan) with a hook that runs inside every transaction storing hits and
+    /// the watermark (to save a job checkpoint atomically with them). Hits commit with every
+    /// chunk that has any; the watermark at least every `save_every`. A hook error rolls that
+    /// transaction back and stops the scan.
+    pub fn scan_with(
+        &self,
+        id: EvidenceId,
+        scanner: &Scanner,
+        control: &ScanControl,
+        save_every: Duration,
+        on_commit: ScanCommit<'_>,
+    ) -> Result<ScanSummary> {
         let source = self.source(id)?;
         let layout = self.layout(id)?;
         let detectors = scanner.detector_ids().join(",");
@@ -181,24 +202,38 @@ impl Case {
         let mut last_save = Instant::now();
         let mut failure: Option<Error> = None;
         let summary = scanner.run(source.as_ref(), range, control, |hits| {
-            let attributed: Vec<_> = hits.into_iter().map(|h| { let a = layout.attribute(h.offset); (h, a) }).collect();
-            if let Err(e) = store::insert(&mut self.conn.lock(), id, &attributed) {
-                failure.get_or_insert(db(e));
-                control.cancel();
+            if failure.is_some() || (hits.is_empty() && last_save.elapsed() < save_every) {
+                return;
             }
-            if last_save.elapsed().as_secs() >= 10 {
-                let _ = self.save_progress(id, source.len(), control.snapshot().watermark, false, &detectors);
-                last_save = Instant::now();
+            let attributed: Vec<_> = hits.into_iter().map(|h| { let a = layout.attribute(h.offset); (h, a) }).collect();
+            let mark = control.snapshot().watermark.max(start);
+            let stored = self.write(|w| {
+                w.hits(id, &attributed)?;
+                w.scan_progress(id, source.len(), mark, false, &detectors)?;
+                on_commit(w, mark)
+            });
+            match stored {
+                Ok(()) => last_save = Instant::now(),
+                Err(e) => {
+                    failure = Some(e);
+                    control.cancel();
+                }
             }
         })?;
         if let Some(e) = failure {
             return Err(e);
         }
-        self.save_progress(id, source.len(), control.snapshot().watermark.max(start), summary.completed, &detectors)?;
+        let mark = control.snapshot().watermark.max(start);
+        self.write(|w| {
+            w.scan_progress(id, source.len(), mark, summary.completed, &detectors)?;
+            on_commit(w, mark)
+        })?;
         Ok(summary)
     }
 
-    fn resume_point(&self, id: EvidenceId, detectors: &str) -> Result<u64> {
+    /// Where the next scan with `detectors` starts: the stored watermark of an unfinished
+    /// scan by the same detectors, else 0.
+    pub fn resume_point(&self, id: EvidenceId, detectors: &str) -> Result<u64> {
         let conn = self.conn.lock();
         let row: Option<(i64, bool, String)> = conn
             .query_row("SELECT watermark, completed, detectors FROM scans WHERE evidence_id = ?1", [id.get()], |r| {
@@ -212,18 +247,6 @@ impl Case {
         })
     }
 
-    fn save_progress(&self, id: EvidenceId, len: u64, watermark: u64, completed: bool, detectors: &str) -> Result<()> {
-        self.conn
-            .lock()
-            .execute(
-                "INSERT OR REPLACE INTO scans (evidence_id, range_start, range_len, watermark, completed, detectors, updated_at)
-                 VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6)",
-                params![id.get(), len as i64, watermark as i64, completed, detectors, now()],
-            )
-            .map_err(db)?;
-        Ok(())
-    }
-
     /// `(watermark, total, completed)` of the last scan, if any.
     pub fn scan_state(&self, id: EvidenceId) -> Result<Option<(u64, u64, bool)>> {
         self.conn
@@ -233,53 +256,6 @@ impl Case {
             })
             .optional()
             .map_err(db)
-    }
-
-    /// Store the file listing of every parsed volume (for correlation and search).
-    pub fn index_files(&self, id: EvidenceId) -> Result<usize> {
-        let layout = self.layout(id)?;
-        let mut conn = self.conn.lock();
-        let tx = conn.transaction().map_err(db)?;
-        let mut n = 0;
-        {
-            let mut stmt = tx
-                .prepare_cached(
-                    "INSERT OR REPLACE INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state,
-                     created, modified, accessed, changed) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                )
-                .map_err(db)?;
-            for (vol, fs) in layout.filesystems() {
-                for (i, e) in fs.entries().iter().enumerate() {
-                    let t = |ts: Option<strata_kernel::Timestamp>| ts.map(|t| t.unix_secs());
-                    stmt.execute(params![
-                        id.get(), vol.index, i as i64, e.path, e.name, e.size as i64, e.is_dir, format!("{:?}", e.state),
-                        t(e.times.created), t(e.times.modified), t(e.times.accessed), t(e.times.changed)
-                    ])
-                    .map_err(db)?;
-                    n += 1;
-                }
-            }
-        }
-        tx.commit().map_err(db)?;
-        Ok(n)
-    }
-
-    /// Record content-based types: `(volume, file_idx, type, mismatch, notes)`.
-    pub fn set_file_types(&self, id: EvidenceId, rows: &[(u32, usize, String, bool, String)]) -> Result<()> {
-        let mut conn = self.conn.lock();
-        let tx = conn.transaction().map_err(db)?;
-        {
-            let mut stmt = tx
-                .prepare_cached(
-                    "UPDATE files SET detected_type = ?4, extension_mismatch = ?5, type_notes = ?6
-                     WHERE evidence_id = ?1 AND volume_idx = ?2 AND file_idx = ?3",
-                )
-                .map_err(db)?;
-            for (vol, idx, ty, mismatch, notes) in rows {
-                stmt.execute(params![id.get(), vol, *idx as i64, ty, mismatch, notes]).map_err(db)?;
-            }
-        }
-        tx.commit().map_err(db)
     }
 
     /// Count of significant findings per `cell_len`-sized bucket of the disk.
@@ -352,7 +328,7 @@ impl Case {
 
     /// Store hits produced outside the raw scan (file-level parsers, carving).
     pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
-        store::insert(&mut self.conn.lock(), id, hits).map_err(db)
+        self.write(|w| w.hits(id, hits))
     }
 
     pub fn hits(&self, q: &HitQuery) -> Result<Vec<StoredHit>> {
@@ -361,6 +337,11 @@ impl Case {
 
     pub fn hit_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<(HitCategory, u64)>> {
         store::counts(&self.conn.lock(), evidence).map_err(db)
+    }
+
+    /// The connection, held until the guard drops (one transaction at a time).
+    pub(crate) fn connection(&self) -> parking_lot::MutexGuard<'_, Connection> {
+        self.conn.lock()
     }
 
     pub(crate) fn with_conn_mut<T>(&self, f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>) -> Result<T> {

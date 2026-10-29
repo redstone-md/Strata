@@ -2,7 +2,7 @@
 
 use rusqlite::Connection;
 
-pub const VERSION: i64 = 1;
+pub const VERSION: i64 = 2;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -119,6 +119,24 @@ CREATE TABLE IF NOT EXISTS archive_members (
     PRIMARY KEY (evidence_id, member_path)
 );
 
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY,
+    pipeline INTEGER,
+    evidence_id INTEGER,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    started_at INTEGER,
+    finished_at INTEGER,
+    checkpoint TEXT,
+    done INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    owner_pid INTEGER,
+    updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS balances (
     address TEXT PRIMARY KEY,
     funded_sat INTEGER NOT NULL,
@@ -135,7 +153,7 @@ pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(SCHEMA)?;
     migrate(conn)?;
     conn.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?1)",
+        "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?1)",
         [VERSION.to_string()],
     )?;
     Ok(())

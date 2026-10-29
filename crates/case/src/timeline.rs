@@ -1,7 +1,7 @@
 //! Timeline and host facts persistence.
 
 use crate::Case;
-use rusqlite::params;
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use strata_kernel::{EvidenceId, Result, Timestamp};
 use strata_timeline::TimelineEvent;
@@ -30,41 +30,6 @@ pub struct HostFact {
 }
 
 impl Case {
-    pub fn store_events(&self, id: EvidenceId, events: &[TimelineEvent]) -> Result<usize> {
-        self.with_conn_mut(|conn| {
-            let tx = conn.transaction()?;
-            {
-                let mut stmt = tx.prepare_cached(
-                    "INSERT INTO events (evidence_id, at, kind, title, artifact, path, deleted, crypto, data)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                )?;
-                for e in events {
-                    stmt.execute(params![
-                        id.get(),
-                        e.at().unix_micros(),
-                        format!("{:?}", e.kind()),
-                        e.title(),
-                        e.source().artifact,
-                        e.source().path,
-                        e.source().deleted,
-                        e.is_crypto(),
-                        serde_json::to_string(e).unwrap_or_default(),
-                    ])?;
-                }
-            }
-            tx.commit()?;
-            Ok(events.len())
-        })
-    }
-
-    /// Drop stored events of one evidence item (before re-extraction).
-    pub fn clear_events(&self, id: EvidenceId) -> Result<()> {
-        self.with_conn(|conn| {
-            conn.execute("DELETE FROM events WHERE evidence_id = ?1", [id.get()])?;
-            conn.execute("DELETE FROM facts WHERE evidence_id = ?1", [id.get()]).map(|_| ())
-        })
-    }
-
     pub fn events(&self, q: &EventQuery) -> Result<Vec<(EvidenceId, TimelineEvent)>> {
         let mut sql = String::from("SELECT evidence_id, data FROM events WHERE 1=1");
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -124,19 +89,6 @@ impl Case {
         })
     }
 
-    pub fn store_facts(&self, facts: &[HostFact]) -> Result<()> {
-        self.with_conn_mut(|conn| {
-            let tx = conn.transaction()?;
-            for f in facts {
-                tx.execute(
-                    "INSERT INTO facts (evidence_id, key, value, artifact, source) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![f.evidence.get(), f.key, f.value, f.artifact, f.source],
-                )?;
-            }
-            tx.commit()
-        })
-    }
-
     pub fn facts(&self, evidence: Option<EvidenceId>) -> Result<Vec<HostFact>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -154,4 +106,34 @@ impl Case {
             rows.collect()
         })
     }
+}
+
+pub(crate) fn insert_events(conn: &Connection, id: EvidenceId, events: &[TimelineEvent]) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached(
+        "INSERT INTO events (evidence_id, at, kind, title, artifact, path, deleted, crypto, data)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    )?;
+    for e in events {
+        stmt.execute(params![
+            id.get(),
+            e.at().unix_micros(),
+            format!("{:?}", e.kind()),
+            e.title(),
+            e.source().artifact,
+            e.source().path,
+            e.source().deleted,
+            e.is_crypto(),
+            serde_json::to_string(e).unwrap_or_default(),
+        ])?;
+    }
+    Ok(events.len())
+}
+
+pub(crate) fn insert_facts(conn: &Connection, facts: &[HostFact]) -> rusqlite::Result<()> {
+    let mut stmt =
+        conn.prepare_cached("INSERT INTO facts (evidence_id, key, value, artifact, source) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+    for f in facts {
+        stmt.execute(params![f.evidence.get(), f.key, f.value, f.artifact, f.source])?;
+    }
+    Ok(())
 }

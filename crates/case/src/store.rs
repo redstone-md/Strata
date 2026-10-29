@@ -53,11 +53,11 @@ fn category_from(name: &str) -> HitCategory {
     serde_json::from_value(serde_json::Value::String(name.to_string())).unwrap_or(HitCategory::Marker)
 }
 
-pub(crate) fn insert(conn: &mut Connection, evidence: EvidenceId, hits: &[(Hit, Attribution)]) -> rusqlite::Result<usize> {
-    let tx = conn.transaction()?;
+/// Insert inside the caller's transaction.
+pub(crate) fn insert(conn: &Connection, evidence: EvidenceId, hits: &[(Hit, Attribution)]) -> rusqlite::Result<usize> {
     let mut inserted = 0;
     {
-        let mut stmt = tx.prepare_cached(
+        let mut stmt = conn.prepare_cached(
             "INSERT OR IGNORE INTO hits (evidence_id, detector, category, offset, len, confidence, label, value,
              details, volume_idx, file_path, file_state, file_offset)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
@@ -80,7 +80,6 @@ pub(crate) fn insert(conn: &mut Connection, evidence: EvidenceId, hits: &[(Hit, 
             ])?;
         }
     }
-    tx.commit()?;
     Ok(inserted)
 }
 

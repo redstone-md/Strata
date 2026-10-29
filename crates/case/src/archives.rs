@@ -2,7 +2,7 @@
 //! selection the unpack step starts from.
 
 use crate::Case;
-use rusqlite::params;
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use strata_kernel::{EvidenceId, Result};
 
@@ -56,39 +56,6 @@ impl Case {
         })
     }
 
-    /// Replace the stored members of one evidence item.
-    pub fn store_archive_members(&self, id: EvidenceId, rows: &[ArchiveMemberRow]) -> Result<usize> {
-        self.with_conn_mut(|conn| {
-            let tx = conn.transaction()?;
-            tx.execute("DELETE FROM archive_members WHERE evidence_id = ?1", [id.get()])?;
-            {
-                let mut stmt = tx.prepare_cached(
-                    "INSERT OR REPLACE INTO archive_members (evidence_id, archive_path, member_path, depth, size, packed,
-                     recovered, encrypted, detected_type, extension_mismatch, modified, damage)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                )?;
-                for m in rows {
-                    stmt.execute(params![
-                        id.get(),
-                        m.archive_path,
-                        m.member_path,
-                        m.depth,
-                        m.size.map(|v| v as i64),
-                        m.packed.map(|v| v as i64),
-                        m.recovered as i64,
-                        m.encrypted,
-                        m.detected_type,
-                        m.extension_mismatch,
-                        m.modified,
-                        m.damage
-                    ])?;
-                }
-            }
-            tx.commit()?;
-            Ok(rows.len())
-        })
-    }
-
     pub fn archive_members(&self, id: EvidenceId) -> Result<Vec<ArchiveMemberRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -114,4 +81,29 @@ impl Case {
             rows.collect()
         })
     }
+}
+
+pub(crate) fn insert_members(conn: &Connection, id: EvidenceId, rows: &[ArchiveMemberRow]) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached(
+        "INSERT OR REPLACE INTO archive_members (evidence_id, archive_path, member_path, depth, size, packed,
+         recovered, encrypted, detected_type, extension_mismatch, modified, damage)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+    )?;
+    for m in rows {
+        stmt.execute(params![
+            id.get(),
+            m.archive_path,
+            m.member_path,
+            m.depth,
+            m.size.map(|v| v as i64),
+            m.packed.map(|v| v as i64),
+            m.recovered as i64,
+            m.encrypted,
+            m.detected_type,
+            m.extension_mismatch,
+            m.modified,
+            m.damage
+        ])?;
+    }
+    Ok(rows.len())
 }
