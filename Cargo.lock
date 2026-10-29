@@ -6248,7 +6248,7 @@ checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
 name = "strata"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "embed-resource",
  "gpui-component",
@@ -6262,7 +6262,7 @@ dependencies = [
 
 [[package]]
 name = "strata-accounts"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "aho-corasick",
  "encoding_rs",
@@ -6275,7 +6275,7 @@ dependencies = [
 
 [[package]]
 name = "strata-archive"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "aes 0.8.4",
  "bzip2",
@@ -6298,7 +6298,7 @@ dependencies = [
 
 [[package]]
 name = "strata-artifacts"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "crc32fast",
  "rusqlite",
@@ -6315,7 +6315,7 @@ dependencies = [
 
 [[package]]
 name = "strata-carve"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "flate2",
  "memchr",
@@ -6328,7 +6328,7 @@ dependencies = [
 
 [[package]]
 name = "strata-case"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "parking_lot",
  "rusqlite",
@@ -6352,7 +6352,7 @@ dependencies = [
 
 [[package]]
 name = "strata-chain"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "parking_lot",
  "serde",
@@ -6363,7 +6363,7 @@ dependencies = [
 
 [[package]]
 name = "strata-cli"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "clap",
  "serde_json",
@@ -6375,7 +6375,7 @@ dependencies = [
 
 [[package]]
 name = "strata-consistency"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "strata-kernel",
@@ -6383,7 +6383,7 @@ dependencies = [
 
 [[package]]
 name = "strata-crypto"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "aho-corasick",
  "base64 0.22.1",
@@ -6405,7 +6405,7 @@ dependencies = [
 
 [[package]]
 name = "strata-engine"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
@@ -6417,7 +6417,7 @@ dependencies = [
 
 [[package]]
 name = "strata-fs"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "strata-kernel",
@@ -6427,7 +6427,7 @@ dependencies = [
 
 [[package]]
 name = "strata-graph"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "strata-accounts",
@@ -6437,7 +6437,7 @@ dependencies = [
 
 [[package]]
 name = "strata-identify"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -6449,7 +6449,7 @@ dependencies = [
 
 [[package]]
 name = "strata-index"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "crc32fast",
  "parking_lot",
@@ -6465,7 +6465,7 @@ dependencies = [
 
 [[package]]
 name = "strata-kernel"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -6474,7 +6474,7 @@ dependencies = [
 
 [[package]]
 name = "strata-leads"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -6487,7 +6487,7 @@ dependencies = [
 
 [[package]]
 name = "strata-machines"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "strata-accounts",
@@ -6498,7 +6498,7 @@ dependencies = [
 
 [[package]]
 name = "strata-mail"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "mail-parser",
  "memchr",
@@ -6508,7 +6508,7 @@ dependencies = [
 
 [[package]]
 name = "strata-mcp"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "clap",
  "rmcp",
@@ -6529,7 +6529,7 @@ dependencies = [
 
 [[package]]
 name = "strata-report"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -6540,7 +6540,7 @@ dependencies = [
 
 [[package]]
 name = "strata-search"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "aho-corasick",
  "regex",
@@ -6551,7 +6551,7 @@ dependencies = [
 
 [[package]]
 name = "strata-source"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "flate2",
  "parking_lot",
@@ -6565,7 +6565,7 @@ dependencies = [
 
 [[package]]
 name = "strata-timeline"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "strata-kernel",
@@ -6573,7 +6573,7 @@ dependencies = [
 
 [[package]]
 name = "strata-trails"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -6586,7 +6586,7 @@ dependencies = [
 
 [[package]]
 name = "strata-volume"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -6596,7 +6596,7 @@ dependencies = [
 
 [[package]]
 name = "strata-workbench"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "parking_lot",
  "rusqlite",
