@@ -1,12 +1,12 @@
-//! Per-disk detail lists: volumes, and host facts recovered from the machine's artefacts.
+//! Per-disk detail lists: volumes.
 
 use crate::format;
 use crate::theme::tokens;
-use crate::widgets::{Badge, Section, TextButton, mono};
+use crate::widgets::{Badge, Section, TextButton};
 use gpui::{App, IntoElement, ParentElement, SharedString, Styled, Window, div, px};
 use gpui_component::{h_flex, v_flex};
 use std::rc::Rc;
-use strata_workbench::{EvidenceRecord, HostFact, VolumeOrigin};
+use strata_workbench::{EvidenceRecord, VolumeOrigin};
 
 /// Width of the label cell (text, or the badge of a deleted partition).
 const LABEL_WIDTH: f32 = 160.;
@@ -79,20 +79,4 @@ pub fn volumes(record: &EvidenceRecord, on_browse: impl Fn(u32, &mut Window, &mu
         .child(TextButton::new(SharedString::from(format!("browse-{}-{index}", record.id)), "Browse").on_click(move |_, w, cx| browse(index, w, cx)))
     });
     Some(Section::new("Volumes").child(v_flex().child(header).children(rows)))
-}
-
-/// Host facts: computer name, users, devices, wallet folders.
-pub fn machine(facts: &[HostFact]) -> impl IntoElement {
-    let t = tokens();
-    let rows = facts.iter().map(|f| {
-        h_flex()
-            .min_h(t.row_height)
-            .gap(px(16.))
-            .border_b_1()
-            .border_color(t.row_rule)
-            .text_size(t.size_body)
-            .child(div().w(px(150.)).flex_shrink_0().text_color(t.text_secondary).truncate().child(f.key.clone()))
-            .child(mono().flex_1().min_w_0().text_color(t.text).truncate().child(f.value.clone()))
-    });
-    Section::new("Machine").flex_1().min_w(px(280.)).child(v_flex().border_t_1().border_color(t.row_rule).children(rows))
 }

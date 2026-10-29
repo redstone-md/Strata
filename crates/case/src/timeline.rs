@@ -23,6 +23,9 @@ pub struct EventQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostFact {
     pub evidence: EvidenceId,
+    /// Volume the fact was read from (`None` in cases made before volumes were recorded).
+    #[serde(default)]
+    pub volume: Option<u32>,
     pub key: String,
     pub value: String,
     pub artifact: String,
@@ -96,7 +99,7 @@ impl Case {
     pub fn facts(&self, evidence: Option<EvidenceId>) -> Result<Vec<HostFact>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT evidence_id, key, value, artifact, source FROM facts WHERE (?1 IS NULL OR evidence_id = ?1) ORDER BY key",
+                "SELECT evidence_id, key, value, artifact, source, volume FROM facts WHERE (?1 IS NULL OR evidence_id = ?1) ORDER BY key",
             )?;
             let rows = stmt.query_map([evidence.map(|e| e.get())], |r| {
                 Ok(HostFact {
@@ -105,6 +108,7 @@ impl Case {
                     value: r.get(2)?,
                     artifact: r.get(3)?,
                     source: r.get(4)?,
+                    volume: r.get(5)?,
                 })
             })?;
             rows.collect()
@@ -112,10 +116,10 @@ impl Case {
     }
 }
 
-pub(crate) fn insert_events(conn: &Connection, id: EvidenceId, events: &[TimelineEvent]) -> rusqlite::Result<usize> {
+pub(crate) fn insert_events(conn: &Connection, id: EvidenceId, volume: Option<u32>, events: &[TimelineEvent]) -> rusqlite::Result<usize> {
     let mut stmt = conn.prepare_cached(
-        "INSERT INTO events (evidence_id, at, kind, title, artifact, path, deleted, crypto, data)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO events (evidence_id, at, kind, title, artifact, path, deleted, crypto, data, volume)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )?;
     for e in events {
         stmt.execute(params![
@@ -128,6 +132,7 @@ pub(crate) fn insert_events(conn: &Connection, id: EvidenceId, events: &[Timelin
             e.source().deleted,
             e.is_crypto(),
             serde_json::to_string(e).unwrap_or_default(),
+            volume,
         ])?;
     }
     Ok(events.len())
@@ -135,9 +140,9 @@ pub(crate) fn insert_events(conn: &Connection, id: EvidenceId, events: &[Timelin
 
 pub(crate) fn insert_facts(conn: &Connection, facts: &[HostFact]) -> rusqlite::Result<()> {
     let mut stmt =
-        conn.prepare_cached("INSERT INTO facts (evidence_id, key, value, artifact, source) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+        conn.prepare_cached("INSERT INTO facts (evidence_id, key, value, artifact, source, volume) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
     for f in facts {
-        stmt.execute(params![f.evidence.get(), f.key, f.value, f.artifact, f.source])?;
+        stmt.execute(params![f.evidence.get(), f.key, f.value, f.artifact, f.source, f.volume])?;
     }
     Ok(())
 }

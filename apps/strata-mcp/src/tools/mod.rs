@@ -7,6 +7,7 @@ pub mod files;
 pub mod findings;
 pub mod graph;
 pub mod insights;
+pub mod machines;
 pub mod mail;
 pub mod overview;
 pub mod searches;
@@ -26,6 +27,7 @@ pub(crate) fn router() -> ToolRouter<StrataServer> {
         + StrataServer::search_tools()
         + StrataServer::mail_tools()
         + StrataServer::graph_tools()
+        + StrataServer::machine_tools()
 }
 
 /// Disk id parameter as the workbench's evidence id.

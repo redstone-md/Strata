@@ -43,7 +43,12 @@ impl Workbench {
             if stored < 5 && scanned {
                 kinds.push(JobKind::Recheck);
             }
-            if stored < 3 && self.case.has_files(disk.id)? {
+            let indexed = self.case.has_files(disk.id)?;
+            // Version 6 parses more of the registry and Linux system files (machine profiles).
+            if stored < 6 && indexed {
+                kinds.push(JobKind::Artifacts);
+            }
+            if stored < 3 && indexed {
                 kinds.push(JobKind::Mail);
             }
             if !kinds.is_empty() {

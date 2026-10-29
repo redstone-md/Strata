@@ -6,7 +6,7 @@ use crate::mail::{Dbx, Mailbox};
 use strata_mail::Container;
 use crate::registry::{self, RegistryHive};
 use crate::results::{ArtifactResults, Recorder};
-use crate::linux::{RecentlyUsed, ShellHistory, WalletDir, Wtmp};
+use crate::linux::{LinuxSystem, RecentlyUsed, ShellHistory, WalletDir, Wtmp};
 use crate::windows::{EventLog, Evtx, Info2, Lnk, Prefetch, RecycleI};
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +44,9 @@ pub enum ArtifactKind {
     OeAccount,
     /// Mining software config or launch script naming a pool login.
     MinerConfig,
+    /// Linux system configuration: `/etc/hostname`, `os-release`, `passwd`, time zone,
+    /// NetworkManager connections, DHCP leases.
+    LinuxSystem,
 }
 
 /// Mining software config file names.
@@ -93,6 +96,7 @@ impl ArtifactKind {
             _ if ext == "oeaccount" => Self::OeAccount,
             n if MINER_CONFIGS.contains(&n) && (n != "config.json" || ["miner", "xmrig"].iter().any(|d| under(d))) => Self::MinerConfig,
             _ if matches!(ext, "bat" | "cmd") && !under("/windows/") => Self::MinerConfig,
+            _ if LinuxSystem::matches(&p) => Self::LinuxSystem,
             _ if crate::linux::WalletDir::software(&p).is_some() && (name == "debug.log" || matches!(ext, "conf" | "json" | "config")) => Self::WalletDir,
             _ => return None,
         })
@@ -159,6 +163,7 @@ impl ArtifactKind {
             Self::Lnk | Self::RecycleI | Self::Prefetch | Self::OperaTypedHistory | Self::FirefoxLoginsJson => 16 << 20,
             Self::MozillaPrefs | Self::OeAccount => 4 << 20,
             Self::MinerConfig => 64 << 10,
+            Self::LinuxSystem => 1 << 20,
             Self::RegistryHive | Self::BrowserSqlite | Self::IeIndexDat => 512 << 20,
             _ => 256 << 20,
         }
@@ -196,6 +201,7 @@ impl ArtifactKind {
             Self::MozillaPrefs => one("mozilla.prefs", &|r| MozillaPrefs::parse(data, r)),
             Self::OeAccount => one("mail.oeaccount", &|r| OeAccount::parse(data, r)),
             Self::MinerConfig => one("miner.config", &|r| MinerConfig::parse(data, r)),
+            Self::LinuxSystem => one("linux.system", &|r| LinuxSystem::parse(name_hint, data, r)),
         }
     }
 
@@ -238,5 +244,8 @@ mod tests {
         assert_eq!(k("Users/a/Desktop/start_mining.bat"), Some(ArtifactKind::MinerConfig));
         assert_eq!(k("Windows/System32/setup.bat"), None);
         assert_eq!(k("Users/a/Documents/config.json"), None);
+        assert_eq!(k("etc/hostname"), Some(ArtifactKind::LinuxSystem));
+        assert_eq!(k("var/lib/docker/overlay2/ab12/diff/etc/os-release"), Some(ArtifactKind::LinuxSystem));
+        assert_eq!(k("Windows/System32/drivers/etc/hosts"), None);
     }
 }

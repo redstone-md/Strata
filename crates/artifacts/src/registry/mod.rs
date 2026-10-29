@@ -4,7 +4,9 @@
 mod hive;
 mod mru;
 mod ntuser;
+mod sam;
 mod shellbags;
+mod software;
 mod system;
 
 use crate::results::{ArtifactResults, Recorder};
@@ -13,7 +15,9 @@ use ntuser::NtUser;
 use shellbags::ShellBags;
 use strata_kernel::{Damage, DamageKind};
 use strata_timeline::{CRYPTO_TAG, EventKind};
-use system::{SamHive, SoftwareHive, SystemHive};
+use sam::SamHive;
+use software::SoftwareHive;
+use system::SystemHive;
 
 pub(crate) use hive::Hive as RegistryHive;
 
@@ -141,5 +145,7 @@ impl<'h, 'a> WalletKeys<'h, 'a> {
     }
 }
 
+#[cfg(test)]
+mod host_tests;
 #[cfg(test)]
 mod tests;

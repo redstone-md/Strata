@@ -115,6 +115,18 @@ pub fn filetime_at(data: &[u8], off: usize) -> Option<Timestamp> {
     Timestamp::from_filetime(bytes::u64_le(data, off)?)
 }
 
+/// Windows SYSTEMTIME (eight u16: year, month, weekday, day, hour, minute, second, ms) at `off`.
+pub fn systemtime_at(data: &[u8], off: usize) -> Option<Timestamp> {
+    let w = |i: usize| bytes::u16_le(data, off + 2 * i).map(u32::from);
+    civil(i64::from(w(0)?), w(1)?, w(3)?, w(4)?, w(5)?, w(6)?)
+}
+
+/// Six bytes at `off` as `AA:BB:CC:DD:EE:FF`; `None` when missing or all zero.
+pub fn mac_at(data: &[u8], off: usize) -> Option<String> {
+    let raw: [u8; 6] = bytes::array(data, off)?;
+    (raw != [0; 6]).then(|| raw.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":"))
+}
+
 /// Host part of a URL (`https://user@Host:80/x` → `host`).
 pub fn host_of(url: &str) -> Option<String> {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);

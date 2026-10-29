@@ -164,10 +164,11 @@ fn older_cases_read_their_mail_when_opened() {
     wait_idle(&wb);
     assert_eq!(wb.jobs().iter().filter(|j| j.kind == JobKind::Mail).count(), 1);
 
-    // A version-1 case with a scanned disk gets both the re-check and the mail job.
+    // A version-1 case with a scanned disk gets the re-check, the artefacts re-run (version 6)
+    // and the mail job.
     wb.run_step(JobKind::Scan, id).unwrap();
     wb.case().set_setting("rules_version", "1").unwrap();
-    assert_eq!(wb.recheck_if_rules_changed().unwrap(), 2);
+    assert_eq!(wb.recheck_if_rules_changed().unwrap(), 3);
     wait_idle(&wb);
     let kinds: Vec<JobKind> = wb.jobs().iter().map(|j| j.kind).collect();
     assert!(kinds.contains(&JobKind::Recheck), "{kinds:?}");

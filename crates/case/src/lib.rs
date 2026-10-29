@@ -4,6 +4,7 @@
 //! can be added; findings from all of them live in one store so correlation can show where
 //! disks complement each other.
 
+mod activity;
 mod archives;
 mod attribution;
 mod balances;
@@ -26,6 +27,7 @@ mod system_paths;
 mod timeline;
 mod writer;
 
+pub use activity::{EventFilter, FactGroup, HourlyEvents, TitledEvents};
 pub use archives::ArchiveMemberRow;
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
 pub use case::{Case, EvidenceRecord, SAVE_EVERY, ScanCommit};

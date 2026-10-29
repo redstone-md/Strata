@@ -166,7 +166,17 @@ pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
 /// Columns added after a case may already exist on disk. `ADD COLUMN` fails harmlessly with
 /// "duplicate column" when the column is already there.
 /// `hits.repeats`: copies beyond the stored ones (see `repeats.rs`).
-const ADDED_COLUMNS: &[(&str, &str)] = &[("files", "type_notes TEXT"), ("hits", "repeats INTEGER NOT NULL DEFAULT 0")];
+/// `events.volume`, `facts.volume`: the volume an artefact was read from (NULL in older cases).
+const ADDED_COLUMNS: &[(&str, &str)] = &[
+    ("files", "type_notes TEXT"),
+    ("hits", "repeats INTEGER NOT NULL DEFAULT 0"),
+    ("events", "volume INTEGER"),
+    ("facts", "volume INTEGER"),
+];
+
+/// Indexes over added columns or added after cases already existed.
+const ADDED_INDEXES: &str = "CREATE INDEX IF NOT EXISTS events_kind ON events(evidence_id, kind, at);
+CREATE INDEX IF NOT EXISTS facts_key ON facts(evidence_id, key);";
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     for (table, column) in ADDED_COLUMNS {
@@ -177,5 +187,5 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             }
         }
     }
-    Ok(())
+    conn.execute_batch(ADDED_INDEXES)
 }

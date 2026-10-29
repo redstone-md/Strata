@@ -77,10 +77,24 @@ click instead of a week of editing offsets by hand.
 **Timeline and accounts**
 - Browsers: Chromium family, Firefox, Internet Explorer `index.dat`, Opera Presto.
 - Registry: UserAssist, RecentDocs, MRU lists, typed URLs, USB devices, installed programs,
-  shellbags, wallet software keys.
+  shellbags, wallet software keys, Windows version, time zone, network interfaces and
+  profiles, hardware, SAM users.
 - Windows artefacts: LNK, Prefetch, Recycle Bin, `.evt` and `.evtx` logs.
-- Linux artefacts: shell history, GNOME recent files, wtmp/btmp, wallet data folders.
+- Linux artefacts: shell history, GNOME recent files, wtmp/btmp, wallet data folders, host name,
+  distribution, time zone, users, NetworkManager connections and DHCP leases.
 - Mail and IM traces.
+
+**Machines and usage**
+- Each disk lists the computers it held: one profile per installation (dual boot, `Windows.old`,
+  copied systems, Docker/LXC containers, a separate `/home`) with computer name, Windows or
+  Linux version, install date, owner, users with last logon, time zone, last shutdown, IP
+  addresses, Wi-Fi networks, hardware, USB devices (hardware wallets first) and crypto
+  software, each value with the file it came from.
+- When the disk was in use: first and last active day and periods of active use, built from
+  user activity only (logons, program runs, browsing, documents, start-up and shutdown, USB),
+  with impossible dates and stray timestamps left out and listed.
+- `strata-cli -c <case> machines` and `usage` print the same; raw host facts stay one click away,
+  grouped by key.
 
 **Mail**
 - Messages are read whole (headers, body as text, attachments) from Thunderbird and Linux mbox,
@@ -163,8 +177,8 @@ the Esplora endpoint (`balances --endpoint`) and the scan thread count (`analyse
 
 `strata-mcp` lets an AI assistant such as Claude Code or Claude Desktop look into a case and
 help with the analysis. It can list findings with their derived addresses, read balances and
-address histories, walk the timeline, and go through accounts, leads, files, stored searches
-and jobs. Start a conversation with something like "what in this case points to a wallet that
+address histories, walk the timeline, see the computers each disk held and when they were in
+use, and go through accounts, leads, files, stored searches and jobs. Start a conversation with something like "what in this case points to a wallet that
 still holds coins?".
 
 The server is read-only. It opens the case without resuming jobs, cannot start an analysis or a
@@ -212,6 +226,7 @@ A Cargo workspace where each crate is one bounded context. GUI and CLI talk only
 | `leads` | The date analyser |
 | `artifacts`, `timeline` | Browser, registry, Windows, Linux and mail artefacts as timeline events |
 | `mail` | E-mail messages: MIME parsing, mbox, `.eml`, `.dbx`, carving from free space |
+| `machines` | One profile per operating-system installation, and when each disk was in use |
 | `chain` | Address balances and transaction history through Esplora |
 | `engine` | The single-pass scanner |
 | `case` | The case database (SQLite), attribution, cross-disk correlation |

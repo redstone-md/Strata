@@ -6364,7 +6364,10 @@ version = "0.0.4"
 dependencies = [
  "clap",
  "serde_json",
+ "strata-kernel",
+ "strata-timeline",
  "strata-workbench",
+ "tempfile",
 ]
 
 [[package]]
@@ -6466,6 +6469,17 @@ dependencies = [
  "serde_json",
  "strata-accounts",
  "strata-chain",
+ "strata-kernel",
+ "strata-timeline",
+]
+
+[[package]]
+name = "strata-machines"
+version = "0.0.4"
+dependencies = [
+ "serde",
+ "strata-accounts",
+ "strata-artifacts",
  "strata-kernel",
  "strata-timeline",
 ]
@@ -6578,6 +6592,7 @@ dependencies = [
  "strata-index",
  "strata-kernel",
  "strata-leads",
+ "strata-machines",
  "strata-mail",
  "strata-report",
  "strata-search",

@@ -6,6 +6,7 @@ mod disk_index;
 pub mod explore;
 mod insights;
 mod jobs;
+mod machines;
 mod mail;
 mod monitor;
 mod sector_map;
@@ -30,6 +31,11 @@ pub use strata_identify::Category as TypeCategory;
 pub use strata_volume::VolumeOrigin;
 pub use strata_search::{Encoding, Pattern, Scope, SearchQuery, Snippet};
 
+pub use strata_case::FactGroup;
+pub use strata_machines::{
+    ActivityKind, CryptoSoftware, DiskMachines, InstallKind, Machine, MachineProfile, MonthActivity, NetworkProfile, OsFamily, Period as UsagePeriod, Provenance,
+    UsageReport, UsbDevice, UserAccount, Values, first_source, utc_offset,
+};
 pub use strata_case::{EventQuery, HostFact, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 pub use strata_kernel::scan::HitCategory;
 pub use strata_index::{BlockClass, CellContent, IndexStats, Ownership, TextKind};

@@ -1,0 +1,13 @@
+[package]
+name = "strata-machines"
+description = "Machines context: one profile per operating-system installation on a disk, and when the disk was in use"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-artifacts = { path = "../artifacts" }
+strata-accounts = { path = "../accounts" }
+strata-timeline = { path = "../timeline" }
+serde.workspace = true

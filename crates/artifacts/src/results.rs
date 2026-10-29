@@ -211,6 +211,11 @@ impl Recorder {
         }
     }
 
+    /// A structured host fact (JSON record, see [`crate::host`]).
+    pub fn record<T: Serialize>(&mut self, key: &str, record: &T) {
+        self.fact(key, crate::host::to_value(record));
+    }
+
     pub fn damage(&mut self, damage: Damage) {
         self.out.damage.push(damage);
     }

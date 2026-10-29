@@ -2,6 +2,7 @@
 
 mod insights;
 mod jobs;
+mod machines;
 mod mail;
 
 use clap::{Parser, Subcommand};
@@ -101,6 +102,22 @@ enum Command {
     },
     /// Host facts: computer name, users, USB devices, wallet folders...
     Facts,
+    /// The computers each disk held: one profile per installation (OS, owner, users, time
+    /// zone, network, hardware, USB devices, crypto software) and when it was in use.
+    Machines {
+        /// Only this disk id.
+        #[arg(long)]
+        disk: Option<u32>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// When each disk was in use: first and last day, active periods, typical hours.
+    Usage {
+        #[arg(long)]
+        disk: Option<u32>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Passwords of your own archives, tried on encrypted ZIP members by the Archives step.
     /// With arguments the list is replaced; without, it is printed.
     ArchivePasswords { passwords: Vec<String> },
@@ -257,6 +274,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{} {:<24} {}  ({})", f.evidence, f.key, f.value, f.source);
             }
         }
+        Command::Machines { disk, json } => machines::machines(&wb, disk, json)?,
+        Command::Usage { disk, json } => machines::usage(&wb, disk, json)?,
         Command::ArchivePasswords { passwords } => {
             if !passwords.is_empty() {
                 wb.set_archive_passwords(&passwords)?;

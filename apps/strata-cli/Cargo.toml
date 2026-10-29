@@ -13,3 +13,8 @@ path = "src/main.rs"
 strata-workbench = { path = "../../crates/workbench" }
 clap.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+strata-timeline = { path = "../../crates/timeline" }
+strata-kernel.workspace = true
