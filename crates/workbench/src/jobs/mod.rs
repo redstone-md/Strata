@@ -55,6 +55,8 @@ pub enum JobKind {
     Recover,
     /// Re-run improved detectors over stored findings (after an upgrade).
     Recheck,
+    /// Fold repeated copies and re-apply triage to stored findings (after an upgrade).
+    Tidy,
 }
 
 impl JobKind {
@@ -85,11 +87,12 @@ impl JobKind {
             Self::Search => "Search",
             Self::Recover => "Recover",
             Self::Recheck => "Recheck",
+            Self::Tidy => "Tidy",
         }
     }
 
     pub fn parse(name: &str) -> Option<Self> {
-        Self::PIPELINE.into_iter().chain([Self::Search, Self::Recover, Self::Recheck]).find(|k| k.name().eq_ignore_ascii_case(name))
+        Self::PIPELINE.into_iter().chain([Self::Search, Self::Recover, Self::Recheck, Self::Tidy]).find(|k| k.name().eq_ignore_ascii_case(name))
     }
 
     /// What progress counts: bytes of the evidence or items (files, archives, addresses).
@@ -114,6 +117,7 @@ impl JobKind {
             Self::Search => format!("Search {evidence}"),
             Self::Recover => format!("Recover files {evidence}"),
             Self::Recheck => format!("Re-check findings {evidence}"),
+            Self::Tidy => format!("Tidy findings {evidence}"),
         }
     }
 }

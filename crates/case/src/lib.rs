@@ -21,6 +21,7 @@ mod repeats;
 mod schema;
 mod search_store;
 mod store;
+mod system_paths;
 mod timeline;
 mod writer;
 
@@ -32,6 +33,7 @@ pub use writer::CaseWriter;
 pub use file_rows::{FileRow, FileTypes, TypeCount};
 pub use messages::{FoundMessage, MessageLocation, MessageQuery, MessageRow, MessageState, StoredBatch, StoredMessage};
 pub use recheck::{RecheckRow, Verdict};
+pub use system_paths::is_system_path;
 pub use recovered::DELETED_PARTITION;
 pub use search_store::{SearchRecord, SearchResultRow};
 pub use correlation::{CorrelationService, FileComplement, SameMedium, SharedFinding};

@@ -149,7 +149,9 @@ CREATE TABLE IF NOT EXISTS balances (
 "#;
 
 pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
+    // The write-ahead log is cut back to 64 MiB after each checkpoint instead of keeping its
+    // largest size (it grew past a gigabyte during long scans).
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA journal_size_limit=67108864;")?;
     conn.execute_batch(SCHEMA)?;
     conn.execute_batch(crate::insights::SCHEMA)?;
     conn.execute_batch(crate::messages::SCHEMA)?;

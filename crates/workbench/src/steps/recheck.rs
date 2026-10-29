@@ -76,11 +76,34 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
             return Ok(String::new());
         }
     }
-    ctx.case().compact_repeats(id)?;
-    let downgraded = Triage::new(ctx.case()).run(id)?;
+    let (folded, downgraded) = tidy_findings(ctx)?;
     ctx.commit(&cur, |_| Ok(()))?;
-    let summary =
-        format!("{} re-checked, {} no longer findings, {} rescored, {downgraded} inside system files", cur.checked, cur.removed, cur.changed);
+    let summary = format!(
+        "{} re-checked, {} no longer findings, {} rescored, {folded} repeated copies folded, {downgraded} inside system files",
+        cur.checked, cur.removed, cur.changed
+    );
+    ctx.log(summary.clone());
+    Ok(summary)
+}
+
+/// Fold repeated copies into counts and re-apply triage. Both are idempotent, so the step
+/// needs no cursor: an interrupted run simply runs again.
+fn tidy_findings(ctx: &StepContext<'_>) -> Result<(usize, usize)> {
+    let id = ctx.evidence();
+    ctx.current("folding repeated copies");
+    let folded = ctx.case().compact_repeats(id)?;
+    ctx.current("re-applying triage");
+    Ok((folded, Triage::new(ctx.case()).run(id)?))
+}
+
+/// The `Tidy` step: only the repeat cap and triage, for cases whose findings are otherwise
+/// current.
+pub(super) fn tidy(ctx: &StepContext<'_>) -> Result<String> {
+    ctx.control().begin_at(0, 2);
+    let (folded, downgraded) = tidy_findings(ctx)?;
+    ctx.control().item_done();
+    ctx.control().item_done();
+    let summary = format!("{folded} repeated copies folded, {downgraded} inside system files");
     ctx.log(summary.clone());
     Ok(summary)
 }

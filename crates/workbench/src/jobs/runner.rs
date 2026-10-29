@@ -37,8 +37,12 @@ impl Workbench {
         let mut queued = 0;
         for disk in self.case.evidence()? {
             let mut kinds = Vec::new();
-            if stored < 2 && self.case.scan_state(disk.id)?.is_some() {
+            let scanned = self.case.scan_state(disk.id)?.is_some();
+            if stored < 2 && scanned {
                 kinds.push(JobKind::Recheck);
+            } else if stored < 4 && scanned {
+                // Recheck tidies too; otherwise only the repeat cap and triage changed.
+                kinds.push(JobKind::Tidy);
             }
             if stored < 3 && self.case.has_files(disk.id)? {
                 kinds.push(JobKind::Mail);

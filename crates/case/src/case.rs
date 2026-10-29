@@ -312,17 +312,9 @@ impl Case {
         rows.collect::<rusqlite::Result<_>>().map_err(db)
     }
 
-    /// Lower the confidence of findings inside live system files (by path prefix, by a folder
-    /// anywhere in the path, e.g. under container layers, or by extension) and tag them in
-    /// `details.triage`. Idempotent: tagged hits are skipped.
-    pub fn downgrade_system_hits(&self, id: EvidenceId, prefixes: &[&str], folders: &[&str], extensions: &[&str], factor: f32) -> Result<usize> {
-        // Rules are crate constants, not user input, so they are inlined into the SQL.
-        let path_rule: Vec<String> = prefixes
-            .iter()
-            .map(|p| format!("lower(file_path) LIKE '{p}%'"))
-            .chain(folders.iter().map(|f| format!("lower(file_path) LIKE '{f}%' OR lower(file_path) LIKE '%/{f}%'")))
-            .collect();
-        let ext_rule: Vec<String> = extensions.iter().map(|e| format!("lower(file_path) LIKE '%.{}'", e)).collect();
+    /// Lower the confidence of findings inside live system files (see `system_paths`) and tag
+    /// them in `details.triage`. Idempotent: tagged hits are skipped.
+    pub fn downgrade_system_hits(&self, id: EvidenceId, factor: f32) -> Result<usize> {
         let sql = format!(
             "UPDATE hits SET confidence = confidence * ?2,
                  details = json_set(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END,
@@ -330,9 +322,8 @@ impl Case {
              WHERE evidence_id = ?1 AND file_state = 'Allocated'
                AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker','Identity','Url')
                AND json_extract(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END, '$.triage') IS NULL
-               AND ({} OR {})",
-            path_rule.join(" OR "),
-            ext_rule.join(" OR ")
+               AND {}",
+            crate::system_paths::sql_condition("file_path")
         );
         self.with_write(|conn| conn.execute(&sql, params![id.get(), factor]))
     }

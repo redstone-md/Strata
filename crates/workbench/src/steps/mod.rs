@@ -40,6 +40,7 @@ pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Resul
         JobKind::Search => search::run(ctx),
         JobKind::Recover => recover::run(ctx),
         JobKind::Recheck => recheck::run(ctx),
+        JobKind::Tidy => recheck::tidy(ctx),
     }
 }
 
