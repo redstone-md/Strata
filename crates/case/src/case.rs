@@ -242,6 +242,24 @@ impl Case {
         Ok(n)
     }
 
+    /// Record content-based types: `(volume, file_idx, type, mismatch, notes)`.
+    pub fn set_file_types(&self, id: EvidenceId, rows: &[(u32, usize, String, bool, String)]) -> Result<()> {
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction().map_err(db)?;
+        {
+            let mut stmt = tx
+                .prepare_cached(
+                    "UPDATE files SET detected_type = ?4, extension_mismatch = ?5, type_notes = ?6
+                     WHERE evidence_id = ?1 AND volume_idx = ?2 AND file_idx = ?3",
+                )
+                .map_err(db)?;
+            for (vol, idx, ty, mismatch, notes) in rows {
+                stmt.execute(params![id.get(), vol, *idx as i64, ty, mismatch, notes]).map_err(db)?;
+            }
+        }
+        tx.commit().map_err(db)
+    }
+
     /// Store hits produced outside the raw scan (file-level parsers, carving).
     pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
         store::insert(&mut self.conn.lock(), id, hits).map_err(db)

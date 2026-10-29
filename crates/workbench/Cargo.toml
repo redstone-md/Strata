@@ -14,6 +14,8 @@ strata-accounts = { path = "../accounts" }
 strata-chain = { path = "../chain" }
 strata-crypto = { path = "../crypto" }
 strata-fs.workspace = true
+strata-identify = { path = "../identify" }
+strata-carve = { path = "../carve" }
 strata-report = { path = "../report" }
 parking_lot.workspace = true
 serde.workspace = true

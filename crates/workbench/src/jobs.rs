@@ -11,6 +11,10 @@ pub struct JobId(pub u32);
 pub enum JobKind {
     /// Parse filesystems and store the file listing.
     IndexFiles,
+    /// Identify every file by content; flag renamed extensions.
+    ClassifyFiles,
+    /// Carve files from unallocated space and parse wallets found there.
+    Carve,
     /// Single-pass detector scan of the whole evidence.
     Scan,
     /// Look up on-chain balances of every found or derived address.

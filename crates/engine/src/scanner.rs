@@ -61,10 +61,50 @@ impl Scanner {
         source: &dyn BlockSource,
         range: ByteRange,
         control: &ScanControl,
-        mut on_hits: impl FnMut(Vec<Hit>) + Send,
+        on_hits: impl FnMut(Vec<Hit>) + Send,
     ) -> Result<ScanSummary> {
         let range = range.intersect(&ByteRange::new(0, source.len())).unwrap_or(ByteRange::new(range.start(), 0));
         control.begin(range.start(), range.len());
+        self.run_range(source, range, control, on_hits)
+    }
+
+    /// Scan several ranges (e.g. unallocated space) as one job. Progress counts bytes over all
+    /// ranges; the watermark is not meaningful for resuming.
+    pub fn run_ranges(
+        &self,
+        source: &dyn BlockSource,
+        ranges: &[ByteRange],
+        control: &ScanControl,
+        mut on_hits: impl FnMut(Vec<Hit>) + Send,
+    ) -> Result<ScanSummary> {
+        let bounds = ByteRange::new(0, source.len());
+        let ranges: Vec<ByteRange> = ByteRange::coalesce(ranges.iter().filter_map(|r| r.intersect(&bounds)).collect());
+        let total = ranges.iter().map(|r| r.len()).sum();
+        control.begin(0, total);
+        let started = std::time::Instant::now();
+        for r in &ranges {
+            if control.is_cancelled() {
+                break;
+            }
+            self.run_range(source, *r, control, &mut on_hits)?;
+        }
+        let snap = control.snapshot();
+        Ok(ScanSummary {
+            range: ByteRange::new(0, total),
+            scanned: snap.scanned,
+            hits: snap.hits,
+            completed: !control.is_cancelled(),
+            elapsed_secs: started.elapsed().as_secs_f64(),
+        })
+    }
+
+    fn run_range(
+        &self,
+        source: &dyn BlockSource,
+        range: ByteRange,
+        control: &ScanControl,
+        mut on_hits: impl FnMut(Vec<Hit>) + Send,
+    ) -> Result<ScanSummary> {
         let started = std::time::Instant::now();
         let overlap = self.overlap();
         let (chunk_tx, chunk_rx) = bounded::<Chunk>(self.workers * 2);

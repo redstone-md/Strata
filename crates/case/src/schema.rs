@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS files (
     sha256 TEXT,
     detected_type TEXT,
     extension_mismatch INTEGER NOT NULL DEFAULT 0,
+    type_notes TEXT,
     PRIMARY KEY (evidence_id, volume_idx, file_idx)
 );
 CREATE INDEX IF NOT EXISTS files_path ON files(path);

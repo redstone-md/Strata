@@ -86,9 +86,16 @@ impl Workbench {
                     return;
                 }
                 this.run_job(&scan);
-                if matches!(*scan.state.lock(), JobState::Done(_)) {
-                    let balances = this.enqueue(JobKind::CheckBalances, evidence);
-                    this.run_job(&balances);
+                if !matches!(*scan.state.lock(), JobState::Done(_)) {
+                    return;
+                }
+                // Follow-ups: each one is optional and runs only while nothing was cancelled.
+                for kind in [JobKind::ClassifyFiles, JobKind::Carve, JobKind::CheckBalances] {
+                    let job = this.enqueue(kind, evidence);
+                    this.run_job(&job);
+                    if job.control.is_cancelled() {
+                        break;
+                    }
                 }
             })
             .expect("spawn analysis thread");
@@ -151,6 +158,8 @@ impl Workbench {
         let title = match kind {
             JobKind::IndexFiles => format!("Index files {evidence}"),
             JobKind::Scan => format!("Deep scan {evidence}"),
+            JobKind::ClassifyFiles => format!("Classify files {evidence}"),
+            JobKind::Carve => format!("Carve free space {evidence}"),
             JobKind::CheckBalances => "Check balances".to_string(),
         };
         let job = Arc::new(Job {
@@ -179,6 +188,12 @@ impl Workbench {
                     .map(|s| format!("{} hits in {:.0}s", s.hits, s.elapsed_secs))
             }
             JobKind::CheckBalances => self.check_balances(&job.control),
+            JobKind::ClassifyFiles => crate::file_types::FileClassifier::new(&self.case)
+                .run(job.evidence, &job.control)
+                .map(|(n, s)| format!("{n} files, {s} suspicious renames")),
+            JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
+                .run(job.evidence, &job.control)
+                .map(|(n, w)| format!("{n} files carved, {w} wallets")),
         };
         *job.state.lock() = match result {
             _ if job.control.is_cancelled() => JobState::Cancelled,

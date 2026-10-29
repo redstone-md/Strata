@@ -1,6 +1,8 @@
 //! Application layer. GUI and CLI talk to Strata only through [`Workbench`].
 
+mod carving;
 mod catalog;
+mod file_types;
 mod jobs;
 mod wallet_files;
 mod workbench;
