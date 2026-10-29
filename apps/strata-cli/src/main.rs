@@ -41,6 +41,11 @@ enum Command {
     },
     /// Findings shared between disks and files that differ across disks.
     Correlate,
+    /// Show looked-up address balances; `--endpoint` changes the Esplora server.
+    Balances {
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
 }
 
 fn main() {
@@ -82,6 +87,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         h.file_path.as_deref().map(|p| format!("{p} [{}]", h.file_state.unwrap_or_default())).unwrap_or_default()
                     );
                 }
+            }
+        }
+        Command::Balances { endpoint } => {
+            if let Some(url) = endpoint {
+                wb.set_chain_endpoint(&url)?;
+            }
+            println!("endpoint: {}", wb.chain_endpoint());
+            for b in wb.balances()? {
+                println!("{:<62} {:>14.8} BTC  txs {:<6} {}", b.address, b.balance_btc(), b.tx_count, if b.ever_used() { "USED" } else { "" });
             }
         }
         Command::Correlate => {

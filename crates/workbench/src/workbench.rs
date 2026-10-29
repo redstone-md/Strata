@@ -3,6 +3,7 @@ use crate::jobs::{Job, JobId, JobKind, JobState, JobView};
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
+use strata_chain::{AddressBalance, ChainBackend, EsploraBackend};
 use strata_case::{Case, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 use strata_engine::{ScanControl, Scanner};
 use strata_kernel::scan::HitCategory;
@@ -80,14 +81,58 @@ impl Workbench {
             .name(format!("analyse-{evidence}"))
             .spawn(move || {
                 this.run_job(&index);
-                if !index.control.is_cancelled() {
-                    this.run_job(&scan);
-                } else {
+                if index.control.is_cancelled() {
                     *scan.state.lock() = JobState::Cancelled;
+                    return;
+                }
+                this.run_job(&scan);
+                if matches!(*scan.state.lock(), JobState::Done(_)) {
+                    let balances = this.enqueue(JobKind::CheckBalances, evidence);
+                    this.run_job(&balances);
                 }
             })
             .expect("spawn analysis thread");
         scan_id
+    }
+
+    pub const CHAIN_ENDPOINT_KEY: &'static str = "chain_endpoint";
+
+    /// Esplora endpoint used for balance checks (case setting, mempool.space by default).
+    pub fn chain_endpoint(&self) -> String {
+        self.case
+            .setting(Self::CHAIN_ENDPOINT_KEY)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| EsploraBackend::MEMPOOL_SPACE.to_string())
+    }
+
+    pub fn set_chain_endpoint(&self, url: &str) -> Result<()> {
+        self.case.set_setting(Self::CHAIN_ENDPOINT_KEY, url)
+    }
+
+    pub fn balances(&self) -> Result<Vec<AddressBalance>> {
+        self.case.balances()
+    }
+
+    fn check_balances(&self, control: &ScanControl) -> Result<String> {
+        let addresses = self.case.unchecked_addresses()?;
+        let backend = EsploraBackend::new(&self.chain_endpoint());
+        control.begin_items(addresses.len() as u64);
+        let (mut used, mut failed) = (0, 0);
+        for a in &addresses {
+            if control.is_cancelled() {
+                break;
+            }
+            match backend.balance(a) {
+                Ok(b) => {
+                    used += u32::from(b.ever_used());
+                    self.case.store_balance(&b)?;
+                }
+                Err(_) => failed += 1,
+            }
+            control.item_done();
+        }
+        Ok(format!("{} addresses, {used} used on chain, {failed} lookups failed", addresses.len()))
     }
 
     fn enqueue(&self, kind: JobKind, evidence: EvidenceId) -> Arc<Job> {
@@ -95,6 +140,7 @@ impl Workbench {
         let title = match kind {
             JobKind::IndexFiles => format!("Index files {evidence}"),
             JobKind::Scan => format!("Deep scan {evidence}"),
+            JobKind::CheckBalances => "Check balances".to_string(),
         };
         let job = Arc::new(Job {
             id: JobId(jobs.len() as u32 + 1),
@@ -118,6 +164,7 @@ impl Workbench {
                     .scan(job.evidence, &scanner, &job.control)
                     .map(|s| format!("{} hits in {:.0}s", s.hits, s.elapsed_secs))
             }
+            JobKind::CheckBalances => self.check_balances(&job.control),
         };
         *job.state.lock() = match result {
             _ if job.control.is_cancelled() => JobState::Cancelled,

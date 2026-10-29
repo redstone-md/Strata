@@ -13,6 +13,8 @@ pub enum JobKind {
     IndexFiles,
     /// Single-pass detector scan of the whole evidence.
     Scan,
+    /// Look up on-chain balances of every found or derived address.
+    CheckBalances,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

@@ -10,4 +10,5 @@ pub use workbench::Workbench;
 
 pub use strata_case::{CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 pub use strata_kernel::scan::HitCategory;
+pub use strata_chain::AddressBalance;
 pub use strata_kernel::{EvidenceId, Timestamp};

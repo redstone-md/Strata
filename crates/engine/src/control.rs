@@ -70,6 +70,16 @@ impl ScanControl {
         *self.started.lock() = Some(Instant::now());
     }
 
+    /// Reuse the control for item-counting jobs (e.g. network lookups).
+    pub fn begin_items(&self, total: u64) {
+        self.begin(0, total);
+    }
+
+    pub fn item_done(&self) {
+        self.scanned.fetch_add(1, Ordering::Relaxed);
+        self.watermark.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub(crate) fn add_hits(&self, n: u64) {
         self.hits.fetch_add(n, Ordering::Relaxed);
     }

@@ -78,6 +78,16 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS files_path ON files(path);
 CREATE INDEX IF NOT EXISTS files_hash ON files(sha256);
+
+CREATE TABLE IF NOT EXISTS balances (
+    address TEXT PRIMARY KEY,
+    funded_sat INTEGER NOT NULL,
+    spent_sat INTEGER NOT NULL,
+    tx_count INTEGER NOT NULL,
+    mempool_delta_sat INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    checked_at INTEGER NOT NULL
+);
 "#;
 
 pub fn apply(conn: &Connection) -> rusqlite::Result<()> {

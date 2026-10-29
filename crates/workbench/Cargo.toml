@@ -11,6 +11,7 @@ strata-source.workspace = true
 strata-engine.workspace = true
 strata-case.workspace = true
 strata-accounts = { path = "../accounts" }
+strata-chain = { path = "../chain" }
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
