@@ -6360,6 +6360,7 @@ name = "strata-workbench"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
+ "rusqlite",
  "serde",
  "serde_json",
  "strata-accounts",
