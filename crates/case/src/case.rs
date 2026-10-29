@@ -89,6 +89,28 @@ impl Case {
         Ok(EvidenceRecord { id, info, volumes })
     }
 
+    /// Re-detect volumes of an evidence item (after volume or filesystem support improves)
+    /// and drop its cached layout. Stored hits keep their offsets; call `reattribute` after.
+    pub fn refresh_volumes(&self, id: EvidenceId) -> Result<Vec<Volume>> {
+        let source = self.source(id)?;
+        let volumes = VolumeScanner::default().scan(source.as_ref());
+        {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction().map_err(db)?;
+            tx.execute("DELETE FROM volumes WHERE evidence_id = ?1", [id.get()]).map_err(db)?;
+            for v in &volumes {
+                tx.execute(
+                    "INSERT INTO volumes (evidence_id, idx, start, len, fs, origin, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id.get(), v.index, v.range.start() as i64, v.range.len() as i64, format!("{:?}", v.fs), format!("{:?}", v.origin), v.label],
+                )
+                .map_err(db)?;
+            }
+            tx.commit().map_err(db)?;
+        }
+        self.layouts.lock().remove(&id);
+        Ok(volumes)
+    }
+
     pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare("SELECT id, info FROM evidence ORDER BY id").map_err(db)?;

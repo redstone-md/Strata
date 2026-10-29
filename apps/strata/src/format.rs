@@ -50,6 +50,10 @@ pub fn volume_name(fs: &str, origin: &str) -> String {
         "Fat12" => "FAT12",
         "Fat16" => "FAT16",
         "Fat32" => "FAT32",
+        "Ext2" => "ext2",
+        "Ext3" => "ext3",
+        "Ext4" => "ext4",
+        "ExFat" => "exFAT",
         "ExFat" => "exFAT",
         _ => "Unknown filesystem",
     };

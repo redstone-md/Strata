@@ -196,8 +196,9 @@ impl Workbench {
         job.view()
     }
 
-    /// Re-map stored hits to files, then re-run triage.
+    /// Re-detect volumes, re-map stored hits to files, then re-run triage.
     pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
+        self.case.refresh_volumes(evidence)?;
         let n = self.case.reattribute(evidence)?;
         Ok((n, self.triage(evidence)?))
     }
