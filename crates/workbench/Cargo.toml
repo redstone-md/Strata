@@ -19,6 +19,7 @@ strata-carve = { path = "../carve" }
 strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
 strata-timeline = { path = "../timeline" }
+strata-leads = { path = "../leads" }
 strata-report = { path = "../report" }
 parking_lot.workspace = true
 serde.workspace = true
