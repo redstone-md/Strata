@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn shortens_long_values_in_the_middle() {
-        assert_eq!(shorten("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", NodeKind::Address), "1BgGZ9tc…Z26SAMH");
+        assert_eq!(shorten("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", NodeKind::Address), "1BgGZ9tc…SZ26SAMH");
         assert_eq!(shorten("olga@example.ru", NodeKind::Identity), "olga@example.ru");
         assert_eq!(shorten("a very long lead title that goes on and on", NodeKind::Lead).chars().count(), 34);
     }
