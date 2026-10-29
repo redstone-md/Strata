@@ -71,10 +71,11 @@ fn print_usage(indent: &str, u: &UsageReport) {
     };
     let hours = u.typical_hours.map(|(a, b)| format!(", mostly {a:02}:00–{b:02}:00")).unwrap_or_default();
     println!(
-        "{indent}in use {range} ({}): {} active days in {} periods, {:.1} days a month{hours}",
+        "{indent}in use {range} ({}): {} active days in {} period{}, {:.1} days a month{hours}",
         u.clock,
         u.active_days,
         u.periods.len(),
+        if u.periods.len() == 1 { "" } else { "s" },
         u.days_per_month
     );
     if let Some(last) = &u.last_day {
