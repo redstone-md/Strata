@@ -6256,6 +6256,7 @@ dependencies = [
  "strata-fs",
  "strata-kernel",
  "strata-leads",
+ "strata-mail",
  "strata-source",
  "strata-timeline",
  "strata-volume",

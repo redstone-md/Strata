@@ -64,6 +64,16 @@ impl CaseWriter<'_> {
         Ok(())
     }
 
+    /// Store recovered messages; one already stored (same fingerprint) gains a place instead.
+    pub fn messages(&self, id: EvidenceId, found: &[crate::FoundMessage]) -> Result<crate::StoredBatch> {
+        crate::messages::insert(&self.tx, id, found).map_err(db)
+    }
+
+    /// Drop the stored messages of one evidence item (before a fresh mail run).
+    pub fn clear_messages(&self, id: EvidenceId) -> Result<()> {
+        crate::messages::clear(&self.tx, id).map_err(db)
+    }
+
     /// Store the listing of one volume; rows already there are updated and keep the content
     /// types the classify step found.
     pub fn files(&self, id: EvidenceId, volume: u32, entries: &[FileEntry]) -> Result<usize> {
