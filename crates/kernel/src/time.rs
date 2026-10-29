@@ -53,23 +53,14 @@ impl Timestamp {
         Self::from_unix_secs(days * 86_400 + hour * 3600 + min * 60 + sec)
     }
 
-    /// Calendar date and time in UTC.
-    pub fn from_civil(year: i64, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Option<Self> {
-        if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
-            return None;
-        }
-        let days = days_from_civil(year, i64::from(month), i64::from(day));
-        Self::from_unix_secs(days * 86_400 + i64::from(hour * 3600 + minute * 60 + second))
-    }
-
     /// `YYYY-MM-DD HH:MM:SS` or `YYYY-MM-DDTHH:MM:SS[.fff][Z]` at the start of `s` (UTC).
     pub fn parse_iso8601(s: &str) -> Option<Self> {
-        let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<u32>().ok();
+        let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
         let sep = |i: usize, ok: &[u8]| s.as_bytes().get(i).is_some_and(|b| ok.contains(b));
         if !(sep(4, b"-") && sep(7, b"-") && sep(10, b" T") && sep(13, b":") && sep(16, b":")) {
             return None;
         }
-        Self::from_civil(i64::from(num(0..4)?), num(5..7)?, num(8..10)?, num(11..13)?, num(14..16)?, num(17..19)?)
+        Self::from_civil(num(0..4)?, num(5..7)?, num(8..10)?, num(11..13)?, num(14..16)?, num(17..19)?)
     }
 
     pub fn unix_micros(self) -> i64 {

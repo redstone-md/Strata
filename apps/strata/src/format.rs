@@ -66,6 +66,7 @@ pub fn job_name(kind: JobKind) -> &'static str {
         JobKind::Scan => "Deep scan",
         JobKind::ClassifyFiles => "Classify files",
         JobKind::Carve => "Carve free space",
+        JobKind::Archives => "Unpack archives",
         JobKind::CheckBalances => "Check balances",
         JobKind::Artifacts => "Artefacts and timeline",
     }

@@ -126,7 +126,7 @@ impl Workbench {
                     return;
                 }
                 // Follow-ups: each one is optional and runs only while nothing was cancelled.
-                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Archives, JobKind::Carve, JobKind::CheckBalances] {
+                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives, JobKind::CheckBalances] {
                     let job = this.enqueue(kind, evidence);
                     this.run_job(&job);
                     if job.control.is_cancelled() {
