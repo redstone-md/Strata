@@ -430,8 +430,11 @@ impl Session {
 
     /// Narrow every list to `period` and remember it in the case.
     pub fn set_period(&mut self, period: Period, cx: &mut Context<Self>) {
-        if let Err(e) = self.workbench.set_period(period) {
-            self.error = Some(format!("Cannot save the period: {e}"));
+        const FAILED: &str = "Cannot save the period";
+        match self.workbench.set_period(period) {
+            Err(e) => self.error = Some(format!("{FAILED}: {e}")),
+            Ok(()) if self.error.as_deref().is_some_and(|e| e.starts_with(FAILED)) => self.error = None,
+            Ok(()) => {}
         }
         self.period = period;
         cx.notify();

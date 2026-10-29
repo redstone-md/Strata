@@ -5,6 +5,7 @@
 mod detail;
 mod form;
 mod names;
+mod progress;
 mod results;
 
 pub use names::state_badge;
@@ -210,6 +211,9 @@ impl Render for SearchView {
             let disk = self.disk_label(row.evidence, cx);
             MatchDetail { row, disk, bytes, base, mode: self.detail_mode, scroll: self.scroll.clone(), on_close: close, on_mode }
         });
+        let snapshot = self.session.read(cx).snapshot().clone();
+        let running = progress::running(snapshot.active_jobs().cloned());
+        let searching = progress::strip(&running, |j| snapshot.disk_label(j.evidence), self.session.clone());
         h_flex()
             .size_full()
             .items_start()
@@ -221,6 +225,7 @@ impl Render for SearchView {
                     .gap(px(14.))
                     .pr(t.gutter)
                     .child(self.form(window, cx))
+                    .children(searching)
                     .child(div().flex_1().min_h_0().size_full().child(table)),
             )
             .when_some(detail, |el, d| el.child(d))
