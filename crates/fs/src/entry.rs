@@ -57,6 +57,11 @@ pub struct FileEntry {
     pub damage: Vec<Damage>,
 }
 
+/// `parent/name`, or just `name` under the root (whose path is empty).
+pub(crate) fn join_path(parent: &str, name: &str) -> String {
+    if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") }
+}
+
 impl FileEntry {
     /// A bare entry; parsers fill in path, parent, times and content afterwards.
     pub fn new(name: impl Into<String>, is_dir: bool, state: EntryState, native_id: u64) -> Self {

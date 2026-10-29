@@ -1,6 +1,7 @@
 //! Places built files into a tree: parent links by file reference, `$Orphans` for files whose
 //! parent is gone or reused, and full paths.
 
+use crate::entry::join_path;
 use super::assemble::Built;
 use super::record::FileRef;
 use crate::{EntryState, FileEntry, FileId};
@@ -106,12 +107,7 @@ pub(super) fn resolve_paths(entries: &mut [FileEntry], root: usize, orphans: usi
         }
         for &i in chain.iter().rev() {
             let p = entries[i].parent.map_or(root, FileId::index);
-            let path = if entries[p].path.is_empty() {
-                entries[i].name.clone()
-            } else {
-                format!("{}/{}", entries[p].path, entries[i].name)
-            };
-            entries[i].path = path;
+            entries[i].path = join_path(&entries[p].path, &entries[i].name);
             if p == orphans && i != orphans {
                 entries[i].state = EntryState::Orphan;
             }

@@ -7,6 +7,7 @@ use super::dirent::ShortEntry;
 use super::table::{ChainEnd, FatTable};
 use crate::alloc::ClusterMap;
 use crate::heap::ClusterHeap;
+use crate::entry::join_path;
 use crate::{EntryState, FileEntry, FileId};
 use std::collections::{HashSet, VecDeque};
 use strata_kernel::{ByteRange, Damage, DamageKind};
@@ -128,10 +129,7 @@ impl<'a> Walker<'a> {
         let state = if deleted { EntryState::Deleted } else { EntryState::Allocated };
         let mut entry = FileEntry::new(rec.name(), short.is_dir(), state, rec.offset());
         entry.parent = Some(FileId::new(parent));
-        entry.path = match self.entries[parent].path.as_str() {
-            "" => entry.name.clone(),
-            p => format!("{p}/{}", entry.name),
-        };
+        entry.path = join_path(&self.entries[parent].path, &entry.name);
         entry.times = short.times();
         let cluster = self.first_cluster(short, deleted);
         let is_dir = short.is_dir();
