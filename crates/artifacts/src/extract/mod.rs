@@ -114,7 +114,9 @@ impl ArtifactExtractor {
         let mut out = match fs.read(id, 0, &mut buf) {
             Ok(n) => {
                 buf.truncate(n);
-                kind.parse(&entry.name, &buf)
+                // Wallet folders are recognised by their path; other parsers want the bare name.
+                let hint = if kind == ArtifactKind::WalletDir { &entry.path } else { &entry.name };
+                kind.parse(hint, &buf)
             }
             Err(e) => {
                 let mut r = ArtifactResults::default();
