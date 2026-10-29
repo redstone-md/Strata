@@ -9,7 +9,7 @@ use crate::widgets::{ClickHandler, TextButton, rule};
 use gpui::{App, ClickEvent, InteractiveElement as _, IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div, prelude::FluentBuilder as _, px};
 use gpui_component::{h_flex, v_flex};
 use std::rc::Rc;
-use strata_workbench::{Account, Catalogue, SourceRef};
+use strata_workbench::{Account, Catalogue, IdentifierKind, SourceRef};
 
 const WIDTH: f32 = 460.;
 
@@ -126,6 +126,10 @@ impl RenderOnce for AccountDetail {
         let notes = entry.map(|e| format!("{}.", e.notes().trim_end_matches('.'))).filter(|n| n.len() > 1);
         let domains = entry.map(|e| e.domains().join(", ")).filter(|d| !d.is_empty());
         let linked = self.linked_rows();
+        let mail = (a.kind() == IdentifierKind::Email).then(|| {
+            let (on_jump, jump) = (self.on_jump.clone(), Jump::Search { screen: Screen::Mail, text: a.identifier().to_string() });
+            TextButton::new("acc-mail", "Show mail").on_click(move |_, w, cx| on_jump(jump.clone(), w, cx))
+        });
         v_flex()
             .w(px(WIDTH))
             .flex_shrink_0()
@@ -147,7 +151,12 @@ impl RenderOnce for AccountDetail {
                             .child(div().font_family(t.font_data).text_size(t.size_heading).text_color(t.emphasis).whitespace_normal().child(a.identifier().to_string()))
                             .child(div().text_size(t.size_small).text_color(t.text_secondary).child(meta.join("  ·  "))),
                     )
-                    .child(TextButton::new("acc-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
+                    .child(
+                        h_flex()
+                            .gap(px(8.))
+                            .children(mail)
+                            .child(TextButton::new("acc-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
+                    ),
             )
             .child(rule())
             .child(

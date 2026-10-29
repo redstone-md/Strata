@@ -155,7 +155,7 @@ impl Shell {
             self.screens.accounts.update(cx, |v, cx| v.show_traces(cx));
         }
         match nav.screen {
-            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Timeline => self.apply_search(cx),
+            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Timeline | Screen::Mail => self.apply_search(cx),
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }

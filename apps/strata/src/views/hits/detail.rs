@@ -19,18 +19,19 @@ pub struct HitDetailPanel {
     hit: StoredHit,
     tree: DetailTree,
     on_close: ClickHandler,
-    /// Extra action next to Copy value (export of carved data or an archive member).
-    action: Option<(SharedString, ClickHandler)>,
+    /// Extra actions next to Copy value (export of carved data or an archive member, the
+    /// mail of an address).
+    actions: Vec<(SharedString, ClickHandler)>,
     note: Option<SharedString>,
 }
 
 impl HitDetailPanel {
     pub fn new(hit: StoredHit, tree: DetailTree, on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
-        Self { hit, tree, on_close: Rc::new(on_close), action: None, note: None }
+        Self { hit, tree, on_close: Rc::new(on_close), actions: Vec::new(), note: None }
     }
 
     pub fn action(mut self, label: impl Into<SharedString>, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
-        self.action = Some((label.into(), Rc::new(handler)));
+        self.actions.push((label.into(), Rc::new(handler)));
         self
     }
 
@@ -83,7 +84,9 @@ impl RenderOnce for HitDetailPanel {
                                 TextButton::new("copy-value", "Copy value")
                                     .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(value.clone()))),
                             )
-                            .children(self.action.map(|(label, handler)| TextButton::new("finding-action", label).on_click(move |e, w, cx| handler(e, w, cx)))),
+                            .children(self.actions.into_iter().enumerate().map(|(i, (label, handler))| {
+                                TextButton::new(("finding-action", i), label).on_click(move |e, w, cx| handler(e, w, cx))
+                            })),
                     )
                     .children(self.note.map(|n| div().text_size(t.size_body).text_color(t.text).whitespace_normal().child(n))),
             )

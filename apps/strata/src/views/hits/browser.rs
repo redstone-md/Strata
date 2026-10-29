@@ -7,11 +7,12 @@ use super::detail::HitDetailPanel;
 use super::detail_tree::{self, Chain, DetailTree, TreeState};
 use crate::categories;
 use crate::format;
+use crate::nav::{Jump, Screen};
 use crate::session::Session;
 use crate::theme::tokens;
 use crate::widgets::{TextButton, flat_table, loading_edge};
 use gpui::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window, div,
+    AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, Styled, Subscription, Window, div,
     prelude::FluentBuilder as _, px,
 };
 use gpui_component::{h_flex, v_flex};
@@ -53,6 +54,9 @@ pub struct HitBrowser {
     loading: bool,
     _subscriptions: Vec<Subscription>,
 }
+
+/// Emitted to open another screen for a finding (the mail of an e-mail identity).
+impl EventEmitter<Jump> for HitBrowser {}
 
 impl HitBrowser {
     pub fn new(session: Entity<Session>, config: BrowserConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -216,6 +220,12 @@ impl HitBrowser {
     }
 }
 
+/// The address of an e-mail identity finding.
+fn mail_address(hit: &StoredHit) -> Option<String> {
+    let value = hit.hit.value.trim();
+    (hit.hit.category == HitCategory::Identity && value.contains('@') && !value.contains(char::is_whitespace)).then(|| value.to_lowercase())
+}
+
 impl Render for HitBrowser {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = tokens();
@@ -241,6 +251,16 @@ impl Render for HitBrowser {
                 });
             })
             .note(self.export_note.clone());
+            let panel = match mail_address(&hit) {
+                Some(address) => {
+                    let this = cx.entity().downgrade();
+                    panel.action("Show mail", move |_, _, cx| {
+                        let jump = Jump::Search { screen: Screen::Mail, text: address.clone() };
+                        let _ = this.update(cx, |_, cx| cx.emit(jump));
+                    })
+                }
+                None => panel,
+            };
             match export {
                 Some(what) => {
                     let this = cx.entity().downgrade();
