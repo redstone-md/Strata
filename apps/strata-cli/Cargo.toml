@@ -1,0 +1,15 @@
+[package]
+name = "strata-cli"
+description = "Headless Strata: add evidence, analyse, query findings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "strata-cli"
+path = "src/main.rs"
+
+[dependencies]
+strata-workbench = { path = "../../crates/workbench" }
+clap.workspace = true
+serde_json.workspace = true
