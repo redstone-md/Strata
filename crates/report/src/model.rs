@@ -45,7 +45,7 @@ impl CaseReport {
                 volumes: e.volumes.iter().map(|v| format!("{:?} {:?} @{:#x} {} B", v.fs, v.origin, v.range.start(), v.range.len())).collect(),
                 scanned_fraction: scan.map_or(0.0, |(mark, total, _)| if total == 0 { 0.0 } else { mark as f64 / total as f64 }),
                 scan_completed: scan.is_some_and(|s| s.2),
-                findings: case.hit_counts(Some(e.id))?,
+                findings: case.hit_counts(Some(e.id), 0.0)?,
             });
         }
         let query = |cats: &[HitCategory]| HitQuery { categories: cats.to_vec(), min_confidence, limit: 20_000, group_by_value: true, ..Default::default() };

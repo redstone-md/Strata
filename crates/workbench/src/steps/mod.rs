@@ -8,6 +8,7 @@ mod carve;
 mod classify;
 mod index;
 mod partitions;
+pub(crate) mod recheck;
 pub(crate) mod recover;
 mod scan;
 pub(crate) mod search;
@@ -36,6 +37,7 @@ pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Resul
         JobKind::CheckBalances => balances::run(ctx, &wb.chain_endpoint()),
         JobKind::Search => search::run(ctx),
         JobKind::Recover => recover::run(ctx),
+        JobKind::Recheck => recheck::run(ctx),
     }
 }
 

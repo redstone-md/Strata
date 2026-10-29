@@ -325,7 +325,7 @@ fn list(wb: &Workbench) -> Result<(), Box<dyn std::error::Error>> {
             println!("    {} {:?} {:?} @{:#x} {} bytes", v.index, v.fs, v.origin, v.range.start(), v.range.len());
         }
     }
-    let counts = wb.hit_counts(None)?;
+    let counts = wb.hit_counts(None, 0.0)?;
     if !counts.is_empty() {
         println!("findings: {counts:?}");
     }

@@ -35,6 +35,10 @@ impl CaseWriter<'_> {
         store::insert(&self.tx, id, hits).map_err(db)
     }
 
+    pub(crate) fn tx(&self) -> &Transaction<'_> {
+        &self.tx
+    }
+
     /// Run trusted maintenance SQL (crate constants only) inside this transaction.
     pub(crate) fn batch(&self, sql: &str) -> Result<()> {
         self.tx.execute_batch(sql).map_err(db)

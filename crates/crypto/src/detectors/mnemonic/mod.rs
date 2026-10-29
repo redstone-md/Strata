@@ -61,7 +61,7 @@ impl MnemonicDetector {
     fn confidence(c: &Candidate) -> f32 {
         // Generated phrases rarely repeat words (P(2+ repeats in 12) < 0.1%); prose and
         // well-known test vectors do.
-        if c.repeats >= 2 {
+        if c.repeats >= 2 || !c.spaced {
             return 0.1;
         }
         match (&c.kind, c.exact) {

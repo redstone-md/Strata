@@ -379,8 +379,9 @@ impl Case {
         store::query(&*self.readers.get().map_err(db)?, q).map_err(db)
     }
 
-    pub fn hit_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<(HitCategory, u64)>> {
-        store::counts(&*self.readers.get().map_err(db)?, evidence).map_err(db)
+    /// Distinct findings per category at or above `min_confidence`.
+    pub fn hit_counts(&self, evidence: Option<EvidenceId>, min_confidence: f32) -> Result<Vec<(HitCategory, u64)>> {
+        store::counts(&*self.readers.get().map_err(db)?, evidence, min_confidence).map_err(db)
     }
 
     /// The connection, held until the guard drops (one transaction at a time).

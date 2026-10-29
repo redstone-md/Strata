@@ -26,6 +26,25 @@ impl Workbench {
         Ok(job.view())
     }
 
+    /// Re-check stored findings when this version's detector or triage rules are newer than
+    /// the ones the case was scanned with: one background `Recheck` job per scanned disk.
+    /// Returns how many were queued.
+    pub fn recheck_if_rules_changed(self: &Arc<Self>) -> Result<usize> {
+        let stored: u32 = self.case.setting(Self::RULES_KEY)?.and_then(|v| v.parse().ok()).unwrap_or(1);
+        if stored >= Self::RULES_VERSION {
+            return Ok(0);
+        }
+        let mut queued = 0;
+        for disk in self.case.evidence()? {
+            if self.case.scan_state(disk.id)?.is_some() {
+                self.spawn(self.queue.enqueue(&self.case, disk.id, &[JobKind::Recheck])?);
+                queued += 1;
+            }
+        }
+        self.case.set_setting(Self::RULES_KEY, &Self::RULES_VERSION.to_string())?;
+        Ok(queued)
+    }
+
     /// Continue every interrupted job from its checkpoint, pipelines in order. Returns how
     /// many jobs were picked up.
     pub fn resume_interrupted(self: &Arc<Self>) -> usize {

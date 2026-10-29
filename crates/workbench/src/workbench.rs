@@ -23,6 +23,13 @@ pub struct Workbench {
 impl Workbench {
     /// Case setting: resume interrupted jobs when the case opens (on unless set to `0`).
     pub const AUTO_RESUME_KEY: &'static str = "auto_resume_jobs";
+    /// Version of the detector and triage rules stored findings were made with. Bump it when
+    /// a rule change alters what is a finding; older cases are re-checked on open.
+    pub const RULES_VERSION: u32 = 2;
+    /// Findings below this confidence are noise: hashes, rows of hex blocks, prose that happens
+    /// to pass a checksum, matches inside system files. Lists hide them unless asked.
+    pub const NOISE_FLOOR: f32 = 0.2;
+    pub(crate) const RULES_KEY: &'static str = "rules_version";
     /// Case setting: the app's last screen, filters and selection (JSON chosen by the app).
     pub const UI_STATE_KEY: &'static str = "ui_state";
 
@@ -33,6 +40,7 @@ impl Workbench {
         if wb.auto_resume() {
             wb.resume_interrupted();
         }
+        wb.recheck_if_rules_changed()?;
         Ok(wb)
     }
 
@@ -146,8 +154,9 @@ impl Workbench {
         self.case.hits(q)
     }
 
-    pub fn hit_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<(HitCategory, u64)>> {
-        self.case.hit_counts(evidence)
+    /// Distinct findings per category at or above `min_confidence` (see [`Self::NOISE_FLOOR`]).
+    pub fn hit_counts(&self, evidence: Option<EvidenceId>, min_confidence: f32) -> Result<Vec<(HitCategory, u64)>> {
+        self.case.hit_counts(evidence, min_confidence)
     }
 
     pub fn shared_findings(&self) -> Result<Vec<SharedFinding>> {

@@ -18,6 +18,14 @@ const HASH_WORDS: &[&str] = &[
     "commit", "block", "merkle", "fingerprint", "sum", "etag", "nonce", "integrity",
 ];
 const HASH_LOOKBACK: usize = 48;
+/// A hash word this close before the run labels it outright (`SHA256: `, `sha256:`,
+/// `"digest": "`), even when wallet words are nearby (apt lists describe wallet packages).
+const HASH_LABEL_LOOKBACK: usize = 16;
+/// Confidence of a run inside a block of hex lines (fonts, dumps, certificates) with no
+/// wallet word near it: kept, but below the default noise threshold.
+const HEX_BLOCK_CONFIDENCE: f32 = 0.15;
+/// How far to look for the neighbouring lines.
+const LINE_LOOKAROUND: usize = 512;
 
 /// Published constants that are valid scalars but never anyone's key: curve parameters
 /// shipped in every crypto library and well-known hashes (lower case).
@@ -78,9 +86,28 @@ impl HexKeyDetector {
         seen.count_ones() >= 9
     }
 
-    fn after_hash_word(chunk: &[u8], start: usize) -> bool {
-        let lo = start.saturating_sub(HASH_LOOKBACK);
+    fn after_hash_word(chunk: &[u8], start: usize, lookback: usize) -> bool {
+        let lo = start.saturating_sub(lookback);
         chunk.get(lo..start).is_some_and(|w| HASH_AC.is_match(w))
+    }
+
+    /// The line before or after is hex too: the run is one row of a hex block.
+    fn in_hex_block(chunk: &[u8], start: usize, end: usize) -> bool {
+        fn hex_row(line: &[u8]) -> bool {
+            let t = line.trim_ascii();
+            t.len() >= 32 && t.iter().all(|b| b.is_ascii_hexdigit() || *b == b' ')
+        }
+        let before = &chunk[start.saturating_sub(LINE_LOOKAROUND)..start];
+        let prev = before.iter().rposition(|b| *b == b'\n').map(|nl| {
+            let from = before[..nl].iter().rposition(|b| *b == b'\n').map_or(0, |p| p + 1);
+            &before[from..nl]
+        });
+        let after = &chunk[end..(end + LINE_LOOKAROUND).min(chunk.len())];
+        let next = after.iter().position(|b| *b == b'\n').map(|nl| {
+            let rest = &after[nl + 1..];
+            &rest[..rest.iter().position(|b| *b == b'\n').unwrap_or(rest.len())]
+        });
+        prev.is_some_and(hex_row) || next.is_some_and(hex_row)
     }
 
     fn confidence(ctx: &Context) -> Option<Confidence> {
@@ -113,10 +140,15 @@ impl Detector for HexKeyDetector {
             let Some(key) = PrivateKey::from_hex(run.text) else { return };
             let end = run.start + run.byte_len;
             let ctx = Context::around(chunk, run.start, end, CONTEXT_RADIUS, run.encoding);
-            if !ctx.strong() && Self::after_hash_word(chunk, run.start) {
+            if Self::after_hash_word(chunk, run.start, HASH_LABEL_LOOKBACK)
+                || !ctx.strong() && Self::after_hash_word(chunk, run.start, HASH_LOOKBACK)
+            {
                 return;
             }
-            let Some(confidence) = Self::confidence(&ctx) else { return };
+            let Some(mut confidence) = Self::confidence(&ctx) else { return };
+            if !ctx.strong() && Self::in_hex_block(chunk, run.start, end) {
+                confidence = Confidence::new(HEX_BLOCK_CONFIDENCE);
+            }
             let details = with(
                 key_details(&key, Network::Mainnet, None),
                 json!({ "encoding": run.encoding.name(), "context": ctx.to_json() }),
@@ -141,5 +173,36 @@ mod constant_tests {
         assert!(!HexKeyDetector::plausible(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"));
         assert!(!HexKeyDetector::plausible(b"79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"));
         assert!(HexKeyDetector::plausible(b"0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d"));
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    use strata_kernel::scan::Hit;
+
+    const KEY: &str = "0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d";
+
+    fn scan(text: &str) -> Vec<Hit> {
+        let mut hits: Vec<Hit> = Vec::new();
+        HexKeyDetector::default().scan(text.as_bytes(), 0, &mut hits);
+        hits
+    }
+
+    #[test]
+    fn hash_labels_win_over_wallet_words() {
+        let apt = format!("Package: electrum\nDescription: Bitcoin wallet\nSHA256: {KEY}\n");
+        assert!(scan(&apt).is_empty());
+        assert!(scan(&format!("\"digest\": \"sha256:{KEY}\"")).is_empty());
+    }
+
+    #[test]
+    fn rows_of_a_hex_block_are_noise() {
+        let row = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        let hits = scan(&format!("{row}\n{KEY}\n{row}\n"));
+        assert!(hits.iter().all(|h| h.confidence.get() <= HEX_BLOCK_CONFIDENCE + f32::EPSILON), "{hits:?}");
+        let alone = scan(&format!("my notes\n{KEY}\nend\n"));
+        assert_eq!(alone.len(), 1);
+        assert!(alone[0].confidence.get() > HEX_BLOCK_CONFIDENCE);
     }
 }

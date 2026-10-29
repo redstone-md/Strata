@@ -162,10 +162,14 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
     rows.collect()
 }
 
-pub(crate) fn counts(conn: &Connection, evidence: Option<EvidenceId>) -> rusqlite::Result<Vec<(HitCategory, u64)>> {
-    let mut stmt = conn.prepare(
-        "SELECT category, COUNT(*) + SUM(repeats) FROM hits WHERE (?1 IS NULL OR evidence_id = ?1) GROUP BY category ORDER BY 2 DESC",
-    )?;
-    let rows = stmt.query_map([evidence.map(|e| e.get())], |r| Ok((category_from(&r.get::<_, String>(0)?), r.get::<_, i64>(1)? as u64)))?;
+/// Distinct findings per category, counted the way the lists group them (one per value, or
+/// per row for wallet files, carved files and renamed-extension alerts).
+pub(crate) fn counts(conn: &Connection, evidence: Option<EvidenceId>, min_confidence: f32) -> rusqlite::Result<Vec<(HitCategory, u64)>> {
+    let sql = format!(
+        "SELECT category, COUNT(DISTINCT {GROUP_KEY}) FROM hits WHERE (?1 IS NULL OR evidence_id = ?1) AND confidence >= ?2
+         GROUP BY category ORDER BY 2 DESC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![evidence.map(|e| e.get()), min_confidence], |r| Ok((category_from(&r.get::<_, String>(0)?), r.get::<_, i64>(1)? as u64)))?;
     rows.collect()
 }

@@ -28,6 +28,9 @@ pub struct Candidate {
     pub exact: bool,
     /// Words minus distinct words.
     pub repeats: usize,
+    /// Every word stands apart from the previous one (space, comma, line break). Written-down
+    /// CJK phrases are spaced; ideographs packed together are ordinary text.
+    pub spaced: bool,
     pub kind: PhraseKind,
 }
 
@@ -117,6 +120,7 @@ fn candidate(run: &[Token], at: usize, size: usize, kind: PhraseKind) -> Candida
         .count();
     Candidate {
         repeats: size - distinct,
+        spaced: window.windows(2).all(|p| p[1].start > p[0].end),
         start: run[at].start,
         end: run[at + size - 1].end,
         words: size,

@@ -145,7 +145,7 @@ mod tests {
         let q = crate::HitQuery { group_by_value: true, ..crate::HitQuery::default() };
         let grouped = case.hits(&q).unwrap();
         assert_eq!((grouped.len(), grouped[0].occurrences), (1, 40));
-        assert_eq!(case.hit_counts(None).unwrap()[0].1, 40);
+        assert_eq!(case.hit_counts(None, 0.0).unwrap()[0].1, 1);
         assert_eq!(case.compact_repeats(id).unwrap(), 0);
     }
 

@@ -51,6 +51,8 @@ pub enum JobKind {
     Search,
     /// Copy selected files (live or deleted) out of the evidence.
     Recover,
+    /// Re-run improved detectors over stored findings (after an upgrade).
+    Recheck,
 }
 
 impl JobKind {
@@ -78,11 +80,12 @@ impl JobKind {
             Self::RecoverPartitions => "RecoverPartitions",
             Self::Search => "Search",
             Self::Recover => "Recover",
+            Self::Recheck => "Recheck",
         }
     }
 
     pub fn parse(name: &str) -> Option<Self> {
-        Self::PIPELINE.into_iter().chain([Self::Search, Self::Recover]).find(|k| k.name().eq_ignore_ascii_case(name))
+        Self::PIPELINE.into_iter().chain([Self::Search, Self::Recover, Self::Recheck]).find(|k| k.name().eq_ignore_ascii_case(name))
     }
 
     /// What progress counts: bytes of the evidence or items (files, archives, addresses).
@@ -105,6 +108,7 @@ impl JobKind {
             Self::RecoverPartitions => format!("Recover partitions {evidence}"),
             Self::Search => format!("Search {evidence}"),
             Self::Recover => format!("Recover files {evidence}"),
+            Self::Recheck => format!("Re-check findings {evidence}"),
         }
     }
 }

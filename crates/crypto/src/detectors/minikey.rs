@@ -29,10 +29,31 @@ pub fn minikey_to_key(text: &[u8]) -> Option<PrivateKey> {
     let probe = probe.get_mut(..text.len() + 1)?;
     probe[..text.len()].copy_from_slice(text);
     probe[text.len()] = b'?';
-    if sha256(probe)[0] != 0 {
+    if sha256(probe)[0] != 0 || camel_case_words(text) {
         return None;
     }
     PrivateKey::from_bytes(&sha256(text))
+}
+
+/// `StandardCoordinatorAddressPath`: identifiers made of capitalised words pass the typo
+/// check 1 time in 256 too. A random minikey practically never splits into such words.
+fn camel_case_words(text: &[u8]) -> bool {
+    let mut words = 0;
+    let mut len = 0;
+    for (i, b) in text.iter().enumerate() {
+        if b.is_ascii_uppercase() {
+            if i > 0 && len < 3 {
+                return false;
+            }
+            words += 1;
+            len = 1;
+        } else if b.is_ascii_lowercase() {
+            len += 1;
+        } else {
+            return false;
+        }
+    }
+    words >= 3 && len >= 3
 }
 
 impl Detector for MinikeyDetector {
@@ -69,6 +90,13 @@ impl Detector for MinikeyDetector {
 mod tests {
     use super::*;
     use crate::keys::AddressSet;
+
+    #[test]
+    fn identifiers_are_not_minikeys() {
+        assert!(camel_case_words(b"StandardCoordinatorAddressPath"));
+        assert!(!camel_case_words(b"SzavMBLoXU6kDrqtUVmffv"));
+        assert!(!camel_case_words(b"S6c56bnXQiBjk9mqSYE7ykVQ7NzrRy"));
+    }
 
     #[test]
     fn casascius_vector() {
