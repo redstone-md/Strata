@@ -9,10 +9,10 @@ mod strip;
 use crate::format;
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::{TextButton, flat_table};
+use crate::widgets::{TextButton, flat_table, loading_edge};
 use delegate::TimelineDelegate;
 use gpui::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window, div, px,
+    AppContext as _, Context, Entity, prelude::FluentBuilder as _, IntoElement, ParentElement, Render, Styled, Subscription, Window, div, px,
 };
 use gpui_component::table::TableState;
 use gpui_component::{h_flex, v_flex};
@@ -28,6 +28,7 @@ pub struct TimelineView {
     was_active: bool,
     /// Bumped per reload; a slower earlier load that lands late is dropped.
     loads: u64,
+    loading: bool,
     _observe: Subscription,
 }
 
@@ -38,7 +39,7 @@ impl TimelineView {
         let observe = cx.observe(&session, |this, _, cx| this.on_session_changed(cx));
         let generation = session.read(cx).generation();
         let mut this =
-            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, loads: 0, _observe: observe };
+            Self { session, table, strip: DayStrip::default(), day: None, generation, was_active: false, loads: 0, loading: false, _observe: observe };
         this.reload(cx);
         this
     }
@@ -107,6 +108,7 @@ impl TimelineView {
         let wb = session.workbench().clone();
         let query = self.table.read(cx).delegate().first_page();
         self.loads += 1;
+        self.loading = true;
         let ticket = self.loads;
         cx.spawn(async move |this, cx| {
             let (days, rows) = cx
@@ -117,6 +119,7 @@ impl TimelineView {
                 if v.loads != ticket {
                     return;
                 }
+                v.loading = false;
                 v.strip.set_days(days);
                 v.table.update(cx, |t, cx| {
                     t.delegate_mut().set_rows(disks, rows);
@@ -168,6 +171,14 @@ impl Render for TimelineView {
             .gap(px(16.))
             .child(self.header(cx))
             .children(strip)
-            .child(div().flex_1().min_h_0().size_full().child(flat_table(&self.table)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .relative()
+                    .child(flat_table(&self.table))
+                    .when(self.loading, |el| el.child(loading_edge("timeline-loading"))),
+            )
     }
 }

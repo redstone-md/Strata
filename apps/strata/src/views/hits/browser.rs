@@ -9,7 +9,7 @@ use crate::categories;
 use crate::format;
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::{TextButton, flat_table};
+use crate::widgets::{TextButton, flat_table, loading_edge};
 use gpui::{
     AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window, div,
     prelude::FluentBuilder as _, px,
@@ -259,7 +259,15 @@ impl Render for HitBrowser {
                     .gap(px(12.))
                     .pr(t.gutter)
                     .child(self.header(cx))
-                    .child(div().flex_1().min_h_0().size_full().child(flat_table(&self.table))),
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .size_full()
+                            .relative()
+                            .child(flat_table(&self.table))
+                            .when(self.loading, |el| el.child(loading_edge("hits-loading"))),
+                    ),
             )
             .when_some(detail, |el, d| el.child(d))
     }

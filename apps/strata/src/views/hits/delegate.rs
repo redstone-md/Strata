@@ -19,12 +19,14 @@ pub struct HitTableDelegate {
     rows: Vec<StoredHit>,
     disks: DiskLabels,
     has_more: bool,
+    /// The first page has arrived; until then the empty state says "Loading".
+    loaded: bool,
     sort: Option<(HitColumn, ColumnSort)>,
 }
 
 impl HitTableDelegate {
     pub fn new(workbench: Arc<Workbench>, columns: Vec<HitColumn>, query: HitQuery) -> Self {
-        Self { workbench, columns, query: HitQuery { limit: PAGE, group_by_value: true, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, sort: None }
+        Self { workbench, columns, query: HitQuery { limit: PAGE, group_by_value: true, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, loaded: false, sort: None }
     }
 
     pub fn set_text(&mut self, text: &str) {
@@ -54,6 +56,7 @@ impl HitTableDelegate {
         self.query.offset = 0;
         self.has_more = rows.len() == PAGE;
         self.rows = rows;
+        self.loaded = true;
         self.apply_sort();
     }
 
@@ -117,7 +120,9 @@ impl TableDelegate for HitTableDelegate {
     }
 
     fn render_empty(&mut self, _: &mut Window, _: &mut Context<TableState<Self>>) -> impl IntoElement {
-        let text = if self.query.text.is_some() { "Nothing matches the search." } else { "Nothing found yet. Analyse a disk to fill this list." };
+        let text = if !self.loaded {
+            "Loading findings…"
+        } else if self.query.text.is_some() { "Nothing matches the search." } else { "Nothing found yet. Analyse a disk to fill this list." };
         table_empty(text.into())
     }
 

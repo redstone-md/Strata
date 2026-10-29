@@ -6,7 +6,8 @@
 use gpui::{Context, Task};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use strata_workbench::{
     AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobKind, JobState, JobView, LogLine, MonitorView, Workbench,
 };
@@ -87,6 +88,44 @@ impl Snapshot {
     }
 }
 
+/// What opening a case is doing now; written by the opening thread, read by the splash.
+#[derive(Default)]
+pub struct OpenProgress {
+    step: Mutex<&'static str>,
+}
+
+impl OpenProgress {
+    pub fn set(&self, step: &'static str) {
+        *self.step.lock().unwrap_or_else(|e| e.into_inner()) = step;
+    }
+
+    pub fn step(&self) -> &'static str {
+        *self.step.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// A case being opened in the background.
+#[derive(Clone)]
+pub struct Opening {
+    pub name: String,
+    pub progress: Arc<OpenProgress>,
+    pub started: Instant,
+}
+
+impl Opening {
+    pub fn new(dir: &Path) -> Self {
+        let name = dir.file_stem().map_or_else(|| dir.display().to_string(), |s| s.to_string_lossy().into_owned());
+        Self { name, progress: Arc::default(), started: Instant::now() }
+    }
+}
+
+/// An opened case and its first snapshot, built off the UI thread.
+pub struct Opened {
+    workbench: Arc<Workbench>,
+    snapshot: Snapshot,
+    error: Option<String>,
+}
+
 pub struct Session {
     workbench: Arc<Workbench>,
     snapshot: Snapshot,
@@ -103,15 +142,39 @@ pub struct Session {
     loading: bool,
     stale: bool,
     ticks: u32,
+    /// Set while another case is being opened (Settings).
+    opening: Option<Opening>,
     _poll: Task<()>,
 }
 
 impl Session {
-    pub fn new(case_dir: &Path, cx: &mut Context<Self>) -> Self {
-        let (workbench, error) = match Workbench::open(case_dir) {
-            Ok(wb) => (wb, None),
-            Err(e) => (Self::fallback_workbench(), Some(format!("Cannot open case {}: {e}", case_dir.display()))),
-        };
+    /// Open a case and read its first snapshot. Blocking: run on a background thread. A case
+    /// that cannot be opened is replaced by a temporary one, with the error kept for the UI.
+    pub fn open(case_dir: &Path, progress: &OpenProgress) -> Opened {
+        match Self::try_open(case_dir, progress) {
+            Ok((workbench, snapshot)) => Opened { workbench, snapshot, error: None },
+            Err(e) => {
+                let workbench = Self::fallback_workbench();
+                let snapshot = Self::load(&workbench);
+                Opened { workbench, snapshot, error: Some(format!("Cannot open case {}: {e}", case_dir.display())) }
+            }
+        }
+    }
+
+    fn try_open(case_dir: &Path, progress: &OpenProgress) -> strata_workbench::Result<(Arc<Workbench>, Snapshot)> {
+        progress.set("Reading the case database");
+        let workbench = Workbench::open_idle(case_dir)?;
+        progress.set("Loading disks and findings");
+        let snapshot = Self::load(&workbench);
+        if workbench.auto_resume() {
+            progress.set("Resuming interrupted jobs");
+            workbench.resume_interrupted();
+        }
+        Ok((workbench, snapshot))
+    }
+
+    pub fn new(opened: Opened, cx: &mut Context<Self>) -> Self {
+        let Opened { workbench, snapshot, error } = opened;
         let poll = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(POLL).await;
@@ -120,9 +183,9 @@ impl Session {
                 }
             }
         });
-        let mut session = Self {
+        Self {
             workbench,
-            snapshot: Snapshot::default(),
+            snapshot,
             error,
             show_raw: false,
             generation: 0,
@@ -132,16 +195,15 @@ impl Session {
             loading: false,
             stale: false,
             ticks: 0,
+            opening: None,
             _poll: poll,
-        };
-        session.snapshot = Self::load(&session.workbench);
-        session
+        }
     }
 
     /// In-temp case used only if the requested case cannot be opened, so the UI still runs.
     fn fallback_workbench() -> Arc<Workbench> {
         let dir = std::env::temp_dir().join("strata-fallback.strata");
-        Workbench::open(&dir).expect("temporary fallback case")
+        Workbench::open_idle(&dir).expect("temporary fallback case")
     }
 
     pub fn workbench(&self) -> &Arc<Workbench> {
@@ -322,16 +384,36 @@ impl Session {
         self.refresh(cx);
     }
 
-    pub fn switch_case(&mut self, dir: &Path, cx: &mut Context<Self>) -> Result<(), String> {
-        let wb = Workbench::open(dir).map_err(|e| e.to_string())?;
-        if self.tasks_visible {
-            self.workbench.monitor().unwatch();
-            wb.monitor().watch();
-        }
-        self.workbench = wb;
-        self.generation += 1;
-        self.error = None;
-        self.refresh(cx);
-        Ok(())
+    /// The case being opened instead of this one, if any.
+    pub fn opening(&self) -> Option<&Opening> {
+        self.opening.as_ref()
+    }
+
+    /// Open another case on a background thread; the current one stays usable until it is
+    /// ready. Resolves when the switch is done or has failed.
+    pub fn switch_case(&mut self, dir: PathBuf, cx: &mut Context<Self>) -> Task<Result<(), String>> {
+        let opening = Opening::new(&dir);
+        let progress = opening.progress.clone();
+        self.opening = Some(opening);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let opened = cx.background_executor().spawn(async move { Self::try_open(&dir, &progress) }).await;
+            this.update(cx, |s, cx| {
+                s.opening = None;
+                let result = opened.map(|(wb, snapshot)| {
+                    if s.tasks_visible {
+                        s.workbench.monitor().unwatch();
+                        wb.monitor().watch();
+                    }
+                    s.workbench = wb;
+                    s.snapshot = snapshot;
+                    s.generation += 1;
+                    s.error = None;
+                });
+                cx.notify();
+                result.map_err(|e| e.to_string())
+            })
+            .unwrap_or_else(|_| Err("the window was closed".into()))
+        })
     }
 }

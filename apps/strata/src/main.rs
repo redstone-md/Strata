@@ -6,6 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod assets;
+mod boot;
 mod categories;
 mod format;
 mod nav;
@@ -20,11 +21,10 @@ mod widgets;
 use gpui::{
     App, AppContext as _, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, px, size,
 };
-use std::time::Duration;
 use view_state::WindowPlacement;
+use boot::Boot;
 use gpui_component::Root;
-use session::Session;
-use shell::{FocusSearch, Shell};
+use shell::FocusSearch;
 use std::path::PathBuf;
 
 fn case_dir() -> PathBuf {
@@ -51,19 +51,14 @@ fn main() {
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {
-            let session = cx.new(|cx| Session::new(&case, cx));
-            let shell = cx.new(|cx| Shell::new(session.clone(), window, cx));
-            shell.update(cx, |s, cx| s.restore(window, cx));
-            let closing = shell.clone();
-            // Closing keeps the work: view state is saved and running jobs stop at a
-            // checkpoint, to resume on the next start.
+            // The case opens in the background behind a splash; see `boot`.
+            let boot = cx.new(|cx| Boot::new(case.clone(), window, cx));
+            let closing = boot.clone();
             window.on_window_should_close(cx, move |window, cx| {
-                WindowPlacement::of(window).save();
-                closing.update(cx, |s, cx| s.save_view_state(cx));
-                session.read(cx).workbench().shutdown(Duration::from_secs(5));
+                closing.update(cx, |b, cx| b.close(window, cx));
                 true
             });
-            cx.new(|cx| Root::new(shell, window, cx))
+            cx.new(|cx| Root::new(boot, window, cx))
         })
         .expect("open main window");
         cx.activate(true);

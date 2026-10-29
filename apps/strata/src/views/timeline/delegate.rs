@@ -30,12 +30,14 @@ pub struct TimelineDelegate {
     rows: Vec<(EvidenceId, TimelineEvent)>,
     disks: HashMap<EvidenceId, String>,
     has_more: bool,
+    /// The first page has arrived; until then the empty state says "Loading".
+    loaded: bool,
 }
 
 impl TimelineDelegate {
     pub fn new(workbench: Arc<Workbench>) -> Self {
         let query = EventQuery { skip_filesystem: true, limit: PAGE, ..EventQuery::default() };
-        Self { workbench, query, rows: Vec::new(), disks: HashMap::new(), has_more: false }
+        Self { workbench, query, rows: Vec::new(), disks: HashMap::new(), has_more: false, loaded: false }
     }
 
     pub fn query_mut(&mut self) -> &mut EventQuery {
@@ -60,6 +62,7 @@ impl TimelineDelegate {
         self.query.offset = 0;
         self.has_more = rows.len() == PAGE;
         self.rows = rows;
+        self.loaded = true;
     }
 
     pub fn len(&self) -> usize {
@@ -90,7 +93,8 @@ impl TableDelegate for TimelineDelegate {
     }
 
     fn render_empty(&mut self, _: &mut Window, _: &mut Context<TableState<Self>>) -> impl IntoElement {
-        table_empty("No events. Events appear after the artefacts job has run on a disk.".into())
+        let text = if self.loaded { "No events. Events appear after the artefacts job has run on a disk." } else { "Loading events…" };
+        table_empty(text.into())
     }
 
     fn render_td(&mut self, row_ix: usize, col_ix: usize, _: &mut Window, _: &mut Context<TableState<Self>>) -> impl IntoElement {

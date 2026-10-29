@@ -62,11 +62,16 @@ impl SettingsView {
         if path.as_os_str().is_empty() {
             return self.say(Topic::Case, "Enter a case folder, or press Browse.", cx);
         }
-        let text = match self.session.update(cx, |s, cx| s.switch_case(&path, cx)) {
-            Ok(()) => format!("Opened {}", path.display()),
-            Err(e) => format!("Could not open {}: {e}", path.display()),
-        };
-        self.say(Topic::Case, text, cx);
+        let switch = self.session.update(cx, |s, cx| s.switch_case(path.clone(), cx));
+        self.say(Topic::Case, format!("Opening {}", path.display()), cx);
+        cx.spawn(async move |this, cx| {
+            let text = match switch.await {
+                Ok(()) => format!("Opened {}", path.display()),
+                Err(e) => format!("Could not open {}: {e}", path.display()),
+            };
+            let _ = this.update(cx, |v, cx| v.say(Topic::Case, text, cx));
+        })
+        .detach();
     }
 
     fn save_endpoint(&mut self, cx: &mut Context<Self>) {

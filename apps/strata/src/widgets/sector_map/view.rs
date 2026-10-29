@@ -4,7 +4,7 @@
 use super::grid::{CellLook, Grid, look};
 use crate::format;
 use crate::theme::tokens;
-use crate::widgets::{mono, quiet};
+use crate::widgets::{loading_edge, mono, quiet};
 use gpui::{
     AnyElement, BorderStyle, Context, DispatchPhase, IntoElement, MouseMoveEvent, ParentElement, Render, Styled,
     Window, canvas, div, fill, px, quad,
@@ -207,7 +207,7 @@ impl Render for SectorMapView {
                 .child(self.grid_canvas(map.clone(), grid))
                 .child(self.status_line(map))
                 .into_any_element(),
-            (None, None) => div().h(grid.height()).into_any_element(),
+            (None, None) => div().h(grid.height()).relative().child(loading_edge(("map-loading", self.evidence.get() as usize))).into_any_element(),
         };
         div().w_full().min_w_0().child(body)
     }

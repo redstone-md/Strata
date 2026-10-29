@@ -21,7 +21,7 @@ use crate::view_state::ViewState;
 use screens::Screens;
 use std::rc::Rc;
 use std::time::Duration;
-use window_controls::WindowControls;
+pub use window_controls::WindowControls;
 
 actions!(strata, [FocusSearch]);
 
@@ -215,7 +215,10 @@ impl Render for Shell {
         let error = self.session.read(cx).error().map(str::to_owned);
         let progress = progress_line(self.session.read(cx).snapshot().running_job().map(|j| j.fraction()));
         let view = self.screens.view(self.screen);
-        let content = if self.screen.scrolls() {
+        // The splash animation repaints every frame, which also keeps its step text current.
+        let content = if let Some(opening) = self.session.read(cx).opening() {
+            div().flex_1().min_h_0().child(crate::boot::splash(opening)).into_any_element()
+        } else if self.screen.scrolls() {
             div().id("content").flex_1().min_h_0().overflow_y_scroll().px(t.gutter).pt(px(28.)).pb(px(48.)).child(view).into_any_element()
         } else {
             div().flex_1().min_h_0().flex().flex_col().pl(t.gutter).pt(px(20.)).child(view).into_any_element()
