@@ -6,6 +6,7 @@ use crate::store::category_name;
 use serde::{Deserialize, Serialize};
 use strata_kernel::scan::HitCategory;
 use strata_kernel::{EvidenceId, Result};
+use strata_source::CompositeSource;
 
 /// The same key, address, identity or URL found on more than one disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,15 @@ pub struct FileComplement {
     pub path: String,
     /// `(evidence, state, size)` per disk that has the path.
     pub copies: Vec<(EvidenceId, String, u64)>,
+}
+
+/// Two evidence items that are images of the same physical medium.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SameMedium {
+    pub primary: EvidenceId,
+    pub other: EvidenceId,
+    /// Bytes unreadable in `primary` that `other` provides.
+    pub recoverable_bytes: u64,
 }
 
 pub struct CorrelationService<'a> {
@@ -57,6 +67,24 @@ impl<'a> CorrelationService<'a> {
             })?;
             rows.collect()
         })
+    }
+
+    /// Pairs of evidence that image the same disk; their bad sectors can fill each other.
+    pub fn same_media(&self) -> Result<Vec<SameMedium>> {
+        let ids: Vec<EvidenceId> = self.case.evidence()?.into_iter().map(|e| e.id).collect();
+        let mut out = Vec::new();
+        for (i, a) in ids.iter().enumerate() {
+            for b in &ids[i + 1..] {
+                let (sa, sb) = (self.case.source(*a)?, self.case.source(*b)?);
+                if CompositeSource::same_medium(sa.as_ref(), sb.as_ref(), 8) {
+                    let ab = CompositeSource::new(vec![sa.clone(), sb.clone()]).recovered_bytes();
+                    let ba = CompositeSource::new(vec![sb, sa]).recovered_bytes();
+                    out.push(SameMedium { primary: *a, other: *b, recoverable_bytes: ab });
+                    out.push(SameMedium { primary: *b, other: *a, recoverable_bytes: ba });
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Paths (non-system files) that exist on several disks with differing state or size.

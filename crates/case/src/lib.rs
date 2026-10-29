@@ -13,5 +13,5 @@ mod store;
 
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
 pub use case::{Case, EvidenceRecord};
-pub use correlation::{CorrelationService, SharedFinding, FileComplement};
+pub use correlation::{CorrelationService, FileComplement, SameMedium, SharedFinding};
 pub use store::{HitQuery, StoredHit};

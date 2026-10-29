@@ -4,6 +4,7 @@
 //! zeros and are reported through [`BlockSource::damage`].
 
 mod block;
+mod composite;
 mod file_io;
 mod open;
 mod physical;
@@ -12,6 +13,7 @@ mod rdr;
 mod slice;
 
 pub use block::{BlockSource, SourceInfo, SourceKind};
+pub use composite::CompositeSource;
 pub use open::open_source;
 pub use physical::PhysicalDrive;
 pub use raw::RawImage;
