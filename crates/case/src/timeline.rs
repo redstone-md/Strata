@@ -146,3 +146,34 @@ pub(crate) fn insert_facts(conn: &Connection, facts: &[HostFact]) -> rusqlite::R
     }
     Ok(())
 }
+
+impl crate::Case {
+    /// Repair event titles and details stored through the wrong code page by versions that did
+    /// not undo it while reading (see [`strata_accounts::repair_mojibake`]). Only rows holding
+    /// the tell-tale `Р`/`С` lead letters are read. Returns the rows changed.
+    pub fn repair_event_text(&self) -> strata_kernel::Result<usize> {
+        let rows: Vec<(i64, String, String)> = self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT id, title, data FROM events WHERE title GLOB '*[РС]*' OR data GLOB '*[РС]*'")?;
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect()
+        })?;
+        let fixed: Vec<(i64, String, String)> = rows
+            .into_iter()
+            .filter_map(|(id, title, data)| {
+                let t = strata_accounts::repair_mojibake(&title).into_owned();
+                let d = strata_accounts::repair_mojibake(&data).into_owned();
+                (t != title || d != data).then_some((id, t, d))
+            })
+            .collect();
+        self.with_write(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare("UPDATE events SET title = ?2, data = ?3 WHERE id = ?1")?;
+                for (id, t, d) in &fixed {
+                    stmt.execute(rusqlite::params![id, t, d])?;
+                }
+            }
+            tx.commit()?;
+            Ok(fixed.len())
+        })
+    }
+}

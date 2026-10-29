@@ -11,6 +11,7 @@ mod catalogue;
 mod detectors;
 mod service;
 mod text;
+mod cyrillic;
 mod url;
 mod url_accounts;
 
@@ -18,5 +19,6 @@ pub use account::{Account, AccountResolver, AccountSource, BULK_PLACE_ADDRESSES,
 pub use catalogue::{Catalogue, ServiceEntry, ServiceGroup, ServiceKind, Years};
 pub use detectors::{EmailDetector, LoginDetector, UrlDetector, detectors};
 pub use service::Service;
+pub use cyrillic::{decode_utf8_or_cp1251, repair_mojibake};
 pub use url::{host_of, percent_decode};
 pub use url_accounts::{LOGIN_FIELDS, UrlAccount, UrlAccounts};

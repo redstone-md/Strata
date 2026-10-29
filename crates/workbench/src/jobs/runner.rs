@@ -39,6 +39,11 @@ impl Workbench {
         if stored >= Self::RULES_VERSION {
             return Ok(0);
         }
+        // Version 9 repairs Russian text saved through the wrong code page; new reads repair
+        // it themselves, stored events are fixed in place.
+        if stored < 9 {
+            self.case.repair_event_text()?;
+        }
         let mut queued = 0;
         for disk in self.case.evidence()? {
             let mut kinds = Vec::new();

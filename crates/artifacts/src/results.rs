@@ -150,7 +150,10 @@ impl Recorder {
     }
 
     /// Event template; `None` when the time is missing or implausible.
+    /// Titles come from many old programs; text saved through the wrong code page is repaired.
     pub fn make(&self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>) -> Option<TimelineEvent> {
+        let title = title.into();
+        let title = strata_accounts::repair_mojibake(&title).into_owned();
         Some(TimelineEvent::new(at?, kind, title, EventSource::new(self.artifact, "")))
     }
 
@@ -158,7 +161,7 @@ impl Recorder {
     pub fn emit(&mut self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>, detail: impl Into<String>) {
         let title = title.into();
         match self.make(at, kind, title.clone()) {
-            Some(e) => self.out.events.push(e.with_detail(detail)),
+            Some(e) => self.out.events.push(e.with_detail(strata_accounts::repair_mojibake(&detail.into()).into_owned())),
             None if !title.is_empty() => self.fact("undated", title),
             None => {}
         }
@@ -167,7 +170,7 @@ impl Recorder {
     /// Like [`Recorder::emit`] but silently drops undated events (optional timestamps).
     pub fn dated(&mut self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>, detail: impl Into<String>) {
         if let Some(e) = self.make(at, kind, title) {
-            self.out.events.push(e.with_detail(detail));
+            self.out.events.push(e.with_detail(strata_accounts::repair_mojibake(&detail.into()).into_owned()));
         }
     }
 
@@ -178,7 +181,7 @@ impl Recorder {
     /// Secondary or approximate event at low confidence (dropped when undated).
     pub fn push_low(&mut self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>, detail: impl Into<String>) {
         if let Some(e) = self.make(at, kind, title) {
-            self.push(e.with_detail(detail).with_confidence(Confidence::LOW));
+            self.push(e.with_detail(strata_accounts::repair_mojibake(&detail.into()).into_owned()).with_confidence(Confidence::LOW));
         }
     }
 

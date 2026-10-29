@@ -10,7 +10,8 @@ pub fn host_of(url: &str) -> Option<String> {
     (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }
 
-/// `%xx` sequences to bytes, read as UTF-8 (lossy). Broken escapes stay as they are.
+/// `%xx` sequences to bytes, read as UTF-8, or as CP1251 when they are not UTF-8 (old Russian
+/// sites encoded queries in CP1251). Broken escapes stay as they are.
 pub fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -28,7 +29,7 @@ pub fn percent_decode(s: &str) -> String {
             }
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    crate::cyrillic::decode_utf8_or_cp1251(&out)
 }
 
 #[cfg(test)]

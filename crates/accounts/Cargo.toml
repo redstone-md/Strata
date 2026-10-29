@@ -12,3 +12,4 @@ serde.workspace = true
 serde_json.workspace = true
 aho-corasick = "1"
 toml = "0.8"
+encoding_rs = "0.8"

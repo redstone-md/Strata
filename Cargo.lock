@@ -6265,6 +6265,7 @@ name = "strata-accounts"
 version = "0.0.9"
 dependencies = [
  "aho-corasick",
+ "encoding_rs",
  "memchr",
  "serde",
  "serde_json",
