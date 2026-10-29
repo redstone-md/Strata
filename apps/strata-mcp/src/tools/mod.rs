@@ -12,6 +12,7 @@ pub mod mail;
 pub mod overview;
 pub mod searches;
 pub mod timeline;
+pub mod trails;
 
 use crate::StrataServer;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -28,6 +29,7 @@ pub(crate) fn router() -> ToolRouter<StrataServer> {
         + StrataServer::mail_tools()
         + StrataServer::graph_tools()
         + StrataServer::machine_tools()
+        + StrataServer::trail_tools()
 }
 
 /// Disk id parameter as the workbench's evidence id.
