@@ -44,6 +44,8 @@ pub struct HitBrowser {
     /// One category picked from the overview, instead of all of the screen's categories.
     only: Option<HitCategory>,
     loaded_total: u64,
+    /// Outcome of the last export from the detail panel.
+    export_note: Option<gpui::SharedString>,
     generation: u64,
     last_load: Instant,
     _subscriptions: Vec<Subscription>,
@@ -62,6 +64,7 @@ impl HitBrowser {
             cx.subscribe_in(&table, window, |this, table, event: &TableEvent, _, cx| {
                 if let TableEvent::SelectRow(ix) = event {
                     this.selected = table.read(cx).delegate().row(*ix).cloned();
+                    this.export_note = None;
                     this.places = this.selected.as_ref().map(|h| table.read(cx).delegate().places(h)).unwrap_or_default();
                     this.tree_state.clear();
                     cx.notify();
@@ -80,12 +83,18 @@ impl HitBrowser {
             chain: Rc::new(Chain::default()),
             only: None,
             loaded_total: 0,
+            export_note: None,
             generation,
             last_load: Instant::now(),
             _subscriptions: subscriptions,
         };
         this.reload(cx);
         this
+    }
+
+    /// Rows the list shows now.
+    pub fn result_count(&self, cx: &gpui::App) -> usize {
+        self.table.read(cx).delegate().len()
     }
 
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -169,12 +178,33 @@ impl Render for HitBrowser {
                 });
             });
             let this = cx.entity().downgrade();
-            HitDetailPanel::new(hit, tree, move |_, _, cx| {
+            let export = strata_workbench::explore::recovery::Exportable::of(&hit);
+            let panel = HitDetailPanel::new(hit.clone(), tree, move |_, _, cx| {
                 let _ = this.update(cx, |b, cx| {
                     b.selected = None;
                     cx.notify();
                 });
             })
+            .note(self.export_note.clone());
+            match export {
+                Some(what) => {
+                    let this = cx.entity().downgrade();
+                    panel.action(format!("{}…", what.action()), move |_, _, cx| {
+                        let (this, hit) = (this.clone(), hit.clone());
+                        crate::picker::pick_path(crate::picker::PickKind::Folder, cx, move |dest, cx| {
+                            let _ = this.update(cx, |b, cx| {
+                                let result = b.session.read(cx).workbench().export_finding(&hit, &dest);
+                                b.export_note = Some(match result {
+                                    Ok(r) => format!("Written to {}{}", r.written_to.display(), if r.partial { " (partial)" } else { "" }),
+                                    Err(e) => format!("Could not export: {e}"),
+                                }.into());
+                                cx.notify();
+                            });
+                        });
+                    })
+                }
+                None => panel,
+            }
         });
         h_flex()
             .size_full()

@@ -34,15 +34,15 @@ impl Shell {
     pub fn new(session: Entity<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search keys, addresses, files, accounts"));
         let (screens, navigate) = Screens::new(&session, window, cx);
-        let subscriptions = vec![
-            navigate,
+        let mut subscriptions = navigate;
+        subscriptions.extend([
             cx.observe(&session, |_, _, cx| cx.notify()),
-            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, _, cx| match event {
+            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, window, cx| match event {
                 InputEvent::Change => this.apply_search(cx),
-                InputEvent::PressEnter { .. } if !this.screen.searchable() => this.navigate(Navigate::to(Screen::Wallets), cx),
+                InputEvent::PressEnter { .. } => this.on_enter(window, cx),
                 _ => {}
             }),
-        ];
+        ]);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         Self { session, screen: Screen::Overview, search, focus, screens, _subscriptions: subscriptions }
@@ -57,8 +57,25 @@ impl Shell {
         }
     }
 
+    /// Enter in the command bar: show the findings that match; when none do, offer the disk
+    /// search for the text instead (its button is the first action on the Search screen).
+    fn on_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.search.read(cx).value().trim().to_string();
+        if !self.screen.searchable() {
+            self.navigate(Navigate::to(Screen::Wallets), cx);
+        }
+        let matches = self.screens.browser(self.screen).map(|b| b.read(cx).result_count(cx));
+        if !text.is_empty() && matches == Some(0) {
+            self.screens.search.update(cx, |s, cx| s.prefill(&text, window, cx));
+            self.navigate(Navigate::to(Screen::Search), cx);
+        }
+    }
+
     pub fn navigate(&mut self, nav: Navigate, cx: &mut Context<Self>) {
         self.screen = nav.screen;
+        if let (Screen::Files, Some((evidence, volume))) = (nav.screen, nav.volume) {
+            self.screens.files.update(cx, |f, cx| f.open_volume(evidence, volume, cx));
+        }
         if let Some(browser) = self.screens.browser(nav.screen).cloned() {
             browser.update(cx, |b, cx| b.show_category(nav.category, cx));
         }

@@ -107,6 +107,13 @@ impl Workbench {
         Ok(FileListing::build(self.case().layout(q.evidence)?, types, q))
     }
 
+    /// Full path of one entry (`""` for a volume root).
+    pub fn entry_path(&self, evidence: EvidenceId, volume: u32, index: usize) -> Option<String> {
+        let layout = self.case().layout(evidence).ok()?;
+        let (_, fs) = layout.filesystem(volume)?;
+        fs.entry(FileId::new(index)).map(|e| e.path.clone())
+    }
+
     /// Up to `len` bytes of a file's content from `offset` (overwritten parts as they are now).
     pub fn read_file(&self, evidence: EvidenceId, volume: u32, index: usize, offset: u64, len: usize) -> Result<Vec<u8>> {
         let layout = self.case().layout(evidence)?;
