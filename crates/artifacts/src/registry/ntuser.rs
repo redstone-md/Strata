@@ -2,7 +2,8 @@
 //! terms, mail/IM account settings.
 
 use super::hive::{Hive, Key};
-use super::{mru, pidl};
+use super::mru;
+use crate::pidl;
 use crate::results::{IdentityKind, Recorder};
 use crate::text::{filetime_at, rot13, utf16_at};
 use strata_kernel::bytes::u32_le;

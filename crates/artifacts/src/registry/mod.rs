@@ -4,7 +4,6 @@
 mod hive;
 mod mru;
 mod ntuser;
-mod pidl;
 mod system;
 
 use crate::results::{ArtifactResults, Recorder};

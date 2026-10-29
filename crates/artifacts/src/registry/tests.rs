@@ -51,7 +51,7 @@ fn ntuser() -> Vec<u8> {
     let mut pidl = vec![0x19, 0, 0x2F];
     pidl.extend_from_slice(b"D:\\");
     pidl.resize(0x19, 0);
-    pidl.extend(super::pidl::file_item("WALLET~1.DAT", "wallet.dat"));
+    pidl.extend(crate::pidl::file_item("WALLET~1.DAT", "wallet.dat"));
     pidl.extend_from_slice(&[0, 0]);
     b.value(&osp, "0", 3, &pidl);
     b.value(&osp, "MRUListEx", 3, &mru_ex(&[0]));
