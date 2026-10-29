@@ -167,7 +167,7 @@ mod tests {
                 let set = set.clone();
                 s.spawn(move || {
                     set.register_current();
-                    spin(Duration::from_millis(80));
+                    spin(Duration::from_millis(150));
                 });
             }
         });
