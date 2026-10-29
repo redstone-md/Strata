@@ -2,7 +2,7 @@
 //! seen, every trace naming it, and the same name on other services.
 
 use super::{day, years};
-use crate::nav::{Jump, Screen};
+use crate::nav::{ConnectTo, Jump, Screen};
 use crate::session::Snapshot;
 use crate::theme::tokens;
 use crate::widgets::{ClickHandler, TextButton, rule};
@@ -130,6 +130,8 @@ impl RenderOnce for AccountDetail {
             let (on_jump, jump) = (self.on_jump.clone(), Jump::Search { screen: Screen::Mail, text: a.identifier().to_string() });
             TextButton::new("acc-mail", "Show mail").on_click(move |_, w, cx| on_jump(jump.clone(), w, cx))
         });
+        let (on_jump, jump) = (self.on_jump.clone(), Jump::Connections(ConnectTo::Entity(format!("acct:{}", a.key()))));
+        let connections = TextButton::new("acc-connections", "Show connections").on_click(move |_, w, cx| on_jump(jump.clone(), w, cx));
         v_flex()
             .w(px(WIDTH))
             .flex_shrink_0()
@@ -154,6 +156,7 @@ impl RenderOnce for AccountDetail {
                     .child(
                         h_flex()
                             .gap(px(8.))
+                            .child(connections)
                             .children(mail)
                             .child(TextButton::new("acc-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
                     ),

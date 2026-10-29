@@ -4,7 +4,7 @@
 use super::window_text;
 use crate::categories;
 use crate::format;
-use crate::nav::{Jump, Screen};
+use crate::nav::{ConnectTo, Jump, Screen};
 use crate::session::{Session, Snapshot};
 use crate::theme::tokens;
 use crate::views::timeline::kind_label;
@@ -139,6 +139,7 @@ impl RenderOnce for LeadDetail {
             div().text_size(t.size_body).text_color(t.text).line_height(px(19.)).whitespace_normal().child(SharedString::from(s.clone()))
         });
         let linked = self.linked();
+        let (on_jump, connections) = (self.on_jump.clone(), Jump::Connections(ConnectTo::Entity(format!("lead:{}", l.id))));
         v_flex()
             .w(px(WIDTH))
             .flex_shrink_0()
@@ -159,7 +160,12 @@ impl RenderOnce for LeadDetail {
                                 .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).whitespace_normal().child(l.title.clone()))
                                 .child(div().text_size(t.size_small).text_color(t.text_secondary).child(meta.join("  ·  "))),
                         )
-                        .child(TextButton::new("lead-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
+                        .child(
+                            h_flex()
+                                .gap(px(8.))
+                                .child(TextButton::new("lead-connections", "Show connections").on_click(move |_, w, cx| on_jump(connections.clone(), w, cx)))
+                                .child(TextButton::new("lead-close", "Close").on_click(move |e, w, cx| close(e, w, cx))),
+                        ),
                 ),
             )
             .child(rule())
