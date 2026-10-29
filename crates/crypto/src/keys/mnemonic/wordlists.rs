@@ -4,6 +4,7 @@
 
 use bip39::Language;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
@@ -40,9 +41,28 @@ impl WordEntry {
     }
 }
 
+/// Small multiplicative hasher: the keys are static wordlist spellings, not attacker-chosen
+/// map keys, so SipHash's DoS resistance buys nothing on this hot path.
+#[derive(Default)]
+pub struct FxHasher(u64);
+
+impl Hasher for FxHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0u8; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.0 = (self.0.rotate_left(5) ^ u64::from_le_bytes(word)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        }
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
 /// All wordlists, indexed by spelling (NFC and NFKD forms both present).
 pub struct WordIndex {
-    map: HashMap<Box<[u8]>, WordEntry>,
+    map: HashMap<Box<[u8]>, WordEntry, BuildHasherDefault<FxHasher>>,
     /// Bitmap over the first two bytes of every spelling: cheap rejection before hashing.
     first2: Box<[u64; 1024]>,
     max_word_bytes: usize,
@@ -58,7 +78,7 @@ impl WordIndex {
 
     fn build() -> Self {
         let mut index = WordIndex {
-            map: HashMap::with_capacity(40_000),
+            map: HashMap::with_capacity_and_hasher(40_000, BuildHasherDefault::default()),
             first2: Box::new([0; 1024]),
             max_word_bytes: 0,
             electrum_old: ELECTRUM_OLD_TEXT.lines().filter(|l| !l.is_empty()).collect(),

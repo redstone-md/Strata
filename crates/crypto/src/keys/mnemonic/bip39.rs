@@ -71,11 +71,10 @@ fn pack_bits(indices: &[u16]) -> ([u8; 33], usize) {
     let mut bit = 0usize;
     for idx in indices {
         for b in (0..11).rev() {
-            if (idx >> b) & 1 == 1 {
-                if let Some(byte) = out.get_mut(bit / 8) {
+            if (idx >> b) & 1 == 1
+                && let Some(byte) = out.get_mut(bit / 8) {
                     *byte |= 0x80 >> (bit % 8);
                 }
-            }
             bit += 1;
         }
     }

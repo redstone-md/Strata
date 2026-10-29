@@ -178,7 +178,7 @@ pub fn old_seed_hex(normalized: &str) -> Option<String> {
 pub fn old_indices_to_hex(idx: &[u16]) -> Option<String> {
     const N: u64 = 1626;
     let mut out = String::with_capacity(idx.len() / 3 * 8);
-    for t in idx.chunks_exact(3) {
+    for t in idx.as_chunks::<3>().0 {
         let (w1, w2, w3) = (u64::from(t[0]), u64::from(t[1]), u64::from(t[2]));
         let x = w1 + N * ((w2 + N - w1) % N) + N * N * ((w3 + N - w2) % N);
         if x > u64::from(u32::MAX) {
