@@ -50,7 +50,9 @@ impl Scanner {
         self.detectors.iter().map(|d| d.id()).collect()
     }
 
-    fn overlap(&self) -> usize {
+    /// Longest match any detector reports: how far past a range end a caller must scan to
+    /// see every match that starts inside it.
+    pub fn overlap(&self) -> usize {
         self.detectors.iter().map(|d| d.max_match()).max().unwrap_or(0)
     }
 

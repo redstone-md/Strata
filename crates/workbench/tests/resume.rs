@@ -30,8 +30,11 @@ fn image(dir: &Path) -> PathBuf {
         .file(b"README  TXT", b"nothing here")
         .file(b"ARCHIVE ZIP", &nested)
         .file(b"KEYS    TXT", format!("{WIF} spare").as_bytes());
-    let carved = testkit::zip(&[("lost.txt", note.as_bytes(), true)]);
-    let bytes = disk(20 << 20, vec![(1, a), (6, b)], &[(12 << 20, &carved), (18 << 20, note.as_bytes())]);
+    let pad: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(7919) % 251) as u8).collect();
+    let carved = testkit::zip(&[("lost.txt", note.as_bytes(), true), ("pad.bin", &pad, false)]);
+    assert!(carved.len() > 1024, "spans the piece boundary");
+    // The carved archive starts in one 1 MiB carving piece and ends in the next.
+    let bytes = disk(20 << 20, vec![(1, a), (6, b)], &[((12 << 20) - 512, &carved), (18 << 20, note.as_bytes())]);
     let path = dir.join("disk.img");
     std::fs::write(&path, bytes).unwrap();
     path
@@ -76,7 +79,7 @@ fn open(case: &Path, img: &Path) -> (Arc<Workbench>, EvidenceId) {
 }
 
 fn tiny_batches() -> CheckpointPolicy {
-    CheckpointPolicy { every: Duration::ZERO, every_items: 1 }
+    CheckpointPolicy { every: Duration::ZERO, every_items: 1, every_bytes: 1 << 20 }
 }
 
 #[test]
@@ -84,8 +87,8 @@ fn every_step_resumes_after_a_crash_with_identical_results() {
     let dir = tempfile::tempdir().unwrap();
     let img = image(dir.path());
 
+    // One pass with default batches; the crashed runs below commit after every unit.
     let (clean, id) = open(&dir.path().join("clean.strata"), &img);
-    clean.set_checkpoint_policy(tiny_batches());
     clean.analyse(id).unwrap();
     wait_idle(&clean);
     for j in clean.jobs() {

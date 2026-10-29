@@ -1,8 +1,10 @@
 //! Carve files out of unallocated space and look inside them for wallets.
 //!
-//! Free space is processed in batches of whole ranges: signature pass, carving and wallet
-//! parsing of a batch commit together with the count of ranges done. Carved files never
-//! cross a range end, so batching gives the same files as one pass.
+//! Free space is processed in pieces of at most `every_bytes`: signature pass, carving and
+//! wallet parsing of the pieces since the last checkpoint commit together with the position
+//! reached. Each piece is scanned a little past its end so no signature on the cut is missed,
+//! carved files stay bounded by their whole free range, and the end of the last carved file
+//! is carried over — so the pieces give exactly the files of one pass.
 
 use crate::jobs::context::{Cursor, StepContext};
 use serde::{Deserialize, Serialize};
@@ -16,13 +18,15 @@ use strata_kernel::{ByteRange, Confidence, Result};
 
 /// Carved wallets/databases larger than this are not parsed whole.
 const MAX_PARSE_BYTES: usize = 256 << 20;
-/// Free space processed per commit (whole ranges, so a batch may be larger).
-const BATCH_BYTES: u64 = 256 << 20;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CarveCursor {
     /// Free ranges (coalesced, in disk order) finished.
     ranges: usize,
+    /// Where the next piece of the current range starts (0: its beginning).
+    offset: u64,
+    /// End of the last carved file: signatures before it lie inside that file.
+    covered_until: u64,
     bytes: u64,
     carved: usize,
     wallets: usize,
@@ -30,7 +34,10 @@ struct CarveCursor {
 
 impl Cursor for CarveCursor {
     fn note(&self) -> String {
-        format!("free range {} ({} files carved so far)", self.ranges + 1, self.carved)
+        match self.offset {
+            0 => format!("free range {} ({} files carved so far)", self.ranges + 1, self.carved),
+            at => format!("free range {} at 0x{at:X} ({} files carved so far)", self.ranges + 1, self.carved),
+        }
     }
 }
 
@@ -86,39 +93,46 @@ fn findings(carver: &Carver, layout: &EvidenceLayout, carved: &[CarvedFile]) -> 
 
 pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
     let id = ctx.evidence();
-    let source = ctx.source()?;
+    // The scanner counts what it reads; the carver reads through the job's counter.
+    let source = ctx.case().source(id)?;
     let layout = ctx.case().layout(id)?;
     let ranges = free_ranges(&layout, source.len());
     let mut cur: CarveCursor = ctx.cursor().unwrap_or_default();
     ctx.control().begin_at(cur.bytes, ranges.iter().map(|r| r.len()).sum());
     let scanner = Scanner::new(vec![Arc::new(SignatureDetector::new())]);
-    let carver = Carver::new(source.clone());
-    let max_ranges = ctx.policy().every_items.max(1) as usize;
-    while cur.ranges < ranges.len() {
-        let mut end = cur.ranges;
-        let mut bytes = 0;
-        while end < ranges.len() && bytes < BATCH_BYTES && end - cur.ranges < max_ranges {
-            bytes += ranges[end].len();
-            end += 1;
-        }
-        let batch = &ranges[cur.ranges..end];
+    let carver = Carver::new(ctx.source()?);
+    let piece = ctx.policy().every_bytes.max(1 << 20);
+    let mut pending: Vec<(Hit, Attribution)> = Vec::new();
+    while let Some(&range) = ranges.get(cur.ranges) {
+        let start = cur.offset.max(range.start());
+        let end = start.saturating_add(piece).min(range.end());
+        let scan_end = end.saturating_add(scanner.overlap() as u64).min(range.end());
         let mut signatures: Vec<Hit> = Vec::new();
-        scanner.continue_ranges(source.as_ref(), batch, ctx.control(), |h| signatures.extend(h))?;
+        scanner.continue_ranges(source.as_ref(), &[ByteRange::from_bounds(start, scan_end)], ctx.control(), |h| {
+            signatures.extend(h.into_iter().filter(|h| h.offset < end && h.offset >= cur.covered_until));
+        })?;
         if ctx.should_stop() {
             break;
         }
         signatures.sort_by_key(|h| h.offset);
-        ctx.current(&format!("carving 0x{:X}–0x{:X}", batch[0].start(), batch[batch.len() - 1].end()));
-        let carved = carver.carve_ranges(batch, &signatures);
+        ctx.current(&format!("carving 0x{start:X}–0x{end:X}"));
+        let carved = carver.carve_ranges(&[range], &signatures);
         let (hits, wallets) = findings(&carver, &layout, &carved);
-        cur.ranges = end;
-        cur.bytes += bytes;
+        pending.extend(hits);
+        cur.covered_until = carved.iter().map(|f| f.range.end()).fold(cur.covered_until, u64::max);
+        (cur.ranges, cur.offset) = if end >= range.end() { (cur.ranges + 1, 0) } else { (cur.ranges, end) };
+        cur.bytes += end - start;
         cur.carved += carved.len();
         cur.wallets += wallets;
-        ctx.commit(&cur, |w| w.hits(id, &hits))?;
         if !carved.is_empty() {
-            ctx.log(format!("{} files carved in {} free ranges, {wallets} wallets", carved.len(), batch.len()));
+            ctx.log(format!("{} files carved from 0x{start:X}–0x{end:X}, {wallets} wallets", carved.len()));
+        }
+        if ctx.tick(1) || end - start >= piece {
+            let batch = std::mem::take(&mut pending);
+            ctx.commit(&cur, |w| w.hits(id, &batch))?;
         }
     }
+    let batch = std::mem::take(&mut pending);
+    ctx.commit(&cur, |w| w.hits(id, &batch))?;
     Ok(format!("{} files carved, {} wallets", cur.carved, cur.wallets))
 }

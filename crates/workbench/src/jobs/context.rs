@@ -26,16 +26,18 @@ pub(crate) trait Cursor: Serialize + DeserializeOwned + Default {
 }
 
 /// When steps save a checkpoint: after `every` of work or `every_items` units, whichever
-/// comes first, and always when they stop.
+/// comes first, and always when they stop. Steps that sweep the disk (carving) also never go
+/// more than `every_bytes` without one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckpointPolicy {
     pub every: Duration,
     pub every_items: u64,
+    pub every_bytes: u64,
 }
 
 impl Default for CheckpointPolicy {
     fn default() -> Self {
-        Self { every: Duration::from_secs(2), every_items: 4096 }
+        Self { every: Duration::from_secs(2), every_items: 4096, every_bytes: 256 << 20 }
     }
 }
 
@@ -214,7 +216,7 @@ mod tests {
         let case = Case::open(&dir.path().join("c.strata")).unwrap();
         let job = job(&case);
         let faults = Faults::default();
-        let policy = CheckpointPolicy { every: Duration::from_secs(3600), every_items: 3 };
+        let policy = CheckpointPolicy { every: Duration::from_secs(3600), every_items: 3, ..CheckpointPolicy::default() };
         let ctx = StepContext::new(&case, &job, policy, &faults);
         assert_eq!(ctx.cursor::<Count>(), None);
         assert!(!ctx.tick(1) && !ctx.tick(1));
