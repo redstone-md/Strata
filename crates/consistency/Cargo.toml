@@ -1,0 +1,10 @@
+[package]
+name = "strata-consistency"
+description = "Consistency context: whether what was extracted from a disk is plausible, and signs it was wiped, reformatted, reinstalled or not fully read"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+serde.workspace = true
