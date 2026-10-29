@@ -6,4 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+strata-workbench = { path = "../../crates/workbench" }
+gpui = { package = "gpui-pre", version = "=0.3.10" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.10" }
 gpui-component = "0.8.1"
+gpui-kit-assets = "0.8.1"
+serde_json.workspace = true

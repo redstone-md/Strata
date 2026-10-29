@@ -24,6 +24,25 @@ impl Workbench {
         &self.case
     }
 
+    /// Case display name (folder stem).
+    pub fn name(&self) -> String {
+        self.case.name()
+    }
+
+    pub fn root(&self) -> &Path {
+        self.case.root()
+    }
+
+    /// `(watermark, total, completed)` of the last stored scan of one evidence item.
+    pub fn scan_progress(&self, id: EvidenceId) -> Result<Option<(u64, u64, bool)>> {
+        self.case.scan_state(id)
+    }
+
+    /// Bytes known to be unreadable or absent in one evidence item.
+    pub fn damaged_bytes(&self, id: EvidenceId) -> Result<u64> {
+        Ok(self.case.source(id)?.damage().iter().map(|r| r.len()).sum())
+    }
+
     pub fn add_evidence(&self, location: &str) -> Result<EvidenceRecord> {
         self.case.add_evidence(location)
     }
