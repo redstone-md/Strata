@@ -39,10 +39,18 @@ fn secs(v: Option<i64>) -> Option<Timestamp> {
 
 impl Case {
     /// Everything the wallet-trail builder links, across every disk of the case.
+    /// The five reads scan different tables; they run side by side on pooled read connections.
     pub fn trail_inputs(&self) -> Result<TrailInputs> {
-        self.with_conn(|conn| {
-            let hits = trail_hits(conn)?;
-            Ok(TrailInputs { events: trail_events(conn)?, files: trail_files(conn)?, hits, members: trail_members(conn)?, attachments: trail_attachments(conn)? })
+        fn join<T>(h: std::thread::ScopedJoinHandle<'_, Result<T>>) -> Result<T> {
+            h.join().unwrap_or_else(|_| Err(strata_kernel::Error::Other("a wallet-trail read stopped".into())))
+        }
+        std::thread::scope(|s| {
+            let events = s.spawn(|| self.with_conn(trail_events));
+            let files = s.spawn(|| self.with_conn(trail_files));
+            let members = s.spawn(|| self.with_conn(trail_members));
+            let attachments = s.spawn(|| self.with_conn(trail_attachments));
+            let hits = self.with_conn(trail_hits)?;
+            Ok(TrailInputs { events: join(events)?, files: join(files)?, hits, members: join(members)?, attachments: join(attachments)? })
         })
     }
 }
