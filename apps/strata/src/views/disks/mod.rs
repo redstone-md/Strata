@@ -14,7 +14,7 @@ use crate::session::Session;
 use crate::theme::tokens;
 use crate::widgets::{Check, DiskMaps, Field, Section, TextButton, loading_edge, quiet, rule};
 use gpui::{
-    App, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
+    AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
     Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::input::{InputEvent, InputState};
@@ -213,7 +213,7 @@ impl DisksView {
             n => format!("{n} installations"),
         };
         let this = cx.entity().downgrade();
-        let on_key: Rc<dyn Fn(String, &mut Window, &mut App)> = Rc::new(move |key, _, cx| {
+        let on_key: facts::KeyToggle = Rc::new(move |key, _, cx| {
             let _ = this.update(cx, |v, cx| v.toggle_key(id, key, cx));
         });
         let open = self.open_keys.get(&id).cloned().unwrap_or_default();

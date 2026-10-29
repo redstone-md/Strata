@@ -8,6 +8,9 @@ use gpui_component::{h_flex, v_flex};
 use std::rc::Rc;
 use strata_workbench::FactGroup;
 
+/// Opens or closes one key's longer list.
+pub type KeyToggle = Rc<dyn Fn(String, &mut Window, &mut App)>;
+
 /// Values shown under a closed key.
 const CLOSED_VALUES: usize = 2;
 /// Values shown under an open key (also what is loaded per key).
@@ -26,7 +29,7 @@ fn value_row(value: &str, count: u64, source: &str) -> impl IntoElement {
 }
 
 /// The grouped facts; `open` says which keys show their longer list, `on_toggle` flips one.
-pub fn list(id: u32, groups: &[FactGroup], open: &[String], on_toggle: Rc<dyn Fn(String, &mut Window, &mut App)>) -> impl IntoElement {
+pub fn list(id: u32, groups: &[FactGroup], open: &[String], on_toggle: KeyToggle) -> impl IntoElement {
     let t = tokens();
     if groups.is_empty() {
         return v_flex().child(quiet().child("No host facts stored for this disk."));
