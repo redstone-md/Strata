@@ -48,7 +48,7 @@ impl ArtifactKind {
             "index.dat" => Self::IeIndexDat,
             "typed_history.xml" => Self::OperaTypedHistory,
             "global_history.dat" | "global.dat" if under("opera") => Self::OperaGlobalHistory,
-            "ntuser.dat" => Self::RegistryHive,
+            "ntuser.dat" | "usrclass.dat" => Self::RegistryHive,
             n if HIVE_NAMES.contains(&n) && (under("/system32/config/") || under("/repair/")) => Self::RegistryHive,
             n if n.starts_with("_registry_machine_") || n.starts_with("_registry_user_ntuser") => Self::RegistryHive,
             "info2" if under("/recycler/") || under("/recycled/") => Self::RecycleInfo2,
@@ -166,6 +166,9 @@ mod tests {
         assert_eq!(k("WINDOWS/system32/config/SYSTEM"), Some(ArtifactKind::RegistryHive));
         assert_eq!(k("WINDOWS/system32/config/system.LOG"), None);
         assert_eq!(k("Documents and Settings/Admin/NTUSER.DAT"), Some(ArtifactKind::RegistryHive));
+        assert_eq!(k("Users/a/AppData/Local/Microsoft/Windows/UsrClass.dat"), Some(ArtifactKind::RegistryHive));
+        let xp_classes = "Documents and Settings/a/Local Settings/Application Data/Microsoft/Windows/UsrClass.dat";
+        assert_eq!(k(xp_classes), Some(ArtifactKind::RegistryHive));
         assert_eq!(k("WINDOWS/Prefetch/BITCOIN.EXE-1A2B3C4D.pf"), Some(ArtifactKind::Prefetch));
         assert_eq!(k("RECYCLER/S-1-5-21-1/INFO2"), Some(ArtifactKind::RecycleInfo2));
         assert_eq!(k("$Recycle.Bin/S-1-5-21-1/$IAB12CD.dat"), Some(ArtifactKind::RecycleI));
