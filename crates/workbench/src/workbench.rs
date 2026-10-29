@@ -38,6 +38,11 @@ impl Workbench {
         self.case.scan_state(id)
     }
 
+    /// Disk overview grid with `cells` cells.
+    pub fn sector_map(&self, id: EvidenceId, cells: usize) -> Result<crate::SectorMap> {
+        crate::SectorMap::build(&self.case, id, cells)
+    }
+
     /// Bytes known to be unreadable or absent in one evidence item.
     pub fn damaged_bytes(&self, id: EvidenceId) -> Result<u64> {
         Ok(self.case.source(id)?.damage().iter().map(|r| r.len()).sum())

@@ -260,6 +260,21 @@ impl Case {
         tx.commit().map_err(db)
     }
 
+    /// Count of significant findings per `cell_len`-sized bucket of the disk.
+    pub fn finding_density(&self, id: EvidenceId, cell_len: u64) -> Result<std::collections::HashMap<u64, u32>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT offset / ?2, COUNT(*) FROM hits WHERE evidence_id = ?1
+                 AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Wallet','Address','Identity') GROUP BY 1",
+            )
+            .map_err(db)?;
+        let rows = stmt
+            .query_map(params![id.get(), cell_len.max(1) as i64], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u32)))
+            .map_err(db)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(db)
+    }
+
     /// Store hits produced outside the raw scan (file-level parsers, carving).
     pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
         store::insert(&mut self.conn.lock(), id, hits).map_err(db)
