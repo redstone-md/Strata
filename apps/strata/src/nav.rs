@@ -9,6 +9,7 @@ pub enum Screen {
     Disks,
     Wallets,
     Accounts,
+    Timeline,
     Correlation,
     Settings,
 }
@@ -27,8 +28,8 @@ impl Navigate {
 }
 
 impl Screen {
-    const ALL: [Screen; 6] =
-        [Self::Overview, Self::Disks, Self::Wallets, Self::Accounts, Self::Correlation, Self::Settings];
+    const ALL: [Screen; 7] =
+        [Self::Overview, Self::Disks, Self::Wallets, Self::Accounts, Self::Timeline, Self::Correlation, Self::Settings];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -36,6 +37,7 @@ impl Screen {
             Self::Disks => "Disks",
             Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
+            Self::Timeline => "Timeline",
             Self::Correlation => "Across disks",
             Self::Settings => "Settings",
         }
@@ -47,6 +49,7 @@ impl Screen {
             Self::Disks => Glyph::HardDrive,
             Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
+            Self::Timeline => Glyph::Clock,
             Self::Correlation => Glyph::GitCompare,
             Self::Settings => Glyph::Settings,
         }
@@ -67,7 +70,7 @@ impl Screen {
 
     /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
-        matches!(self, Self::Wallets | Self::Accounts)
+        matches!(self, Self::Wallets | Self::Accounts | Self::Timeline)
     }
 
     pub fn nav_item(self) -> NavItem {

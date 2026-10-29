@@ -50,6 +50,8 @@ impl Shell {
         let text = self.search.read(cx).value().to_string();
         if let Some(browser) = self.screens.browser(self.screen) {
             browser.update(cx, |b, cx| b.set_search(&text, cx));
+        } else if self.screen == Screen::Timeline {
+            self.screens.timeline.update(cx, |v, cx| v.set_search(&text, cx));
         }
     }
 
@@ -59,7 +61,7 @@ impl Shell {
             browser.update(cx, |b, cx| b.show_category(nav.category, cx));
         }
         match nav.screen {
-            Screen::Wallets | Screen::Accounts => self.apply_search(cx),
+            Screen::Wallets | Screen::Accounts | Screen::Timeline => self.apply_search(cx),
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }

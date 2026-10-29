@@ -4,7 +4,7 @@
 use gpui::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
 
-gpui_kit_assets::icon_assets!(AppIcons, [LayoutDashboard, HardDrive, KeyRound, Users, GitCompare, Settings]);
+gpui_kit_assets::icon_assets!(AppIcons, [LayoutDashboard, HardDrive, KeyRound, Users, Clock, GitCompare, Settings]);
 
 pub struct StrataAssets;
 
