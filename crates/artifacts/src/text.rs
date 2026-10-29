@@ -118,6 +118,12 @@ pub fn utf16_at(data: &[u8], off: usize, max: usize) -> String {
     data.get(off..).map(|d| bytes::utf16le(&d[..d.len().min(max)])).unwrap_or_default()
 }
 
+/// NUL-separated UTF-16LE strings (REG_MULTI_SZ, prefetch file lists); empty items dropped.
+pub fn utf16_list(data: &[u8], max_items: usize) -> Vec<String> {
+    let units: Vec<u16> = data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+    units.split(|u| *u == 0).filter(|s| !s.is_empty()).take(max_items).map(String::from_utf16_lossy).collect()
+}
+
 /// FILETIME at `off` as a timestamp.
 pub fn filetime_at(data: &[u8], off: usize) -> Option<Timestamp> {
     Timestamp::from_filetime(bytes::u64_le(data, off)?)

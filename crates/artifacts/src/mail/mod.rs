@@ -5,7 +5,7 @@ mod im;
 mod rfc822;
 
 pub(crate) use dbx::Dbx;
-pub(crate) use im::{ImAccount, ImPaths};
+pub(crate) use im::ImPaths;
 
 use crate::results::Recorder;
 use rfc822::MailHeaders;

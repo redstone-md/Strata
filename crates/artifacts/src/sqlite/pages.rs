@@ -26,6 +26,7 @@ impl<'a> SqlitePages<'a> {
         Self { data, page_size }
     }
 
+    #[cfg(test)]
     pub fn page_size(&self) -> usize {
         self.page_size
     }

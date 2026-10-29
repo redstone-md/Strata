@@ -79,7 +79,7 @@ impl<'a> IndexDat<'a> {
             let mut e = table + 16;
             while e + 8 <= end {
                 let rec_off = u32_le(self.data, e + 4).unwrap_or(0) as usize;
-                if rec_off >= FIRST_BLOCK && rec_off % BLOCK == 0 {
+                if rec_off >= FIRST_BLOCK && rec_off.is_multiple_of(BLOCK) {
                     out.insert(rec_off);
                 }
                 e += 8;

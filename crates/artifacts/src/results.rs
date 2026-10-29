@@ -125,10 +125,6 @@ impl Recorder {
         Self { artifact, out: ArtifactResults::default() }
     }
 
-    pub fn artifact(&self) -> &'static str {
-        self.artifact
-    }
-
     /// Event template; `None` when the time is missing or implausible.
     pub fn make(&self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>) -> Option<TimelineEvent> {
         Some(TimelineEvent::new(at?, kind, title, EventSource::new(self.artifact, "")))
@@ -186,14 +182,6 @@ impl Recorder {
 
     pub fn damage(&mut self, damage: Damage) {
         self.out.damage.push(damage);
-    }
-
-    pub fn absorb(&mut self, other: ArtifactResults) {
-        self.out.merge(other);
-    }
-
-    pub fn event_count(&self) -> usize {
-        self.out.events.len()
     }
 
     pub fn finish(self) -> ArtifactResults {

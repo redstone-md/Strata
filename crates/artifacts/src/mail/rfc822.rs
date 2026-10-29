@@ -20,7 +20,7 @@ impl MailHeaders {
         let mut h = MailHeaders::default();
         let mut current: Option<(String, String)> = None;
         let mut seen = 0;
-        let mut commit = |cur: Option<(String, String)>, h: &mut MailHeaders| {
+        let commit = |cur: Option<(String, String)>, h: &mut MailHeaders| {
             if let Some((name, value)) = cur {
                 let value = decode_words(value.trim());
                 let slot = match name.to_ascii_lowercase().as_str() {

@@ -51,8 +51,7 @@ impl Prefetch {
         let Some(section) = data.get(off as usize..(off as usize).saturating_add(len as usize).min(data.len())) else {
             return Vec::new();
         };
-        let units: Vec<u16> = section.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-        units.split(|u| *u == 0).filter(|s| !s.is_empty()).take(MAX_FILES).map(String::from_utf16_lossy).collect()
+        crate::text::utf16_list(section, MAX_FILES)
     }
 }
 

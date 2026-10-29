@@ -54,14 +54,13 @@ impl Value {
             return None;
         }
         let d = &self.data;
-        let wide = d.len() % 2 == 0 && d.iter().skip(1).step_by(2).all(|b| *b <= 0x05 || *b == 0x20 || *b == 0x30);
+        let wide = d.len().is_multiple_of(2) && d.iter().skip(1).step_by(2).all(|b| *b <= 0x05 || *b == 0x20 || *b == 0x30);
         let s = if wide { strata_kernel::bytes::utf16le(d) } else { ansi(d) };
         (!s.is_empty()).then_some(s)
     }
 
     pub fn multi_string(&self) -> Vec<String> {
-        let units: Vec<u16> = self.data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-        units.split(|u| *u == 0).filter(|s| !s.is_empty()).map(String::from_utf16_lossy).collect()
+        crate::text::utf16_list(&self.data, usize::MAX)
     }
 
     pub fn dword(&self) -> Option<u32> {
@@ -123,7 +122,7 @@ impl<'a> Hive<'a> {
         let mut off = BASE;
         while off + 0x20 <= self.data.len() {
             let size = u32_le(self.data, off + 8).unwrap_or(0) as usize;
-            if &self.data[off..off + 4] == b"hbin" && size >= 0x1000 && size % 0x1000 == 0 {
+            if &self.data[off..off + 4] == b"hbin" && size >= 0x1000 && size.is_multiple_of(0x1000) {
                 off += size;
             } else {
                 self.note(Damage::corrupt(ByteRange::new(off as u64, 0x1000), "bad hbin header"));
