@@ -2,7 +2,9 @@
 
 mod badge;
 mod check;
+mod choice;
 mod field;
+mod hex_view;
 mod section;
 mod sector_map;
 mod sidebar;
@@ -11,7 +13,9 @@ mod text_table;
 
 pub use badge::Badge;
 pub use check::Check;
+pub use choice::Choice;
 pub use field::Field;
+pub use hex_view::{HexMode, HexView, mode_choice};
 pub use section::{Section, rule};
 pub use sector_map::{DiskMaps, SectorMapView, legend};
 pub use sidebar::{NavItem, Sidebar};
