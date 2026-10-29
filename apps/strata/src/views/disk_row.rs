@@ -18,15 +18,22 @@ pub struct DiskRow {
     busy: bool,
     /// When the disk was in use (`2009-03 – 2013-07`), once known.
     usage: Option<SharedString>,
+    /// Evidence consistency verdict, once known.
+    verdict: Option<Badge>,
 }
 
 impl DiskRow {
     pub fn new(disk: DiskSummary, map: Option<Entity<SectorMapView>>, session: Entity<Session>, busy: bool) -> Self {
-        Self { disk, map, session, busy, usage: None }
+        Self { disk, map, session, busy, usage: None, verdict: None }
     }
 
     pub fn usage(mut self, usage: Option<SharedString>) -> Self {
         self.usage = usage;
+        self
+    }
+
+    pub fn verdict(mut self, verdict: Option<Badge>) -> Self {
+        self.verdict = verdict;
         self
     }
 
@@ -46,7 +53,7 @@ impl DiskRow {
         })
     }
 
-    fn facts(&self) -> impl IntoElement {
+    fn facts(&mut self) -> impl IntoElement {
         let t = tokens();
         let d = &self.disk;
         let info = &d.record.info;
@@ -59,17 +66,19 @@ impl DiskRow {
             .child(div().text_size(t.size_body).text_color(t.text).child(format!("{} scanned", format::percent(d.scanned))))
             .children(self.usage.clone().map(|u| quiet().truncate().child(format!("in use {u}"))))
             .children((d.damaged > 0).then(|| h_flex().child(Badge::inverted(format!("{} unreadable", format::bytes(d.damaged))))))
+            .children(self.verdict.take().map(|b| h_flex().min_w_0().child(b)))
             .child(h_flex().pt(px(8.)).children(self.action()))
     }
 }
 
 impl RenderOnce for DiskRow {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(mut self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let facts = self.facts();
         h_flex()
             .items_start()
             .gap(px(24.))
             .w_full()
-            .child(self.facts())
+            .child(facts)
             .child(div().flex_1().min_w_0().children(self.map))
     }
 }
