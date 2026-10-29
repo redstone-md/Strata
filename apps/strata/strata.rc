@@ -1,0 +1,25 @@
+// Icon ID 1 is the one GPUI loads for the window and taskbar.
+1 ICON "../../assets/strata.ico"
+
+1 VERSIONINFO
+FILEVERSION STRATA_VERSION_COMMAS
+PRODUCTVERSION STRATA_VERSION_COMMAS
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "redstone-md"
+      VALUE "FileDescription", "Strata forensic workbench"
+      VALUE "FileVersion", STRATA_VERSION
+      VALUE "ProductName", "Strata"
+      VALUE "ProductVersion", STRATA_VERSION
+      VALUE "OriginalFilename", "strata.exe"
+      VALUE "LegalCopyright", "MIT License"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
