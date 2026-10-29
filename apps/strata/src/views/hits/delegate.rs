@@ -38,6 +38,11 @@ impl HitTableDelegate {
         self.query.min_confidence = if show { 0.0 } else { Workbench::NOISE_FLOOR };
     }
 
+    /// The search text the list is filtered by.
+    pub fn search_text(&self) -> Option<&str> {
+        self.query.text.as_deref()
+    }
+
     pub fn shows_noise(&self) -> bool {
         self.query.min_confidence < Workbench::NOISE_FLOOR
     }

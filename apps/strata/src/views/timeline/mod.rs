@@ -138,6 +138,14 @@ impl TimelineView {
         let n = d.len() as u64;
         let count = if d.has_more_rows() { format!("first {n}, scroll for more") } else { format::count(n, "event", "events") };
         let fs_label = if d.query().skip_filesystem { "Show filesystem events" } else { "Hide filesystem events" };
+        let searched = d.query().text.clone().map(|text| {
+            h_flex()
+                .gap(px(8.))
+                .child(div().text_color(t.text).child(format!("matching “{text}”")))
+                .child(TextButton::new("clear-search", "Clear search").on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(crate::shell::ClearSearch), cx)
+                }))
+        });
         let day = self.day.map(|r| {
             h_flex()
                 .gap(px(8.))
@@ -150,6 +158,7 @@ impl TimelineView {
             .text_size(t.size_body)
             .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).child("Timeline"))
             .child(div().text_color(t.text_secondary).child(count))
+            .children(searched)
             .children(day)
             .child(div().flex_1())
             .child(TextButton::new("toggle-fs", fs_label).on_click(cx.listener(|this, _, _, cx| this.toggle_filesystem(cx))))

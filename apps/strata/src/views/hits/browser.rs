@@ -207,6 +207,15 @@ impl HitBrowser {
                 .child(TextButton::new("show-all", "Show all").on_click(cx.listener(|this, _, _, cx| this.show_category(None, cx))))
         });
         let noise = if d.shows_noise() { "Hide low-confidence" } else { "Show low-confidence" };
+        // The command bar's search is shared by every screen; say so when it narrows this one.
+        let searched = d.search_text().map(|text| {
+            h_flex()
+                .gap(px(8.))
+                .child(div().text_color(t.text).child(format!("matching “{text}”")))
+                .child(TextButton::new("clear-search", "Clear search").on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(crate::shell::ClearSearch), cx)
+                }))
+        });
         h_flex()
             .h(px(32.))
             .gap(px(16.))
@@ -214,6 +223,7 @@ impl HitBrowser {
             .text_size(t.size_body)
             .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).child(self.config.title))
             .child(div().text_color(t.text_secondary).child(count))
+            .children(searched)
             .children(filter)
             .child(div().flex_1())
             .child(TextButton::new("toggle-noise", noise).on_click(cx.listener(|this, _, _, cx| this.toggle_noise(cx))))

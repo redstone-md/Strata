@@ -23,7 +23,7 @@ use std::rc::Rc;
 use std::time::Duration;
 pub use window_controls::WindowControls;
 
-actions!(strata, [FocusSearch]);
+actions!(strata, [FocusSearch, ClearSearch]);
 
 /// Quiet time before a changed view state is written to the case.
 const SAVE_DELAY: Duration = Duration::from_millis(800);
@@ -228,6 +228,10 @@ impl Render for Shell {
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
                 this.search.update(cx, |s, cx| s.focus(window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &ClearSearch, window, cx| {
+                this.search.update(cx, |s, cx| s.set_value("", window, cx));
+                this.apply_search(cx);
             }))
             .size_full()
             .bg(t.ground)

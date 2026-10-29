@@ -16,9 +16,9 @@ const POLL: Duration = Duration::from_millis(500);
 /// Counts and disks are rebuilt every this many polls while jobs run (3 s); job progress
 /// and resource use every poll.
 const FULL_EVERY: u32 = 6;
-/// Finding counts are recounted every this many polls while jobs run (10 s): on a large case
+/// Finding counts are recounted every this many polls while jobs run (30 s): on a large case
 /// counting distinct findings takes seconds.
-const COUNT_EVERY: u32 = 20;
+const COUNT_EVERY: u32 = 60;
 
 /// One disk as the overview shows it.
 #[derive(Clone)]

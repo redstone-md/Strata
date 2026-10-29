@@ -75,6 +75,7 @@ pub fn job_name(kind: JobKind) -> &'static str {
         JobKind::Search => "Search",
         JobKind::Recover => "Recover files",
         JobKind::Recheck => "Re-check findings",
+        JobKind::Tidy => "Tidy findings",
     }
 }
 
@@ -114,6 +115,7 @@ pub fn items(kind: JobKind) -> &'static str {
         // Mail files, then MiB of free text.
         JobKind::Mail => "items",
         JobKind::Recheck => "findings",
+        JobKind::Tidy => "steps",
         JobKind::Scan | JobKind::Carve | JobKind::Search => "bytes",
     }
 }
