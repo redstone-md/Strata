@@ -31,12 +31,19 @@ cargo build --release -p strata-cli    # консоль
 ```
 strata-cli -c D:\cases\disk1.strata add "F:\images\disk.rdr"
 strata-cli -c D:\cases\disk1.strata list
-strata-cli -c D:\cases\disk1.strata analyse          # индекс файлов + скан + балансы
+strata-cli -c D:\cases\disk1.strata analyse          # весь конвейер; прерванное продолжается с контрольной точки
+strata-cli -c D:\cases\disk1.strata jobs             # задачи дела: состояние, откуда продолжатся
+strata-cli -c D:\cases\disk1.strata top              # что делает процесс и сколько это стоит: CPU, RAM, диск, GPU
 strata-cli -c D:\cases\disk1.strata hits --category PrivateKey
 strata-cli -c D:\cases\disk1.strata correlate
 strata-cli -c D:\cases\disk1.strata balances --endpoint https://my-esplora/api
 strata-cli -c D:\cases\disk1.strata report md
 ```
+
+Задачи хранятся в деле. Каждый шаг сохраняет контрольную точку вместе со своими результатами,
+поэтому после сбоя или закрытия окна работа продолжается с того места, где остановилась, без
+повторов и потерь (настройка дела `auto_resume_jobs`, по умолчанию включена). Экран «Tasks»
+показывает текущие задачи, их прогресс и расход CPU, памяти, диска и GPU.
 
 Улики открываются только на чтение. Ключи и фразы в интерфейсе и отчётах показываются открыто:
 не пересылайте отчёты третьим лицам.
@@ -56,7 +63,7 @@ Cargo workspace, каждый crate — отдельный bounded context. Пр
 | accounts | e-mail, логины, сервисы |
 | artifacts / timeline | браузеры, реестр, LNK, Prefetch, корзина, хронология |
 | chain | балансы адресов |
-| engine | однопроходный сканер |
+| engine | однопроходный сканер, пауза и отмена |
 | case | дело: SQLite, привязка находок, корреляция дисков |
 | report | экспорт отчётов |
-| workbench | прикладной слой для GUI и CLI |
+| workbench | прикладной слой для GUI и CLI: задачи с контрольными точками, монитор ресурсов |
