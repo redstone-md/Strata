@@ -224,6 +224,10 @@ fn hostile_input_never_panics() {
     assert!(open_filesystem(mem(vec![0u8; 1 << 20]), FsKind::Ntfs).is_err());
     assert!(open_filesystem(mem(Vec::new()), FsKind::Ntfs).is_err());
     let good = sample().finish();
+    // Absurd declared volume size, no $Bitmap: must not allocate per declared cluster.
+    let mut huge = sample().without_bitmap().finish();
+    huge[0x28..0x30].copy_from_slice(&(u64::MAX / 2).to_le_bytes());
+    assert!(find(open(huge).as_ref(), "hello.txt").1.size == 11);
     for cut in [100, 512, 20_000, 90_000, 200_000] {
         let _ = open_filesystem(mem(good[..cut].to_vec()), FsKind::Ntfs);
     }

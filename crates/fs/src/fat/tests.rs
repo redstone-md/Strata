@@ -160,6 +160,12 @@ fn hostile_input_never_panics() {
     let mut good = FatImage::fat16();
     populate(&mut good);
     let good = good.finish();
+    // Absurd geometry: 4G sectors and a 4G-sector FAT must not be read or allocated.
+    let mut huge = good.clone();
+    huge[19..21].fill(0);
+    huge[32..36].copy_from_slice(&u32::MAX.to_le_bytes());
+    huge[22..24].copy_from_slice(&0xFFFFu16.to_le_bytes());
+    let _ = open_filesystem(mem(huge), FsKind::Fat16);
     for cut in [100, 512, 5000, 40_000, 100_000] {
         let _ = open_filesystem(mem(good[..cut].to_vec()), FsKind::Fat16);
     }

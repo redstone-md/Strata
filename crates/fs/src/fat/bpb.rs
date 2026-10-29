@@ -81,7 +81,7 @@ impl Bpb {
 
     /// The boot sector, falling back to the FAT32 backup copy.
     pub(super) fn locate(source: &dyn BlockSource) -> (Option<Self>, Vec<Damage>) {
-        let at = |off: u64| source.read_vec(off, 512).ok().and_then(|s| Self::parse(&s));
+        let at = |off: u64| source.read_vec(off, 512).ok().and_then(|s| Self::parse(&s)).map(|b| b.clamped(source.len()));
         if let Some(bpb) = at(0) {
             return (Some(bpb), Vec::new());
         }
@@ -92,6 +92,13 @@ impl Bpb {
             }
         }
         (None, vec![note])
+    }
+
+    /// Never trust more clusters than the source can hold (bounds the FAT read and maps).
+    fn clamped(mut self, source_len: u64) -> Self {
+        let fit = source_len.saturating_sub(self.data_start).div_ceil(self.cluster_size);
+        self.cluster_count = self.cluster_count.min(u32::try_from(fit).unwrap_or(u32::MAX));
+        self
     }
 
     pub(super) fn kind(&self) -> FsKind {

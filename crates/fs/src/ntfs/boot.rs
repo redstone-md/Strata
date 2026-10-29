@@ -47,7 +47,7 @@ impl NtfsBoot {
 
     /// Primary boot sector, else the backup NTFS keeps in the volume's last sector.
     pub(super) fn locate(source: &dyn BlockSource) -> (Option<Self>, Vec<Damage>) {
-        let at = |off: u64| source.read_vec(off, 512).ok().and_then(|s| Self::parse(&s));
+        let at = |off: u64| source.read_vec(off, 512).ok().and_then(|s| Self::parse(&s)).map(|b| b.clamped(source.len()));
         if let Some(boot) = at(0) {
             return (Some(boot), Vec::new());
         }
@@ -57,6 +57,13 @@ impl NtfsBoot {
             Some(boot) => (Some(boot), vec![note, Damage::corrupt(ByteRange::new(backup_off, 512), "using backup boot sector")]),
             None => (None, vec![note]),
         }
+    }
+
+    /// A damaged sector can declare an absurd size; never trust more clusters than the
+    /// source holds (bounds every per-cluster allocation).
+    fn clamped(mut self, source_len: u64) -> Self {
+        self.total_clusters = self.total_clusters.min(source_len.div_ceil(self.cluster_size));
+        self
     }
 
     pub(super) fn cluster_size(&self) -> u64 {
