@@ -189,6 +189,18 @@ impl Workbench {
         Ok(format!("{} addresses, {used} used on chain, {failed} lookups failed", addresses.len()))
     }
 
+    /// Run one pipeline step in the foreground (CLI, re-running a step after an upgrade).
+    pub fn run_step(&self, kind: JobKind, evidence: EvidenceId) -> JobView {
+        let job = self.enqueue(kind, evidence);
+        self.run_job(&job);
+        job.view()
+    }
+
+    /// Re-apply false-positive triage (also part of the deep scan step).
+    pub fn triage(&self, evidence: EvidenceId) -> Result<usize> {
+        crate::triage::Triage::new(&self.case).run(evidence)
+    }
+
     fn enqueue(&self, kind: JobKind, evidence: EvidenceId) -> Arc<Job> {
         let mut jobs = self.jobs.lock();
         let title = match kind {

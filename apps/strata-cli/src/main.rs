@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::time::Duration;
-use strata_workbench::{EventQuery, EvidenceId, HitCategory, HitQuery, JobState, Workbench};
+use strata_workbench::{EventQuery, EvidenceId, JobKind, HitCategory, HitQuery, JobState, Workbench};
 
 #[derive(Parser)]
 #[command(name = "strata-cli", about = "Strata forensic workbench (headless)")]
@@ -26,6 +26,8 @@ enum Command {
         /// Evidence id; all evidence when omitted.
         id: Option<u32>,
     },
+    /// Run a single step: IndexFiles, Scan, Artifacts, ClassifyFiles, Carve, CheckBalances, Triage.
+    Step { kind: String, id: u32 },
     /// Print stored findings.
     Hits {
         #[arg(long)]
@@ -84,6 +86,16 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("added {} {} ({} bytes, {} volumes)", r.id, r.info.label, r.info.len, r.volumes.len());
         }
         Command::List => list(&wb)?,
+        Command::Step { kind, id } => {
+            let id = EvidenceId::new(id);
+            if kind.eq_ignore_ascii_case("triage") {
+                println!("{} findings downgraded", wb.triage(id)?);
+            } else {
+                let kind: JobKind = serde_json::from_value(serde_json::Value::String(kind))?;
+                let view = wb.run_step(kind, id);
+                println!("{}: {:?}", view.title, view.state);
+            }
+        }
         Command::Analyse { id } => analyse(&wb, id)?,
         Command::Hits { category, text, min_confidence, limit, json } => {
             let categories = category

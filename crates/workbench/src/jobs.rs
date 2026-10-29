@@ -7,7 +7,7 @@ use strata_kernel::EvidenceId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct JobId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub enum JobKind {
     /// Parse filesystems and store the file listing.
     IndexFiles,
