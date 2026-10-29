@@ -1,0 +1,26 @@
+[package]
+name = "strata-crypto"
+description = "Bitcoin key material: keys, derivation, detectors and wallet file parsers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+memchr.workspace = true
+sha2.workspace = true
+ripemd.workspace = true
+bs58.workspace = true
+secp256k1.workspace = true
+bech32.workspace = true
+hex.workspace = true
+aho-corasick = "1"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+bip39 = { version = "2", default-features = false, features = ["all-languages"] }
+unicode-normalization = "0.1"
+base64 = "0.22"
+
+[dev-dependencies]
