@@ -161,6 +161,11 @@ impl Case {
         self.evidence()?.into_iter().find(|e| e.id == id).ok_or_else(|| Error::Other(format!("no evidence {id}")))
     }
 
+    /// Drop the cached layout so the next [`Case::layout`] parses the volumes again.
+    pub(crate) fn forget_layout(&self, id: EvidenceId) {
+        self.layouts.lock().remove(&id);
+    }
+
     /// Parsed filesystems of an evidence item (built once, then shared).
     pub fn layout(&self, id: EvidenceId) -> Result<Arc<EvidenceLayout>> {
         if let Some(l) = self.layouts.lock().get(&id) {
