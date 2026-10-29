@@ -1,4 +1,5 @@
 use crate::boot::{BootSector, FsKind};
+use crate::sweep::Sweep;
 use crate::{gpt, mbr};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,18 +34,25 @@ impl Volume {
 pub struct VolumeScanner {
     sector: u64,
     sweep_step: u64,
+    deep: bool,
 }
 
 impl Default for VolumeScanner {
     fn default() -> Self {
-        Self { sector: 512, sweep_step: 1 << 20 }
+        Self { sector: 512, sweep_step: 1 << 20, deep: false }
     }
 }
 
 impl VolumeScanner {
     /// `sweep_step`: alignment for lost-partition search (0 disables the sweep).
     pub fn new(sector: u64, sweep_step: u64) -> Self {
-        Self { sector, sweep_step }
+        Self { sector, sweep_step, deep: false }
+    }
+
+    /// Also probe the cylinder starts and ends of old CHS layouts (more reads, still seconds).
+    pub fn with_deep_sweep(mut self, deep: bool) -> Self {
+        self.deep = deep;
+        self
     }
 
     pub fn scan(&self, disk: &dyn BlockSource) -> Vec<Volume> {
@@ -58,8 +66,15 @@ impl VolumeScanner {
             }];
         }
         let mut found = self.from_tables(disk);
-        if self.sweep_step > 0 {
-            self.sweep(disk, &mut found);
+        if self.sweep_step > 0 || self.deep {
+            let known: Vec<ByteRange> = found.iter().map(|v| v.range).collect();
+            found.extend(Sweep::new(self.sweep_step, self.deep).run(disk, &known).into_iter().map(|c| Volume {
+                index: 0,
+                range: c.range(),
+                fs: c.fs,
+                origin: VolumeOrigin::Recovered,
+                label: String::new(),
+            }));
         }
         found.sort_by_key(|v| v.range.start());
         for (i, v) in found.iter_mut().enumerate() {
@@ -90,30 +105,6 @@ impl VolumeScanner {
                 Volume { index: 0, range, fs, origin, label }
             })
             .collect()
-    }
-
-    /// Boot sectors (or ext superblocks at +1024) at aligned offsets (and the classic 63-sector offset) outside known volumes.
-    /// NTFS keeps a backup boot sector in the last sector, which lets us recover a volume whose
-    /// first sector is gone.
-    fn sweep(&self, disk: &dyn BlockSource, found: &mut Vec<Volume>) {
-        let known: Vec<ByteRange> = found.iter().map(|v| v.range).collect();
-        let mut candidates = vec![63 * self.sector];
-        candidates.extend((1..).map(|i| i * self.sweep_step).take_while(|o| *o < disk.len()));
-        for off in candidates {
-            if known.iter().chain(found.iter().map(|v| &v.range)).any(|r| r.contains(off)) {
-                continue;
-            }
-            if let Some(b) = self.boot_at(disk, off).filter(|b| b.kind != FsKind::Unknown) {
-                let len = b.declared_len.min(disk.len() - off);
-                found.push(Volume {
-                    index: 0,
-                    range: ByteRange::new(off, len),
-                    fs: b.kind,
-                    origin: VolumeOrigin::Recovered,
-                    label: String::new(),
-                });
-            }
-        }
     }
 }
 
@@ -186,5 +177,23 @@ mod tests {
         assert_eq!(vols.len(), 2, "{vols:?}");
         assert_eq!((vols[0].origin, vols[0].fs, vols[0].range.start()), (VolumeOrigin::Gpt, FsKind::Ext4, 1 << 20));
         assert_eq!((vols[1].origin, vols[1].fs, vols[1].range), (VolumeOrigin::Recovered, FsKind::Ext2, ByteRange::new(4 << 20, 1 << 20)));
+    }
+
+    #[test]
+    fn lost_ntfs_with_only_its_backup_boot_sector() {
+        let mut disk = vec![0u8; 8 << 20];
+        // Volume at 2 MiB, 1 MiB long: first sector wiped, backup in its last sector.
+        let end = 3 << 20;
+        disk[end - 512..end].copy_from_slice(&ntfs_boot(2048));
+        let vols = VolumeScanner::default().scan(&Mem(disk.clone()));
+        assert_eq!(vols.len(), 1, "{vols:?}");
+        assert_eq!((vols[0].origin, vols[0].fs, vols[0].range), (VolumeOrigin::Recovered, FsKind::Ntfs, ByteRange::new(2 << 20, 1 << 20)));
+        // A volume on a CHS cylinder boundary is only seen by the deep sweep.
+        let mut disk = vec![0u8; 16 << 20];
+        let cyl = 16065 * 512;
+        disk[cyl..cyl + 512].copy_from_slice(&ntfs_boot(1000));
+        assert!(VolumeScanner::default().scan(&Mem(disk.clone())).is_empty());
+        let vols = VolumeScanner::default().with_deep_sweep(true).scan(&Mem(disk));
+        assert_eq!(vols.iter().map(|v| v.range.start()).collect::<Vec<_>>(), vec![cyl as u64]);
     }
 }

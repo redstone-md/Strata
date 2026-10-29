@@ -7,10 +7,11 @@ use super::disk_row::DiskRow;
 use crate::picker::{PickKind, pick_path};
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::{DiskMaps, Field, Section, TextButton, rule};
+use crate::widgets::{Check, DiskMaps, Field, Section, TextButton, rule};
+use crate::nav::Navigate;
 use gpui::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window,
-    div, px,
+    AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
+    Window, div, px,
 };
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::{h_flex, v_flex};
@@ -23,8 +24,12 @@ pub struct DisksView {
     path: Entity<InputState>,
     message: Option<SharedString>,
     facts: HashMap<EvidenceId, Vec<HostFact>>,
+    /// Probe old CHS layouts for deleted partitions when adding.
+    deep: bool,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<Navigate> for DisksView {}
 
 impl DisksView {
     pub fn new(session: Entity<Session>, maps: Entity<DiskMaps>, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -38,7 +43,7 @@ impl DisksView {
             }),
         ];
         let mut this =
-            Self { session, maps, path, message: None, facts: HashMap::new(), _subscriptions: subscriptions };
+            Self { session, maps, path, message: None, facts: HashMap::new(), deep: false, _subscriptions: subscriptions };
         this.load_facts(cx);
         this
     }
@@ -62,7 +67,8 @@ impl DisksView {
 
     fn add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let location = self.path.read(cx).value().to_string();
-        let result = self.session.update(cx, |s, cx| s.add_evidence(&location, cx));
+        let deep = self.deep;
+        let result = self.session.update(cx, |s, cx| s.add_evidence(&location, deep, cx));
         self.message = Some(match result {
             Ok(()) => {
                 self.path.update(cx, |p, cx| p.set_value("", window, cx));
@@ -95,6 +101,10 @@ impl DisksView {
                     .child(TextButton::new("browse", "Browse").on_click(cx.listener(|this, _, window, cx| this.browse(window, cx))))
                     .child(TextButton::new("add", "Add").strong().on_click(cx.listener(|this, _, window, cx| this.add(window, cx)))),
             )
+            .child(Check::new("deep-sweep", "Deep partition sweep: also look for deleted partitions at old cylinder boundaries", self.deep, cx.listener(|this, _, _, cx| {
+                this.deep = !this.deep;
+                cx.notify();
+            })))
             .children(self.message.clone().map(|m| div().text_size(t.size_body).text_color(t.text).child(m)))
     }
 }
@@ -119,7 +129,13 @@ impl Render for DisksView {
                             .items_start()
                             .gap(px(56.))
                             .pl(px(244.))
-                            .children(detail::volumes(&d.record))
+                            .children(detail::volumes(&d.record, {
+                                let this = cx.entity().downgrade();
+                                let id = d.id();
+                                move |volume, _, cx| {
+                                    let _ = this.update(cx, |_, cx| cx.emit(Navigate::files(id, volume)));
+                                }
+                            }))
                             .children((!facts.is_empty()).then(|| detail::machine(facts))),
                     )
             })

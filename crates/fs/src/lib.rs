@@ -19,6 +19,13 @@ mod tree;
 #[cfg(test)]
 mod testutil;
 
+/// Synthetic volumes for tests in other crates.
+#[cfg(feature = "testkit")]
+pub mod testkit {
+    pub use crate::fat::kit::FatVolume;
+    pub use crate::ntfs::kit::NtfsVolume;
+}
+
 pub use entry::{EntryState, FileEntry, FileId, FileTimes};
 pub use extent::{Extent, ExtentReader};
 pub use options::FsOptions;

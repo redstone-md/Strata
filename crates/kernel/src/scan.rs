@@ -26,6 +26,9 @@ pub enum HitCategory {
     Identity,
     /// URL or domain.
     Url,
+    /// Volume structure (boot sector, superblock, partition table) found by the deep scan:
+    /// evidence of a deleted or lost partition.
+    Partition,
 }
 
 /// One detection at an absolute offset within the scanned source.

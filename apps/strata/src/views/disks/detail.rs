@@ -2,10 +2,14 @@
 
 use crate::format;
 use crate::theme::tokens;
-use crate::widgets::{Section, mono};
-use gpui::{IntoElement, ParentElement, Styled, div, px};
+use crate::widgets::{Badge, Section, TextButton, mono};
+use gpui::{App, IntoElement, ParentElement, SharedString, Styled, Window, div, px};
 use gpui_component::{h_flex, v_flex};
-use strata_workbench::{EvidenceRecord, HostFact};
+use std::rc::Rc;
+use strata_workbench::{EvidenceRecord, HostFact, VolumeOrigin};
+
+/// Width of the label cell (text, or the badge of a deleted partition).
+const LABEL_WIDTH: f32 = 160.;
 
 /// How a volume cell is set.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -18,7 +22,7 @@ enum Look {
 }
 
 /// One plain row of fixed-width cells.
-fn row(cells: Vec<(String, f32, Look)>, header: bool) -> impl IntoElement {
+fn row(cells: Vec<(String, f32, Look)>, header: bool) -> gpui::Div {
     let t = tokens();
     h_flex()
         .h(t.row_height)
@@ -37,8 +41,9 @@ fn row(cells: Vec<(String, f32, Look)>, header: bool) -> impl IntoElement {
         }))
 }
 
-/// Volume table; `None` when nothing was recognised (the map already says so).
-pub fn volumes(record: &EvidenceRecord) -> Option<impl IntoElement> {
+/// Volume table; `None` when nothing was recognised (the map already says so). Volumes
+/// recovered from deleted partitions carry an outlined badge; every row opens in Files.
+pub fn volumes(record: &EvidenceRecord, on_browse: impl Fn(u32, &mut Window, &mut App) + 'static) -> Option<impl IntoElement> {
     if record.volumes.is_empty() {
         return None;
     }
@@ -48,21 +53,30 @@ pub fn volumes(record: &EvidenceRecord) -> Option<impl IntoElement> {
             ("Filesystem".into(), 170., Look::Text),
             ("Offset".into(), 130., Look::Offset),
             ("Size".into(), 90., Look::Number),
-            ("Label".into(), 160., Look::Text),
+            ("Label".into(), LABEL_WIDTH, Look::Text),
         ],
         true,
     );
+    let on_browse = Rc::new(on_browse);
     let rows = record.volumes.iter().map(|v| {
+        let index = v.index;
+        let browse = on_browse.clone();
+        let label = if v.origin == VolumeOrigin::Recovered {
+            h_flex().child(Badge::outline("deleted partition"))
+        } else {
+            h_flex().min_w_0().child(div().truncate().child(v.label.clone()))
+        };
         row(
             vec![
                 (v.index.to_string(), 56., Look::Text),
-                (format::volume_name(&format!("{:?}", v.fs), &format!("{:?}", v.origin)), 170., Look::Text),
+                (v.fs.name().to_string(), 170., Look::Text),
                 (format::hex_offset(v.range.start()), 130., Look::Offset),
                 (format::bytes(v.range.len()), 90., Look::Number),
-                (v.label.clone(), 160., Look::Text),
             ],
             false,
         )
+        .child(label.w(px(LABEL_WIDTH)).flex_shrink_0())
+        .child(TextButton::new(SharedString::from(format!("browse-{}-{index}", record.id)), "Browse").on_click(move |_, w, cx| browse(index, w, cx)))
     });
     Some(Section::new("Volumes").child(v_flex().child(header).children(rows)))
 }

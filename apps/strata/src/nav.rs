@@ -1,12 +1,14 @@
 //! Screens reachable from the sidebar, and the navigation request views send to the shell.
 
 use crate::widgets::{Glyph, NavItem};
-use strata_workbench::HitCategory;
+use strata_workbench::{EvidenceId, HitCategory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Overview,
     Disks,
+    Files,
+    Search,
     Wallets,
     Accounts,
     Timeline,
@@ -19,22 +21,39 @@ pub enum Screen {
 pub struct Navigate {
     pub screen: Screen,
     pub category: Option<HitCategory>,
+    /// Volume to open on the Files screen.
+    pub volume: Option<(EvidenceId, u32)>,
 }
 
 impl Navigate {
     pub fn to(screen: Screen) -> Self {
-        Self { screen, category: None }
+        Self { screen, category: None, volume: None }
+    }
+
+    pub fn files(evidence: EvidenceId, volume: u32) -> Self {
+        Self { screen: Screen::Files, category: None, volume: Some((evidence, volume)) }
     }
 }
 
 impl Screen {
-    const ALL: [Screen; 7] =
-        [Self::Overview, Self::Disks, Self::Wallets, Self::Accounts, Self::Timeline, Self::Correlation, Self::Settings];
+    const ALL: [Screen; 9] = [
+        Self::Overview,
+        Self::Disks,
+        Self::Files,
+        Self::Search,
+        Self::Wallets,
+        Self::Accounts,
+        Self::Timeline,
+        Self::Correlation,
+        Self::Settings,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
             Self::Disks => "Disks",
+            Self::Files => "Files",
+            Self::Search => "Search",
             Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
             Self::Timeline => "Timeline",
@@ -47,6 +66,8 @@ impl Screen {
         match self {
             Self::Overview => Glyph::LayoutDashboard,
             Self::Disks => Glyph::HardDrive,
+            Self::Files => Glyph::FolderTree,
+            Self::Search => Glyph::Search,
             Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
             Self::Timeline => Glyph::Clock,

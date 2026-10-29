@@ -69,6 +69,9 @@ pub fn job_name(kind: JobKind) -> &'static str {
         JobKind::Archives => "Unpack archives",
         JobKind::CheckBalances => "Check balances",
         JobKind::Artifacts => "Artefacts and timeline",
+        JobKind::RecoverPartitions => "Recover partitions",
+        JobKind::Search => "Search",
+        JobKind::Recover => "Recover files",
     }
 }
 
@@ -85,7 +88,7 @@ pub fn job_state(job: &JobView) -> String {
 
 /// Throughput, shown only for jobs that read the disk sequentially.
 pub fn job_rate(job: &JobView) -> Option<String> {
-    (job.kind == JobKind::Scan && job.progress.bytes_per_sec > 0.0)
+    (matches!(job.kind, JobKind::Scan | JobKind::Search) && job.progress.bytes_per_sec > 0.0)
         .then(|| format!("{}/s", bytes(job.progress.bytes_per_sec as u64)))
 }
 
