@@ -6,7 +6,10 @@ mod dirent;
 pub(crate) mod table;
 mod walk;
 
-#[cfg(test)]
+#[cfg(feature = "testkit")]
+pub(crate) mod kit;
+#[cfg(any(test, feature = "testkit"))]
+#[allow(dead_code)]
 mod testimg;
 #[cfg(test)]
 mod tests;
