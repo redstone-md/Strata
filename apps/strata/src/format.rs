@@ -54,7 +54,6 @@ pub fn volume_name(fs: &str, origin: &str) -> String {
         "Ext3" => "ext3",
         "Ext4" => "ext4",
         "ExFat" => "exFAT",
-        "ExFat" => "exFAT",
         _ => "Unknown filesystem",
     };
     if origin == "Recovered" { format!("{fs}, recovered") } else { fs.to_string() }
