@@ -7,7 +7,7 @@
 //!   [`strata_engine::ChunkObserver`], so building it costs no extra read.
 //! - [`IndexFile`]: versioned, checksummed on-disk form, saved incrementally with the scan
 //!   watermark.
-//! - `scn`: reader for R-Studio scan files (`.scn`), which seed an index before our own pass.
+//! - [`scn`]: reader for R-Studio scan files (`.scn`), which seed an index before our own pass.
 
 mod builder;
 mod classify;
@@ -15,6 +15,7 @@ mod file;
 mod index;
 mod query;
 mod record;
+pub mod scn;
 mod side;
 
 pub use builder::IndexBuilder;
