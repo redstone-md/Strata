@@ -6,6 +6,7 @@ mod catalog;
 mod file_types;
 mod jobs;
 mod sector_map;
+mod triage;
 mod wallet_files;
 mod workbench;
 

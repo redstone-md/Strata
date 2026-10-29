@@ -220,9 +220,10 @@ impl Workbench {
             }),
             JobKind::Scan => {
                 let scanner = Scanner::new(DetectorCatalog::all());
-                self.case
-                    .scan(job.evidence, &scanner, &job.control)
-                    .map(|s| format!("{} hits in {:.0}s", s.hits, s.elapsed_secs))
+                self.case.scan(job.evidence, &scanner, &job.control).and_then(|s| {
+                    let downgraded = crate::triage::Triage::new(&self.case).run(job.evidence)?;
+                    Ok(format!("{} hits in {:.0}s, {downgraded} inside system files", s.hits, s.elapsed_secs))
+                })
             }
             JobKind::CheckBalances => self.check_balances(&job.control),
             JobKind::ClassifyFiles => crate::file_types::FileClassifier::new(&self.case)

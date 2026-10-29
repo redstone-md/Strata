@@ -275,6 +275,26 @@ impl Case {
         rows.collect::<rusqlite::Result<_>>().map_err(db)
     }
 
+    /// Lower the confidence of key-like findings inside live system files (by path prefix or
+    /// extension) and tag them in `details.triage`. Idempotent: tagged hits are skipped.
+    pub fn downgrade_system_hits(&self, id: EvidenceId, prefixes: &[&str], extensions: &[&str], factor: f32) -> Result<usize> {
+        // Rules are crate constants, not user input, so they are inlined into the SQL.
+        let path_rule: Vec<String> = prefixes.iter().map(|p| format!("lower(file_path) LIKE '{}%'", p)).collect();
+        let ext_rule: Vec<String> = extensions.iter().map(|e| format!("lower(file_path) LIKE '%.{}'", e)).collect();
+        let sql = format!(
+            "UPDATE hits SET confidence = confidence * ?2,
+                 details = json_set(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END,
+                                    '$.triage', 'inside system file')
+             WHERE evidence_id = ?1 AND file_state = 'Allocated'
+               AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker')
+               AND json_extract(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END, '$.triage') IS NULL
+               AND ({} OR {})",
+            path_rule.join(" OR "),
+            ext_rule.join(" OR ")
+        );
+        self.conn.lock().execute(&sql, params![id.get(), factor]).map_err(db)
+    }
+
     /// Store hits produced outside the raw scan (file-level parsers, carving).
     pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
         store::insert(&mut self.conn.lock(), id, hits).map_err(db)
