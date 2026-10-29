@@ -5,6 +5,7 @@
 
 mod alloc;
 mod entry;
+mod ext;
 mod extent;
 mod fat;
 mod ntfs;
@@ -70,6 +71,7 @@ pub fn open_filesystem_with(source: Arc<dyn BlockSource>, kind: FsKind, options:
     match kind {
         FsKind::Ntfs => Ok(Box::new(ntfs::NtfsFileSystem::open(source, options)?)),
         FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 => Ok(Box::new(fat::open(source)?)),
+        FsKind::Ext2 | FsKind::Ext3 | FsKind::Ext4 => Ok(Box::new(ext::open(source)?)),
         other => Err(strata_kernel::Error::format(format!("filesystem {other:?} not supported yet"))),
     }
 }

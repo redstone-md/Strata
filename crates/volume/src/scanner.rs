@@ -72,7 +72,7 @@ impl VolumeScanner {
     }
 
     fn boot_at(&self, disk: &dyn BlockSource, off: u64) -> Option<BootSector> {
-        BootSector::parse(&disk.read_vec(off, 512).ok()?)
+        BootSector::parse(&disk.read_vec(off, BootSector::HEAD_LEN).ok()?)
     }
 
     fn from_tables(&self, disk: &dyn BlockSource) -> Vec<Volume> {
@@ -92,7 +92,7 @@ impl VolumeScanner {
             .collect()
     }
 
-    /// Boot sectors at aligned offsets (and the classic 63-sector offset) outside known volumes.
+    /// Boot sectors (or ext superblocks at +1024) at aligned offsets (and the classic 63-sector offset) outside known volumes.
     /// NTFS keeps a backup boot sector in the last sector, which lets us recover a volume whose
     /// first sector is gone.
     fn sweep(&self, disk: &dyn BlockSource, found: &mut Vec<Volume>) {
@@ -120,7 +120,7 @@ impl VolumeScanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::boot::tests::ntfs_boot;
+    use crate::boot::tests::{ext_head, ntfs_boot};
     use strata_kernel::Result;
     use strata_source::{SourceInfo, SourceKind};
 
@@ -159,5 +159,32 @@ mod tests {
         assert_eq!(vols.len(), 2);
         assert_eq!((vols[0].origin, vols[0].fs, vols[0].range.start()), (VolumeOrigin::Mbr, FsKind::Ntfs, 63 * 512));
         assert_eq!((vols[1].origin, vols[1].range), (VolumeOrigin::Recovered, ByteRange::new(2 << 20, 1024 * 512)));
+    }
+
+    #[test]
+    fn gpt_partition_and_lost_volume_typed_ext() {
+        let mut disk = vec![0u8; 6 << 20];
+        // Protective MBR + GPT with one partition at LBA 2048 whose first sector is empty.
+        disk[446 + 4] = 0xEE;
+        disk[446 + 8..446 + 12].copy_from_slice(&1u32.to_le_bytes());
+        disk[446 + 12..446 + 16].copy_from_slice(&u32::MAX.to_le_bytes());
+        disk[510] = 0x55;
+        disk[511] = 0xAA;
+        let h = 512;
+        disk[h..h + 8].copy_from_slice(b"EFI PART");
+        disk[h + 72..h + 80].copy_from_slice(&2u64.to_le_bytes());
+        disk[h + 80..h + 84].copy_from_slice(&1u32.to_le_bytes());
+        disk[h + 84..h + 88].copy_from_slice(&128u32.to_le_bytes());
+        let e = 1024;
+        disk[e] = 1;
+        disk[e + 32..e + 40].copy_from_slice(&2048u64.to_le_bytes());
+        disk[e + 40..e + 48].copy_from_slice(&4095u64.to_le_bytes());
+        disk[1 << 20..(1 << 20) + 2048].copy_from_slice(&ext_head(256, 0x4, 0x2C6));
+        // A lost ext2 volume at 4 MiB, 1 MiB long.
+        disk[4 << 20..(4 << 20) + 2048].copy_from_slice(&ext_head(256, 0, 0x2));
+        let vols = VolumeScanner::default().scan(&Mem(disk));
+        assert_eq!(vols.len(), 2, "{vols:?}");
+        assert_eq!((vols[0].origin, vols[0].fs, vols[0].range.start()), (VolumeOrigin::Gpt, FsKind::Ext4, 1 << 20));
+        assert_eq!((vols[1].origin, vols[1].fs, vols[1].range), (VolumeOrigin::Recovered, FsKind::Ext2, ByteRange::new(4 << 20, 1 << 20)));
     }
 }
