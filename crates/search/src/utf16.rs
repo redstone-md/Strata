@@ -7,7 +7,7 @@ const MIN_RUN: usize = 4;
 
 /// Characters that make up text runs: Latin, Greek, Cyrillic and common punctuation. Other
 /// code points end a run (so binary noise does not decode into long CJK strings).
-fn texty(unit: u16) -> bool {
+pub(crate) fn texty(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0D | 0x20..=0x7E | 0xA0..=0x058F | 0x2010..=0x206F | 0x20AC | 0x2116)
 }
 

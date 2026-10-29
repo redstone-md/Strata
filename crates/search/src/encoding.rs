@@ -99,7 +99,8 @@ impl Encoding {
             }
             Self::Utf16Le | Self::Utf16Be => {
                 let units = bytes.as_chunks::<2>().0.iter().map(|c| if self == Self::Utf16Le { u16::from_le_bytes(*c) } else { u16::from_be_bytes(*c) });
-                char::decode_utf16(units).map(|r| r.map_or(PLACEHOLDER, shown)).collect()
+                // Only text-like code points: binary read as UTF-16 would otherwise show as CJK.
+                units.map(|u| if crate::utf16::texty(u) { char::from_u32(u32::from(u)).map_or(PLACEHOLDER, shown) } else { PLACEHOLDER }).collect()
             }
         }
     }
