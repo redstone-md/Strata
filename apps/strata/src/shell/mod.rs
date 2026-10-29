@@ -341,9 +341,7 @@ impl Render for Shell {
                             .min_w_0()
                             .h_full()
                             .when_some(error, |el, e| {
-                                el.child(div().px(t.gutter).pt(px(16.)).child(quiet().text_color(t.text).child(format!(
-                                    "{e}. A temporary case is open instead; pick another case in Settings."
-                                ))))
+                                el.child(div().px(t.gutter).pt(px(16.)).child(quiet().text_color(t.text).child(e)))
                             })
                             .child(content),
                     ),

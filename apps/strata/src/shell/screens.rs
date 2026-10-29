@@ -63,6 +63,7 @@ impl Screens {
         let mut subscriptions = navigate;
         subscriptions.extend([
             cx.subscribe_in(&screens.leads, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
+            cx.subscribe_in(&screens.overview, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.connections, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.accounts, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
             cx.subscribe_in(&screens.wallets, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),

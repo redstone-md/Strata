@@ -56,7 +56,7 @@ impl Case {
         std::fs::create_dir_all(root.join("cache"))?;
         let conn = Connection::open(root.join("case.db")).map_err(db)?;
         schema::apply(&conn).map_err(db)?;
-        conn.busy_timeout(Duration::from_secs(30)).map_err(db)?;
+        conn.busy_timeout(Duration::from_secs(300)).map_err(db)?;
         let readers = ReadPool::new(root.join("case.db"));
         Ok(Self { root: root.to_path_buf(), conn: Mutex::new(conn), readers, sources: Mutex::default(), layouts: Mutex::default() })
     }
@@ -342,17 +342,42 @@ impl Case {
     /// Lower the confidence of findings inside live system files (see `system_paths`) and tag
     /// them in `details.triage`. Idempotent: tagged hits are skipped.
     pub fn downgrade_system_hits(&self, id: EvidenceId, factor: f32) -> Result<usize> {
-        let sql = format!(
-            "UPDATE hits SET confidence = confidence * ?2,
-                 details = json_set(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END,
-                                    '$.triage', 'inside system file')
-             WHERE evidence_id = ?1 AND file_state = 'Allocated'
-               AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker','Identity','Url')
-               AND json_extract(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END, '$.triage') IS NULL
-               AND {}",
-            crate::system_paths::sql_condition("file_path")
-        );
-        self.with_write(|conn| conn.execute(&sql, params![id.get(), factor]))
+        let details = "CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{}' END";
+        self.with_system_files(id, |conn| {
+            conn.execute(
+                &format!(
+                    "UPDATE hits SET confidence = confidence * ?2, details = json_set({details}, '$.triage', 'inside system file')
+                     WHERE evidence_id = ?1 AND file_state = 'Allocated'
+                       AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker','Identity','Url')
+                       AND file_path IN (SELECT path FROM temp.system_files)
+                       AND json_extract({details}, '$.triage') IS NULL"
+                ),
+                params![id.get(), factor],
+            )
+        })
+    }
+
+    /// Run `f` on the write connection with `temp.system_files` listing this disk's system
+    /// files that hold findings. Paths are judged once each in Rust: matching every finding's
+    /// path against the rule patterns in SQL took minutes on a disk with millions of findings
+    /// and held the write lock all that time.
+    pub(crate) fn with_system_files<T>(&self, id: EvidenceId, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
+        let paths: Vec<String> = self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT DISTINCT file_path FROM hits WHERE evidence_id = ?1 AND file_path IS NOT NULL")?;
+            stmt.query_map([id.get()], |r| r.get::<_, String>(0))?.collect()
+        })?;
+        self.with_write(|conn| {
+            conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS system_files (path TEXT PRIMARY KEY); DELETE FROM temp.system_files;")?;
+            {
+                let mut add = conn.prepare("INSERT OR IGNORE INTO temp.system_files (path) VALUES (?1)")?;
+                for p in paths.iter().filter(|p| crate::system_paths::is_system_path(p)) {
+                    add.execute([p])?;
+                }
+            }
+            let out = f(conn);
+            conn.execute_batch("DELETE FROM temp.system_files;")?;
+            out
+        })
     }
 
     /// Lower the confidence of raw hex "keys" whose value occurs at least `min_copies` times in
@@ -380,11 +405,10 @@ impl Case {
             "UPDATE hits SET confidence = MAX(confidence, ?2), details = json_set({details}, '$.triage', 'file named like a key backup')
              WHERE evidence_id = ?1 AND category IN ('PrivateKey','ExtendedKey','Mnemonic') AND confidence < ?2
                AND json_extract({details}, '$.triage') IS NULL AND file_path IS NOT NULL
-               AND NOT {system} AND ({named})",
-            system = crate::system_paths::sql_condition("file_path"),
+               AND file_path NOT IN (SELECT path FROM temp.system_files) AND ({named})",
             named = named.join(" OR ")
         );
-        self.with_write(|conn| conn.execute(&sql, params![id.get(), floor]))
+        self.with_system_files(id, |conn| conn.execute(&sql, params![id.get(), floor]))
     }
 
     /// Lower the confidence of e-mails and links inside files that hold at least `min_distinct`

@@ -1,7 +1,7 @@
 //! Where installed operating-system and program files live. Findings inside them are almost
 //! always byte patterns that merely look like keys or addresses (class names in `rt.jar`, API
-//! names in DLLs, maintainer e-mails in package lists). One rule set, used both in Rust (while
-//! a scan stores findings) and in SQL (triage of stored findings).
+//! names in DLLs, maintainer e-mails in package lists). One rule set, used while a scan stores
+//! findings and by triage of stored findings (which judges each distinct path once).
 
 /// Path prefixes (lower case, `/`-separated) of installed system and program files.
 const PREFIXES: &[&str] = &["windows/", "winnt/", "program files/", "program files (x86)/", "programdata/microsoft/", "i386/", "$orphans/$"];
@@ -33,19 +33,6 @@ pub fn is_system_path(path: &str) -> bool {
         || FOLDERS.iter().any(|f| p.starts_with(f) || p.contains(&format!("/{f}")))
         || p.rsplit_once('.').is_some_and(|(_, ext)| EXTENSIONS.contains(&ext))
         || p.contains(VERSIONED_LIBRARY)
-}
-
-/// The same rule as an SQL condition on `column` (rules are crate constants, not user input).
-pub(crate) fn sql_condition(column: &str) -> String {
-    let c = format!("lower({column})");
-    let rules: Vec<String> = PREFIXES
-        .iter()
-        .map(|p| format!("{c} LIKE '{p}%'"))
-        .chain(FOLDERS.iter().map(|f| format!("{c} LIKE '{f}%' OR {c} LIKE '%/{f}%'")))
-        .chain(EXTENSIONS.iter().map(|e| format!("{c} LIKE '%.{e}'")))
-        .chain(std::iter::once(format!("{c} LIKE '%{VERSIONED_LIBRARY}%'")))
-        .collect();
-    format!("({})", rules.join(" OR "))
 }
 
 #[cfg(test)]

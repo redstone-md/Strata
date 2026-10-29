@@ -163,7 +163,10 @@ impl Session {
             Err(e) => {
                 let workbench = Self::fallback_workbench();
                 let snapshot = Self::load(&workbench);
-                Opened { workbench, snapshot, error: Some(format!("Cannot open case {}: {e}", case_dir.display())) }
+                Opened { workbench, snapshot, error: Some(format!(
+                    "Cannot open case {}: {e}. A temporary case is open instead; pick another case in Settings.",
+                    case_dir.display()
+                )) }
             }
         }
     }

@@ -9,7 +9,7 @@
 //! "seen N times" stays exact. Keys, seeds, addresses and wallets are never capped.
 
 use crate::Attribution;
-use crate::system_paths::{is_system_path, sql_condition};
+use crate::system_paths::is_system_path;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use strata_kernel::scan::{Hit, HitCategory};
@@ -83,7 +83,7 @@ impl crate::Case {
     /// stored again after a resume): copies past the ones a place keeps are removed and
     /// counted on the last kept one. Returns the rows removed.
     pub fn compact_repeats(&self, id: EvidenceId) -> Result<usize> {
-        let place = format!("CASE WHEN file_path IS NULL OR {} THEN '' ELSE file_path END", sql_condition("file_path"));
+        let place = "CASE WHEN file_path IS NULL OR file_path IN (SELECT path FROM temp.system_files) THEN '' ELSE file_path END";
         let keep = format!("(CASE WHEN place = '' THEN {} ELSE {} END)", RepeatCap::KEEP_SHARED, RepeatCap::KEEP_PER_FILE);
         let sql = format!(
             "CREATE TEMP TABLE IF NOT EXISTS excess (id INTEGER PRIMARY KEY, keeper INTEGER NOT NULL, repeats INTEGER NOT NULL);
@@ -104,10 +104,12 @@ impl crate::Case {
              DELETE FROM hits WHERE id IN (SELECT id FROM excess);",
             id = id.get()
         );
-        self.write(|w| w.batch(&sql))?;
-        self.with_write(|conn| {
-            let removed: i64 = conn.query_row("SELECT COUNT(*) FROM temp.excess", [], |r| r.get(0))?;
-            conn.execute_batch("DROP TABLE temp.excess; DROP TABLE temp.folded;")?;
+        self.with_system_files(id, |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(&sql)?;
+            let removed: i64 = tx.query_row("SELECT COUNT(*) FROM temp.excess", [], |r| r.get(0))?;
+            tx.execute_batch("DROP TABLE temp.excess; DROP TABLE temp.folded;")?;
+            tx.commit()?;
             Ok(removed as usize)
         })
     }

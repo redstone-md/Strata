@@ -46,7 +46,7 @@ impl Cursor for BalancesCursor {
 
 /// Look up every unchecked address; false when stopped part-way.
 fn lookups(ctx: &StepContext<'_>, backend: &dyn ChainBackend, cur: &mut BalancesCursor) -> Result<bool> {
-    let addresses = ctx.case().unchecked_addresses()?;
+    let addresses = ctx.case().unchecked_addresses(crate::Workbench::NOISE_FLOOR)?;
     ctx.control().begin_at(cur.checked as u64, (cur.checked + addresses.len()) as u64);
     let mut batch: Vec<AddressBalance> = Vec::new();
     for a in &addresses {

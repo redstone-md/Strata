@@ -135,7 +135,9 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
     if let Some(t) = q.text.as_ref().filter(|t| !t.is_empty()) {
         args.push(Box::new(format!("%{t}%")));
         let n = args.len();
-        sql += &format!(" AND (value LIKE ?{n} OR label LIKE ?{n} OR file_path LIKE ?{n})");
+        // An address also finds the keys and seeds it was derived from.
+        let derived = if looks_like_address(t) { format!(" OR details LIKE ?{n}") } else { String::new() };
+        sql += &format!(" AND (value LIKE ?{n} OR label LIKE ?{n} OR file_path LIKE ?{n}{derived})");
     }
     if let Some(v) = &q.exact_value {
         args.push(Box::new(v.clone()));
@@ -262,4 +264,11 @@ mod promote_tests {
         assert_eq!(shown, ["home/u/Desktop/btc privkey.txt"]);
         assert_eq!(case.promote_wallet_named_files(id, 0.4).unwrap(), 0, "idempotent");
     }
+}
+
+/// A Bitcoin address typed into the search (legacy, P2SH or bech32).
+fn looks_like_address(text: &str) -> bool {
+    let t = text.trim();
+    let shape = t.starts_with('1') || t.starts_with('3') || t.to_ascii_lowercase().starts_with("bc1");
+    shape && (26..=62).contains(&t.len()) && t.chars().all(|c| c.is_ascii_alphanumeric())
 }

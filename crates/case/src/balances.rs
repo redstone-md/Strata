@@ -6,16 +6,18 @@ use strata_chain::{AddressBalance, addresses_in};
 use strata_kernel::Result;
 
 impl Case {
-    /// Distinct addresses mentioned by findings (address hits and addresses derived from keys)
-    /// that have not been looked up yet.
-    pub fn unchecked_addresses(&self) -> Result<Vec<String>> {
+    /// Distinct addresses mentioned by findings at or above `min_confidence` (address hits and
+    /// addresses derived from keys) that have not been looked up yet, those of the most
+    /// confident findings first. Noise (hashes taken for keys, system files) is never sent.
+    pub fn unchecked_addresses(&self, min_confidence: f32) -> Result<Vec<String>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT category, value, details FROM hits
-                 WHERE category IN ('Address','PrivateKey','ExtendedKey','Mnemonic','Wallet')",
+                 WHERE category IN ('Address','PrivateKey','ExtendedKey','Mnemonic','Wallet') AND confidence >= ?1
+                 ORDER BY confidence DESC, id",
             )?;
             let mut out: Vec<String> = Vec::new();
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
+            let rows = stmt.query_map([min_confidence], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
             for row in rows {
                 let (category, value, details) = row?;
                 if category == "Address" {
@@ -25,8 +27,8 @@ impl Case {
                     addresses_in(&v, &mut out);
                 }
             }
-            out.sort();
-            out.dedup();
+            let mut seen = std::collections::HashSet::new();
+            out.retain(|a| seen.insert(a.clone()));
             let mut known = conn.prepare("SELECT 1 FROM balances WHERE address = ?1")?;
             Ok(out.into_iter().filter(|a| !known.exists([a]).unwrap_or(false)).collect())
         })

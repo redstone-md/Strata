@@ -32,6 +32,7 @@ pub struct Overview {
 }
 
 impl EventEmitter<Navigate> for Overview {}
+impl EventEmitter<crate::nav::Jump> for Overview {}
 
 impl Overview {
     pub fn new(session: Entity<Session>, maps: Entity<DiskMaps>, cx: &mut Context<Self>) -> Self {
@@ -107,7 +108,7 @@ impl Render for Overview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = tokens();
         let snapshot = self.session.read(cx).snapshot().clone();
-        let balances = (!snapshot.balances.is_empty()).then(|| balances::section(&snapshot.balances));
+        let balances = (!snapshot.balances.is_empty()).then(|| balances::section(&snapshot.balances, cx.entity().downgrade()));
         v_flex()
             .w_full()
             .max_w(t.content_max_width)
