@@ -6460,6 +6460,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-machines"
+version = "0.0.4"
+dependencies = [
+ "serde",
+ "strata-accounts",
+ "strata-artifacts",
+ "strata-kernel",
+ "strata-timeline",
+]
+
+[[package]]
 name = "strata-mail"
 version = "0.0.4"
 dependencies = [

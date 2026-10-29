@@ -147,10 +147,15 @@ pub fn from_value<T: DeserializeOwned>(value: &str) -> Option<T> {
     value.trim_start().starts_with('{').then(|| serde_json::from_str(value).ok()).flatten()
 }
 
-/// Optional timestamps as readable `YYYY-MM-DD HH:MM:SS` text.
-mod stamp {
+/// Optional timestamps as readable `YYYY-MM-DD HH:MM:SS` text (`#[serde(with = "stamp")]`).
+pub mod stamp {
     use serde::{Deserialize, Deserializer, Serializer};
     use strata_kernel::Timestamp;
+
+    /// A required timestamp as text (`#[serde(serialize_with = "stamp::one")]`).
+    pub fn one<S: Serializer>(t: &Timestamp, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&t.to_string())
+    }
 
     pub fn serialize<S: Serializer>(t: &Option<Timestamp>, s: S) -> Result<S::Ok, S::Error> {
         match t {
