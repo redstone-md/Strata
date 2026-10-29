@@ -31,6 +31,11 @@ pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, chain_endpoint: &str) ->
     }
 }
 
+/// `1 file`, `3 files` for log lines.
+pub(crate) fn count(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 /// `1, 2 and 3` for cursor notes.
 pub(crate) fn list<T: std::fmt::Display>(items: &[T]) -> String {
     match items {

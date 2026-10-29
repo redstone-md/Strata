@@ -119,7 +119,7 @@ impl JobQueue {
             let mut times = job.times.lock();
             match &state {
                 JobState::Running => {
-                    times.started.get_or_insert(now);
+                    times.started = Some(now);
                     times.finished = None;
                     JobStamp::Started { pid: std::process::id() }
                 }

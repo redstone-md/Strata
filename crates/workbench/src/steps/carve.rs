@@ -125,7 +125,11 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
         cur.carved += carved.len();
         cur.wallets += wallets;
         if !carved.is_empty() {
-            ctx.log(format!("{} files carved from 0x{start:X}–0x{end:X}, {wallets} wallets", carved.len()));
+            ctx.log(format!(
+                "{} carved from 0x{start:X}–0x{end:X}, {}",
+                super::count(carved.len(), "file", "files"),
+                super::count(wallets, "wallet", "wallets")
+            ));
         }
         if ctx.tick(1) || end - start >= piece {
             let batch = std::mem::take(&mut pending);

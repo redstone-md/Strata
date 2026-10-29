@@ -20,6 +20,7 @@ pub struct JobRecord {
     /// Summary when done, reason when failed.
     pub detail: String,
     pub created_at: i64,
+    /// Start of the latest run (a resumed job restarts its clock).
     pub started_at: Option<i64>,
     pub finished_at: Option<i64>,
     /// Step-specific resume point (JSON).
@@ -96,7 +97,7 @@ impl Case {
             let t = now();
             match stamp {
                 JobStamp::Started { pid } => conn.execute(
-                    "UPDATE jobs SET state = ?2, detail = ?3, started_at = COALESCE(started_at, ?4), finished_at = NULL,
+                    "UPDATE jobs SET state = ?2, detail = ?3, started_at = ?4, finished_at = NULL,
                      owner_pid = ?5, updated_at = ?4 WHERE id = ?1",
                     params![id, state, detail, t, pid],
                 ),

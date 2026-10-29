@@ -135,7 +135,7 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
                 s.nested += report.archives - 1;
                 s.members += report.members;
                 s.encrypted += report.encrypted;
-                ctx.log(format!("unpacked {} members from {}", report.members, t.name));
+                ctx.log(format!("unpacked {} from {}", super::count(report.members, "member", "members"), t.name));
                 batch.hits.extend(found.hits);
                 batch.rows.extend(found.rows);
             }
