@@ -42,10 +42,11 @@ impl BrowserDb {
         let has = |t: &str| tables.iter().any(|x| x == t);
         if has("urls") && (has("visits") || has("keyword_search_terms")) {
             Self::ChromeHistory
+        } else if has("autofill") || has("autofill_profiles") {
+            // Before `logins`: Web Data of Chrome ≤ 20 still carries a legacy `logins` table.
+            Self::ChromeWebData
         } else if has("logins") {
             Self::ChromeLogins
-        } else if has("autofill") || has("autofill_profiles") {
-            Self::ChromeWebData
         } else if has("cookies") {
             Self::ChromeCookies
         } else if has("moz_places") || has("moz_downloads") {

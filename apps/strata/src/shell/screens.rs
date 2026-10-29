@@ -14,6 +14,7 @@ use crate::views::settings::SettingsView;
 use crate::views::tasks::TasksView;
 use crate::views::timeline::TimelineView;
 use crate::views::accounts::AccountsView;
+use crate::views::browser::BrowserView;
 use crate::views::leads::LeadsView;
 use crate::views::mail::MailView;
 use crate::views::wallets;
@@ -31,6 +32,7 @@ pub struct Screens {
     pub connections: Entity<ConnectionsView>,
     pub timeline: Entity<TimelineView>,
     pub mail: Entity<MailView>,
+    pub browser: Entity<BrowserView>,
     pub correlation: Entity<CorrelationView>,
     pub tasks: Entity<TasksView>,
     pub settings: Entity<SettingsView>,
@@ -56,6 +58,7 @@ impl Screens {
             connections: cx.new(|cx| ConnectionsView::new(session.clone(), cx)),
             timeline: cx.new(|cx| TimelineView::new(session.clone(), window, cx)),
             mail: cx.new(|cx| MailView::new(session.clone(), window, cx)),
+            browser: cx.new(|cx| BrowserView::new(session.clone(), window, cx)),
             correlation: cx.new(|cx| CorrelationView::new(session.clone(), window, cx)),
             tasks: cx.new(|cx| TasksView::new(session.clone(), cx)),
             settings: cx.new(|cx| SettingsView::new(session.clone(), window, cx)),
@@ -85,6 +88,7 @@ impl Screens {
             Screen::Connections => self.connections.clone().into(),
             Screen::Timeline => self.timeline.clone().into(),
             Screen::Mail => self.mail.clone().into(),
+            Screen::Browser => self.browser.clone().into(),
             Screen::Correlation => self.correlation.clone().into(),
             Screen::Tasks => self.tasks.clone().into(),
             Screen::Settings => self.settings.clone().into(),
@@ -107,6 +111,7 @@ impl Screens {
             Screen::Connections => self.connections.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Timeline => self.timeline.update(cx, |v, cx| v.set_search(text, cx)),
             Screen::Mail => self.mail.update(cx, |v, cx| v.set_search(text, cx)),
+            Screen::Browser => self.browser.update(cx, |v, cx| v.set_search(text, cx)),
             _ => {}
         }
     }

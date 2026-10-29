@@ -4,6 +4,7 @@
 
 use crate::account::IdentifierKind;
 use crate::service::Service;
+use crate::url::percent_decode;
 
 /// Query/form field names that carry an account name, and what they carry. Data table: the
 /// single place to extend.
@@ -120,26 +121,6 @@ impl UrlAccounts {
 
 pub(crate) fn looks_like_email(v: &str) -> bool {
     v.split_once('@').is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.'))
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = |j: usize| bytes.get(j).and_then(|b| (*b as char).to_digit(16));
-        match (bytes[i], hex(i + 1), hex(i + 2)) {
-            (b'%', Some(h), Some(l)) => {
-                out.push((h * 16 + l) as u8);
-                i += 3;
-            }
-            (b, _, _) => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

@@ -117,6 +117,9 @@ pub(crate) struct ChromeWebData;
 
 impl ChromeWebData {
     pub fn parse(db: &mut SqliteDb, rec: &mut Recorder) {
+        if db.has_table("logins") && db.columns("logins").iter().any(|c| c == "origin_url") {
+            ChromeLogins::parse(db, rec);
+        }
         if db.has_table("autofill") {
             let cols = db.columns("autofill");
             let sql = if cols.iter().any(|c| c == "date_created") {
