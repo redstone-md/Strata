@@ -1,7 +1,8 @@
-//! Design tokens: the single source of colours, radii and spacing for the whole app.
+//! Design tokens: the single source of colours, type, spacing and radii for the whole app.
 //!
-//! Widgets read [`tokens()`]; [`install`] projects the same palette onto gpui-component's
-//! global `Theme` so built-in controls (tables, inputs, buttons) blend into the dark glass look.
+//! Strictly monochrome. Hierarchy comes from brightness and weight only; warnings use
+//! inversion or an outline, never hue. [`install`] projects the same palette onto
+//! gpui-component's global `Theme` so its tables, inputs and scrollbars match.
 
 use gpui::{App, FontWeight, Hsla, Pixels, Rgba, px};
 use gpui_component::{Theme, ThemeMode};
@@ -18,166 +19,150 @@ pub fn hexa(rgb: u32, alpha: f32) -> Hsla {
     Rgba { r: channel(16), g: channel(8), b: channel(0), a: alpha }.into()
 }
 
-pub struct Tokens {
-    // Surfaces
-    pub bg_top: Hsla,
-    pub bg_bottom: Hsla,
-    pub glow_blue: Hsla,
-    pub glow_indigo: Hsla,
-    pub card: Hsla,
-    pub card_border: Hsla,
-    pub glass: Hsla,
-    pub glass_hover: Hsla,
-    pub glass_active: Hsla,
-    pub glass_border: Hsla,
-    pub glass_border_strong: Hsla,
-    pub tile: Hsla,
-    pub track: Hsla,
-    pub separator: Hsla,
-    // Text
-    pub text: Hsla,
-    pub text_muted: Hsla,
-    pub text_dim: Hsla,
-    // Accents
-    pub blue: Hsla,
-    pub indigo: Hsla,
-    pub green: Hsla,
-    pub yellow: Hsla,
-    pub orange: Hsla,
-    pub red: Hsla,
-    pub rainbow: [Hsla; 4],
-    pub scan: [Hsla; 2],
-    // Shape
-    pub radius_card: Pixels,
-    pub radius_control: Pixels,
-    pub radius_tile: Pixels,
-    pub rail_width: Pixels,
-    pub card_padding: Pixels,
-    pub gap: Pixels,
-    pub gap_lg: Pixels,
-    // Type
-    pub thin: FontWeight,
-    pub light: FontWeight,
-    pub size_title: Pixels,
-    pub size_hero: Pixels,
-    pub size_number: Pixels,
-    pub size_card_title: Pixels,
-    pub size_caption: Pixels,
+/// Neutral grey of brightness `0..=1` (sector-map and timeline ramps).
+pub fn grey(level: f32) -> Hsla {
+    let v = level.clamp(0.0, 1.0);
+    Rgba { r: v, g: v, b: v, a: 1.0 }.into()
 }
 
-static TOKENS: LazyLock<Tokens> = LazyLock::new(|| {
-    let blue = hex(0x3b82f6);
-    let green = hex(0x22c55e);
-    let yellow = hex(0xfacc15);
-    let orange = hex(0xf97316);
-    Tokens {
-        bg_top: hex(0x0b1424),
-        bg_bottom: hex(0x101d36),
-        glow_blue: hexa(0x2563eb, 0.30),
-        glow_indigo: hexa(0x6366f1, 0.22),
-        card: hexa(0x14203a, 0.75),
-        card_border: hexa(0xffffff, 0.10),
-        glass: hexa(0xffffff, 0.04),
-        glass_hover: hexa(0xffffff, 0.08),
-        glass_active: hexa(0xffffff, 0.12),
-        glass_border: hexa(0xffffff, 0.12),
-        glass_border_strong: hexa(0xffffff, 0.22),
-        tile: hexa(0x0a1222, 0.85),
-        track: hexa(0xffffff, 0.08),
-        separator: hexa(0xffffff, 0.08),
-        text: hex(0xe6ecf5),
-        text_muted: hex(0x8a97ad),
-        text_dim: hex(0x5d6a80),
-        blue,
-        indigo: hex(0x6366f1),
-        green,
-        yellow,
-        orange,
-        red: hex(0xef4444),
-        rainbow: [orange, yellow, blue, green],
-        scan: [blue, green],
-        radius_card: px(16.),
-        radius_control: px(12.),
-        radius_tile: px(8.),
-        rail_width: px(72.),
-        card_padding: px(22.),
-        gap: px(16.),
-        gap_lg: px(24.),
-        thin: FontWeight::EXTRA_LIGHT,
-        light: FontWeight::LIGHT,
-        size_title: px(28.),
-        size_hero: px(40.),
-        size_number: px(44.),
-        size_card_title: px(16.),
-        size_caption: px(12.),
-    }
+pub struct Tokens {
+    // Surfaces
+    pub ground: Hsla,
+    pub sidebar: Hsla,
+    pub raised: Hsla,
+    pub hover: Hsla,
+    pub rule: Hsla,
+    pub row_rule: Hsla,
+    pub selection: Hsla,
+    pub ink: Hsla,
+    // Text
+    pub text: Hsla,
+    pub text_secondary: Hsla,
+    pub emphasis: Hsla,
+    // Data marks (sector map, timeline)
+    pub cell_unscanned: Hsla,
+    pub cell_scanned: Hsla,
+    pub cell_damaged: Hsla,
+    // Type
+    pub font_ui: &'static str,
+    pub font_data: &'static str,
+    pub size_small: Pixels,
+    pub size_body: Pixels,
+    pub size_heading: Pixels,
+    pub semibold: FontWeight,
+    // Shape and rhythm
+    pub radius: Pixels,
+    pub command_bar_height: Pixels,
+    pub sidebar_width: Pixels,
+    pub row_height: Pixels,
+    pub gutter: Pixels,
+    pub section_gap: Pixels,
+    pub block_gap: Pixels,
+    pub content_max_width: Pixels,
+}
+
+static TOKENS: LazyLock<Tokens> = LazyLock::new(|| Tokens {
+    ground: hex(0x232323),
+    sidebar: hex(0x1f1f1f),
+    raised: hex(0x2b2b2b),
+    hover: hex(0x333333),
+    rule: hex(0x3a3a3a),
+    row_rule: hex(0x333333),
+    selection: hexa(0xe6e6e6, 0.14),
+    ink: hex(0x1a1a1a),
+    text: hex(0xe6e6e6),
+    text_secondary: hex(0x8c8c8c),
+    emphasis: hex(0xffffff),
+    cell_unscanned: hex(0x2f2f2f),
+    cell_scanned: hex(0x5a5a5a),
+    cell_damaged: hex(0x1a1a1a),
+    font_ui: "Bahnschrift",
+    font_data: "Cascadia Mono",
+    size_small: px(12.),
+    size_body: px(13.),
+    size_heading: px(15.),
+    semibold: FontWeight::SEMIBOLD,
+    radius: px(3.),
+    command_bar_height: px(44.),
+    sidebar_width: px(184.),
+    row_height: px(28.),
+    gutter: px(32.),
+    section_gap: px(32.),
+    block_gap: px(24.),
+    content_max_width: px(1320.),
 });
 
 pub fn tokens() -> &'static Tokens {
     &TOKENS
 }
 
-/// Switch gpui-component to dark mode and recolour it with our palette.
+/// Switch gpui-component to dark mode and recolour it with the monochrome palette.
 pub fn install(cx: &mut App) {
     Theme::change(ThemeMode::Dark, None, cx);
     let t = tokens();
     Theme::update(cx, |theme| {
-        theme.radius = t.radius_tile;
-        theme.radius_lg = t.radius_control;
+        theme.font_family = t.font_ui.into();
+        theme.mono_font_family = t.font_data.into();
+        theme.font_size = t.size_body;
+        theme.mono_font_size = t.size_body;
+        theme.radius = t.radius;
+        theme.radius_lg = t.radius;
         theme.shadow = false;
-        theme.font_size = px(14.);
         let c = &mut theme.colors;
-        c.background = t.bg_top;
+        c.background = t.ground;
         c.foreground = t.text;
-        c.border = t.card_border;
-        c.input = t.glass_border;
-        c.ring = hexa(0x3b82f6, 0.6);
-        c.caret = t.text;
-        c.selection = hexa(0x3b82f6, 0.35);
-        c.muted = t.glass;
-        c.muted_foreground = t.text_muted;
-        c.accent = t.glass_hover;
-        c.accent_foreground = t.text;
-        c.primary = t.blue;
-        c.primary_hover = hex(0x2f6fdc);
-        c.primary_active = hex(0x2563eb);
-        c.primary_foreground = hex(0xffffff);
-        c.button_primary = t.blue;
-        c.button_primary_hover = hex(0x2f6fdc);
-        c.button_primary_active = hex(0x2563eb);
-        c.button_primary_foreground = hex(0xffffff);
-        c.button = t.glass;
-        c.button_hover = t.glass_hover;
-        c.button_active = t.glass_active;
+        c.border = t.rule;
+        c.input = t.rule;
+        c.ring = hexa(0xe6e6e6, 0.5);
+        c.caret = t.emphasis;
+        c.selection = hexa(0xe6e6e6, 0.28);
+        c.muted = t.raised;
+        c.muted_foreground = t.text_secondary;
+        c.accent = t.hover;
+        c.accent_foreground = t.emphasis;
+        c.primary = t.text;
+        c.primary_hover = t.emphasis;
+        c.primary_active = t.emphasis;
+        c.primary_foreground = t.ink;
+        c.button_primary = t.text;
+        c.button_primary_hover = t.emphasis;
+        c.button_primary_active = t.emphasis;
+        c.button_primary_foreground = t.ink;
+        c.button = t.raised;
+        c.button_hover = t.hover;
+        c.button_active = t.hover;
         c.button_foreground = t.text;
-        c.secondary = t.glass;
-        c.secondary_hover = t.glass_hover;
-        c.secondary_active = t.glass_active;
+        c.secondary = t.raised;
+        c.secondary_hover = t.hover;
+        c.secondary_active = t.hover;
         c.secondary_foreground = t.text;
-        c.popover = hex(0x111c32);
+        c.popover = t.raised;
         c.popover_foreground = t.text;
-        c.list = gpui::transparent_black();
-        c.list_even = hexa(0xffffff, 0.02);
-        c.list_head = gpui::transparent_black();
-        c.list_hover = t.glass_hover;
-        c.list_active = hexa(0x3b82f6, 0.18);
-        c.list_active_border = hexa(0x3b82f6, 0.5);
-        c.table = gpui::transparent_black();
-        c.table_even = hexa(0xffffff, 0.02);
-        c.table_head = hexa(0xffffff, 0.03);
-        c.table_head_foreground = t.text_muted;
-        c.table_hover = t.glass_hover;
-        c.table_active = hexa(0x3b82f6, 0.18);
-        c.table_active_border = hexa(0x3b82f6, 0.5);
-        c.table_row_border = t.separator;
+        c.list = t.ground;
+        c.list_even = t.ground;
+        c.list_head = t.ground;
+        c.list_hover = t.hover;
+        c.list_active = t.selection;
+        c.list_active_border = gpui::transparent_black();
+        c.table = t.ground;
+        c.table_even = t.ground;
+        c.table_head = t.ground;
+        c.table_head_foreground = t.text_secondary;
+        c.table_hover = t.hover;
+        c.table_active = t.selection;
+        c.table_active_border = gpui::transparent_black();
+        c.table_row_border = t.row_rule;
         c.scrollbar = gpui::transparent_black();
-        c.scrollbar_thumb = hexa(0xffffff, 0.15);
-        c.scrollbar_thumb_hover = hexa(0xffffff, 0.25);
-        c.success = t.green;
-        c.warning = t.yellow;
-        c.danger = t.red;
-        c.info = t.blue;
-        c.progress_bar = t.blue;
-        c.skeleton = t.glass_hover;
+        c.scrollbar_thumb = hexa(0xe6e6e6, 0.18);
+        c.scrollbar_thumb_hover = hexa(0xe6e6e6, 0.32);
+        c.success = t.text;
+        c.warning = t.text;
+        c.danger = t.text;
+        c.info = t.text;
+        c.progress_bar = t.emphasis;
+        c.skeleton = t.hover;
+        c.link = t.text;
+        c.link_hover = t.emphasis;
+        c.link_active = t.emphasis;
     });
 }

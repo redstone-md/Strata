@@ -1,40 +1,51 @@
-//! Screens reachable from the icon rail.
+//! Screens reachable from the sidebar, and the navigation request views send to the shell.
 
-use crate::widgets::{Glyph, RailItem};
+use crate::widgets::{Glyph, NavItem};
+use strata_workbench::HitCategory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
-    Dashboard,
-    Evidence,
+    Overview,
+    Disks,
     Wallets,
     Accounts,
     Correlation,
     Settings,
 }
 
-/// Rail key of the exit button (not a screen).
-pub const EXIT_KEY: usize = 99;
+/// Emitted by a view that wants the shell to show another screen, optionally filtered.
+#[derive(Debug, Clone, Copy)]
+pub struct Navigate {
+    pub screen: Screen,
+    pub category: Option<HitCategory>,
+}
+
+impl Navigate {
+    pub fn to(screen: Screen) -> Self {
+        Self { screen, category: None }
+    }
+}
 
 impl Screen {
     const ALL: [Screen; 6] =
-        [Self::Dashboard, Self::Evidence, Self::Wallets, Self::Accounts, Self::Correlation, Self::Settings];
+        [Self::Overview, Self::Disks, Self::Wallets, Self::Accounts, Self::Correlation, Self::Settings];
 
     pub fn title(self) -> &'static str {
         match self {
-            Self::Dashboard => "Dashboard",
-            Self::Evidence => "Evidence",
-            Self::Wallets => "Wallets & Keys",
+            Self::Overview => "Overview",
+            Self::Disks => "Disks",
+            Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
-            Self::Correlation => "Correlation",
+            Self::Correlation => "Across disks",
             Self::Settings => "Settings",
         }
     }
 
     fn glyph(self) -> Glyph {
         match self {
-            Self::Dashboard => Glyph::LayoutDashboard,
-            Self::Evidence => Glyph::HardDrive,
-            Self::Wallets => Glyph::Wallet,
+            Self::Overview => Glyph::LayoutDashboard,
+            Self::Disks => Glyph::HardDrive,
+            Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
             Self::Correlation => Glyph::GitCompare,
             Self::Settings => Glyph::Settings,
@@ -51,19 +62,20 @@ impl Screen {
 
     /// Long-form screens scroll as a page; table screens fill the window and scroll inside.
     pub fn scrolls(self) -> bool {
-        matches!(self, Self::Dashboard | Self::Evidence | Self::Settings)
+        matches!(self, Self::Overview | Self::Disks | Self::Settings)
     }
 
-    /// Screens whose list the header search filters.
+    /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
         matches!(self, Self::Wallets | Self::Accounts)
     }
 
-    pub fn rail_item(self) -> RailItem {
-        RailItem { key: self.key(), glyph: self.glyph(), label: self.title().into() }
+    pub fn nav_item(self) -> NavItem {
+        NavItem { key: self.key(), glyph: self.glyph(), label: self.title().into() }
     }
 
-    pub fn exit_item() -> RailItem {
-        RailItem { key: EXIT_KEY, glyph: Glyph::LogOut, label: "Exit".into() }
+    /// Main navigation, in sidebar order.
+    pub fn main() -> Vec<NavItem> {
+        Self::ALL.into_iter().filter(|s| *s != Self::Settings).map(Self::nav_item).collect()
     }
 }

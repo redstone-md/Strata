@@ -5,8 +5,7 @@ use strata_workbench::HitCategory;
 
 pub fn config() -> BrowserConfig {
     BrowserConfig {
-        title: "Key material",
-        subtitle: "private keys, extended keys, seeds, wallets, addresses",
+        title: "Keys & wallets",
         categories: vec![
             HitCategory::PrivateKey,
             HitCategory::ExtendedKey,

@@ -4,15 +4,17 @@
 use super::columns::{DiskLabels, HitColumn};
 use super::delegate::HitTableDelegate;
 use super::detail::HitDetailPanel;
+use crate::categories;
+use crate::format;
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::GlassCard;
+use crate::widgets::{TextButton, flat_table};
 use gpui::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Subscription,
-    Window, div, prelude::FluentBuilder as _,
+    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window, div,
+    prelude::FluentBuilder as _, px,
 };
-use gpui_component::h_flex;
-use gpui_component::table::{DataTable, TableEvent, TableState};
+use gpui_component::{h_flex, v_flex};
+use gpui_component::table::{TableEvent, TableState};
 use std::time::{Duration, Instant};
 use strata_workbench::{HitCategory, HitQuery, StoredHit};
 
@@ -21,7 +23,6 @@ const LIVE_RELOAD: Duration = Duration::from_secs(3);
 
 pub struct BrowserConfig {
     pub title: &'static str,
-    pub subtitle: &'static str,
     pub categories: Vec<HitCategory>,
     pub columns: Vec<HitColumn>,
     pub initial_sort: Option<HitColumn>,
@@ -32,6 +33,8 @@ pub struct HitBrowser {
     config: BrowserConfig,
     table: Entity<TableState<HitTableDelegate>>,
     selected: Option<StoredHit>,
+    /// One category picked from the overview, instead of all of the screen's categories.
+    only: Option<HitCategory>,
     loaded_total: u64,
     generation: u64,
     last_load: Instant,
@@ -62,6 +65,7 @@ impl HitBrowser {
             config,
             table,
             selected: None,
+            only: None,
             loaded_total: 0,
             generation,
             last_load: Instant::now(),
@@ -73,6 +77,15 @@ impl HitBrowser {
 
     pub fn set_search(&mut self, text: &str, cx: &mut Context<Self>) {
         self.table.update(cx, |t, _| t.delegate_mut().set_text(text));
+        self.reload(cx);
+    }
+
+    /// Show one category only, or (`None`) every category of this screen.
+    pub fn show_category(&mut self, only: Option<HitCategory>, cx: &mut Context<Self>) {
+        self.only = only.filter(|c| self.config.categories.contains(c));
+        let categories = self.only.map_or_else(|| self.config.categories.clone(), |c| vec![c]);
+        self.selected = None;
+        self.table.update(cx, |t, _| t.delegate_mut().set_categories(categories));
         self.reload(cx);
     }
 
@@ -102,10 +115,25 @@ impl HitBrowser {
         }
     }
 
-    fn count_label(&self, cx: &Context<Self>) -> SharedString {
+    fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = tokens();
         let d = self.table.read(cx).delegate();
-        let more = if d.has_more_rows() { "+ (scroll for more)" } else { "" };
-        format!("{} {}{more} · {}", d.len(), if d.len() == 1 { "result" } else { "results" }, self.config.subtitle).into()
+        let n = d.len() as u64;
+        let count = if d.has_more_rows() { format!("first {n}, scroll for more") } else { format::count(n, "result", "results") };
+        let filter = self.only.map(|c| {
+            h_flex()
+                .gap(px(8.))
+                .child(div().text_color(t.text).child(format!("Only {}", categories::label(c).to_lowercase())))
+                .child(TextButton::new("show-all", "Show all").on_click(cx.listener(|this, _, _, cx| this.show_category(None, cx))))
+        });
+        h_flex()
+            .h(px(32.))
+            .gap(px(16.))
+            .items_center()
+            .text_size(t.size_body)
+            .child(div().text_size(t.size_heading).font_weight(t.semibold).text_color(t.emphasis).child(self.config.title))
+            .child(div().text_color(t.text_secondary).child(count))
+            .children(filter)
     }
 }
 
@@ -125,20 +153,15 @@ impl Render for HitBrowser {
         h_flex()
             .size_full()
             .items_start()
-            .gap(t.gap)
             .child(
-                GlassCard::new()
-                    .title(self.config.title)
-                    .subtitle(self.count_label(cx))
+                v_flex()
                     .flex_1()
+                    .min_w_0()
                     .h_full()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .size_full()
-                            .child(DataTable::new(&self.table).stripe(false).bordered(false)),
-                    ),
+                    .gap(px(12.))
+                    .pr(t.gutter)
+                    .child(self.header(cx))
+                    .child(div().flex_1().min_h_0().size_full().child(flat_table(&self.table))),
             )
             .when_some(detail, |el, d| el.child(d))
     }

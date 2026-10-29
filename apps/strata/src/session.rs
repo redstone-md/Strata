@@ -5,11 +5,11 @@ use gpui::{Context, Task};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use strata_workbench::{EvidenceId, EvidenceRecord, HitCategory, JobId, JobState, JobView, Workbench};
+use strata_workbench::{AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobState, JobView, Workbench};
 
 const POLL: Duration = Duration::from_millis(500);
 
-/// One disk as the dashboard shows it.
+/// One disk as the overview shows it.
 #[derive(Clone)]
 pub struct DiskSummary {
     pub record: EvidenceRecord,
@@ -23,10 +23,6 @@ impl DiskSummary {
     pub fn id(&self) -> EvidenceId {
         self.record.id
     }
-
-    pub fn len(&self) -> u64 {
-        self.record.info.len
-    }
 }
 
 #[derive(Default, Clone)]
@@ -35,6 +31,8 @@ pub struct Snapshot {
     pub counts: Vec<(HitCategory, u64)>,
     pub jobs: Vec<JobView>,
     pub total_hits: u64,
+    /// Addresses seen on chain at least once, richest first.
+    pub balances: Vec<AddressBalance>,
 }
 
 impl Snapshot {
@@ -50,13 +48,9 @@ impl Snapshot {
         self.jobs.iter().filter(|j| matches!(j.state, JobState::Queued | JobState::Running))
     }
 
-    /// Byte-weighted completion of all active jobs, if any are running.
-    pub fn overall_progress(&self) -> Option<f32> {
-        let (done, total) = self
-            .active_jobs()
-            .fold((0u64, 0u64), |(d, t), j| (d + j.progress.scanned, t + j.progress.total));
-        self.active_jobs().next()?;
-        Some(if total == 0 { 0.0 } else { (done as f64 / total as f64) as f32 })
+    /// The job currently doing work, if any.
+    pub fn running_job(&self) -> Option<&JobView> {
+        self.jobs.iter().find(|j| j.state == JobState::Running)
     }
 }
 
@@ -157,13 +151,15 @@ impl Session {
             .collect();
         let counts = wb.hit_counts(None).unwrap_or_default();
         let total_hits = counts.iter().map(|(_, n)| n).sum();
-        self.snapshot = Snapshot { disks, counts, jobs, total_hits };
+        let mut balances: Vec<_> = wb.balances().unwrap_or_default().into_iter().filter(|b| b.ever_used()).collect();
+        balances.sort_by(|a, b| b.balance_sat().cmp(&a.balance_sat()).then(b.tx_count.cmp(&a.tx_count)));
+        self.snapshot = Snapshot { disks, counts, jobs, total_hits, balances };
     }
 
     pub fn add_evidence(&mut self, location: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let location = location.trim().trim_matches('"');
         if location.is_empty() {
-            return Err("Enter an image path or \\\\.\\PhysicalDriveN".into());
+            return Err(r"Enter the path of a disk image, or \\.\PhysicalDrive1 for a drive.".into());
         }
         self.workbench.add_evidence(location).map_err(|e| e.to_string())?;
         self.refresh(cx);
@@ -178,6 +174,14 @@ impl Session {
 
     pub fn cancel(&mut self, job: JobId, cx: &mut Context<Self>) {
         self.workbench.cancel_job(job);
+        self.refresh(cx);
+    }
+
+    /// Cancel every queued or running job of one disk.
+    pub fn cancel_disk(&mut self, id: EvidenceId, cx: &mut Context<Self>) {
+        for job in self.snapshot.active_jobs().filter(|j| j.evidence == id) {
+            self.workbench.cancel_job(job.id);
+        }
         self.refresh(cx);
     }
 

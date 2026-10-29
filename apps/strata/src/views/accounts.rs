@@ -5,8 +5,7 @@ use strata_workbench::HitCategory;
 
 pub fn config() -> BrowserConfig {
     BrowserConfig {
-        title: "Identities & services",
-        subtitle: "identities and service URLs, sorted by service",
+        title: "Accounts",
         categories: vec![HitCategory::Identity, HitCategory::Url],
         columns: vec![
             HitColumn::Service,

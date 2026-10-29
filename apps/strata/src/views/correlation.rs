@@ -4,9 +4,9 @@ use crate::categories;
 use crate::format;
 use crate::session::{Session, Snapshot};
 use crate::theme::tokens;
-use crate::widgets::{GlassCard, TextTable};
-use gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window, div};
-use gpui_component::table::{DataTable, TableState};
+use crate::widgets::{Cell, Section, TextTable, flat_table};
+use gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px};
+use gpui_component::table::TableState;
 use gpui_component::v_flex;
 
 pub struct CorrelationView {
@@ -19,13 +19,23 @@ impl CorrelationView {
     pub fn new(session: Entity<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let shared = cx.new(|cx| {
             TableState::new(
-                TextTable::new(vec![("Category", 130.), ("Value", 420.), ("Disks", 260.), ("Occurrences", 110.)]),
+                TextTable::new(
+                    vec![("Category", 130., Cell::Text), ("Value", 460., Cell::Data), ("Disks", 260., Cell::Text), ("Occurrences", 110., Cell::Number)],
+                    "No value was found on more than one disk.",
+                ),
                 window,
                 cx,
             )
         });
         let complements = cx.new(|cx| {
-            TableState::new(TextTable::new(vec![("Path", 460.), ("Copies per disk", 520.), ("Disks", 80.)]), window, cx)
+            TableState::new(
+                TextTable::new(
+                    vec![("Path", 460., Cell::Data), ("Copies per disk", 520., Cell::Text), ("Disks", 80., Cell::Number)],
+                    "No file differs between disks.",
+                ),
+                window,
+                cx,
+            )
         });
         let mut this = Self { session, shared, complements };
         this.reload(cx);
@@ -70,7 +80,7 @@ impl CorrelationView {
             .iter()
             .map(|(e, state, size)| format!("{}: {state} {}", snapshot.disk_label(*e), format::bytes(*size)))
             .collect::<Vec<_>>()
-            .join("  ·  ")
+            .join(";  ")
     }
 
     fn fill(table: &Entity<TableState<TextTable>>, rows: Vec<Vec<SharedString>>, cx: &mut Context<Self>) {
@@ -81,13 +91,8 @@ impl CorrelationView {
         });
     }
 
-    fn card(title: &'static str, subtitle: String, table: &Entity<TableState<TextTable>>) -> impl IntoElement {
-        GlassCard::new()
-            .title(title)
-            .subtitle(subtitle)
-            .flex_1()
-            .min_h_0()
-            .child(div().flex_1().min_h_0().size_full().child(DataTable::new(table).stripe(false).bordered(false)))
+    fn section(title: &'static str, note: String, table: &Entity<TableState<TextTable>>) -> impl IntoElement {
+        Section::new(title).note(note).flex_1().min_h_0().child(div().flex_1().min_h_0().size_full().child(flat_table(table)))
     }
 }
 
@@ -98,19 +103,20 @@ fn row<const N: usize>(cells: [String; N]) -> Vec<SharedString> {
 impl Render for CorrelationView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = tokens();
-        let shared = self.shared.read(cx).delegate().len();
-        let complements = self.complements.read(cx).delegate().len();
+        let shared = self.shared.read(cx).delegate().len() as u64;
+        let complements = self.complements.read(cx).delegate().len() as u64;
         v_flex()
             .size_full()
-            .gap(t.gap)
-            .child(Self::card(
-                "Shared findings",
-                format!("{shared} values found on more than one disk"),
+            .pr(t.gutter)
+            .gap(px(32.))
+            .child(Self::section(
+                "Values found on several disks",
+                format::count(shared, "value", "values"),
                 &self.shared,
             ))
-            .child(Self::card(
-                "File complements",
-                format!("{complements} paths whose state or size differs between disks — one copy may fill another's gaps"),
+            .child(Self::section(
+                "Files that differ between disks",
+                format!("{}; one copy may fill another's gaps", format::count(complements, "path", "paths")),
                 &self.complements,
             ))
     }

@@ -1,14 +1,10 @@
-//! Embedded SVG icons: the few Lucide icons Strata uses, layered over gpui-component's
-//! default set.
+//! Embedded SVG icons: the few Lucide line icons the sidebar uses, layered over
+//! gpui-component's default set.
 
 use gpui::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
 
-gpui_kit_assets::icon_assets!(AppIcons, [
-    LayoutDashboard, HardDrive, KeyRound, Wallet, Users, GitCompare, Settings, LogOut, Search,
-    FolderOpen, Copy, Plus, X, Check, Shield, Database, FileText, Globe, FingerprintPattern, Link2,
-    ScanSearch, Layers, TriangleAlert, Play,
-]);
+gpui_kit_assets::icon_assets!(AppIcons, [LayoutDashboard, HardDrive, KeyRound, Users, GitCompare, Settings]);
 
 pub struct StrataAssets;
 

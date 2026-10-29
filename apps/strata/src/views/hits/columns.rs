@@ -4,7 +4,7 @@
 use super::details::HitDetails;
 use crate::format;
 use crate::theme::tokens;
-use crate::widgets::Pill;
+use crate::widgets::{Badge, mono};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder as _, px};
 use gpui_component::h_flex;
 use gpui_component::table::Column;
@@ -30,8 +30,8 @@ pub enum HitColumn {
 impl HitColumn {
     pub fn column(self) -> Column {
         let (key, name, width) = match self {
-            Self::Confidence => ("confidence", "Conf.", 80.),
-            Self::Kind => ("kind", "Type", 150.),
+            Self::Confidence => ("confidence", "Confidence", 90.),
+            Self::Kind => ("kind", "Type", 200.),
             Self::Service => ("service", "Service", 140.),
             Self::Value => ("value", "Value", 360.),
             Self::Disk => ("disk", "Disk", 110.),
@@ -40,14 +40,19 @@ impl HitColumn {
             Self::Details => ("details", "Details", 280.),
         };
         let col = Column::new(key, name).width(px(width)).sortable();
-        if self == Self::Offset { col.text_right() } else { col }
+        if self.numeric() { col.text_right() } else { col }
+    }
+
+    /// Right-aligned columns.
+    pub fn numeric(self) -> bool {
+        matches!(self, Self::Confidence | Self::Offset)
     }
 
     pub fn text(self, h: &StoredHit, disks: &DiskLabels) -> String {
         match self {
             Self::Confidence => format::percent(h.hit.confidence.get()),
             Self::Kind => h.hit.label.clone(),
-            Self::Service => HitDetails(&h.hit.details).service().unwrap_or("—").to_string(),
+            Self::Service => HitDetails(&h.hit.details).service().unwrap_or("").to_string(),
             Self::Value => h.hit.value.clone(),
             Self::Disk => disks.get(&h.evidence).cloned().unwrap_or_else(|| h.evidence.to_string()),
             Self::File => h.file_path.clone().unwrap_or_else(|| "unallocated".into()),
@@ -67,35 +72,38 @@ impl HitColumn {
     pub fn render(self, h: &StoredHit, disks: &DiskLabels) -> AnyElement {
         let t = tokens();
         let text = self.text(h, disks);
-        let plain = |color| div().text_sm().text_color(color).truncate().child(text.clone());
+        let plain = |color| div().w_full().text_size(t.size_body).text_color(color).truncate().child(text.clone());
         match self {
             Self::Confidence => {
-                let c = h.hit.confidence.get();
-                let color = if c >= 0.8 { t.green } else if c >= 0.5 { t.yellow } else { t.orange };
-                h_flex()
-                    .gap_2()
-                    .child(div().size(px(7.)).rounded_full().bg(color))
-                    .child(div().text_sm().text_color(t.text).child(text))
-                    .into_any_element()
+                let strong = h.hit.confidence.get() >= 0.8;
+                plain(if strong { t.text } else { t.text_secondary }).text_right().into_any_element()
             }
-            Self::Value => div().text_sm().font_family("Consolas").text_color(t.text).truncate().child(text).into_any_element(),
+            Self::Value => plain(t.text).font_family(t.font_data).into_any_element(),
             Self::File => {
                 let badge = match h.file_state.as_deref() {
-                    Some("Deleted") => Some(Pill::new("deleted", t.orange)),
-                    Some("Orphan") => Some(Pill::new("orphan", t.yellow)),
+                    Some("Deleted") => Some(Badge::outline("deleted")),
+                    Some("Orphan") => Some(Badge::outline("orphan")),
                     _ => None,
                 };
-                let color = if h.file_path.is_some() { t.text } else { t.text_dim };
+                let attributed = h.file_path.is_some();
                 h_flex()
                     .gap_2()
                     .min_w_0()
                     .children(badge)
-                    .child(div().text_sm().text_color(color).truncate().child(text))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .text_size(t.size_body)
+                            .text_color(if attributed { t.text } else { t.text_secondary })
+                            .when(attributed, |el| el.font_family(t.font_data))
+                            .truncate()
+                            .child(text),
+                    )
                     .into_any_element()
             }
-            Self::Offset => plain(t.text_muted).font_family("Consolas").into_any_element(),
-            Self::Disk | Self::Details => plain(t.text_muted).into_any_element(),
-            Self::Kind | Self::Service => plain(t.text).when(text == "—", |el| el.text_color(t.text_dim)).into_any_element(),
+            Self::Offset => mono().w_full().text_right().text_size(t.size_body).text_color(t.text_secondary).child(text).into_any_element(),
+            Self::Disk | Self::Details => plain(t.text_secondary).into_any_element(),
+            Self::Kind | Self::Service => plain(t.text).into_any_element(),
         }
     }
 }

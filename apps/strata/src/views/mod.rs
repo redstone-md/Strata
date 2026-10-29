@@ -3,8 +3,9 @@
 
 pub mod accounts;
 pub mod correlation;
-pub mod dashboard;
-pub mod evidence;
+mod disk_row;
+pub mod disks;
 pub mod hits;
+pub mod overview;
 pub mod settings;
 pub mod wallets;

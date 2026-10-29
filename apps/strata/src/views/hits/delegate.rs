@@ -1,10 +1,11 @@
 //! The one table delegate behind every hit list (Wallets & Keys, Accounts).
 
 use super::columns::{DiskLabels, HitColumn};
+use crate::widgets::{table_empty, table_header};
 use gpui::{App, Context, IntoElement, Window};
 use gpui_component::table::{Column, ColumnSort, TableDelegate, TableState};
 use std::sync::Arc;
-use strata_workbench::{HitQuery, StoredHit, Workbench};
+use strata_workbench::{HitCategory, HitQuery, StoredHit, Workbench};
 
 /// Rows fetched per page; more are loaded as the user scrolls.
 const PAGE: usize = 2000;
@@ -26,6 +27,10 @@ impl HitTableDelegate {
 
     pub fn set_text(&mut self, text: &str) {
         self.query.text = Some(text.trim().to_string()).filter(|t| !t.is_empty());
+    }
+
+    pub fn set_categories(&mut self, categories: Vec<HitCategory>) {
+        self.query.categories = categories;
     }
 
     pub fn set_workbench(&mut self, workbench: Arc<Workbench>) {
@@ -83,6 +88,16 @@ impl TableDelegate for HitTableDelegate {
 
     fn column(&self, col_ix: usize, _: &App) -> Column {
         self.columns[col_ix].column()
+    }
+
+    fn render_th(&mut self, col_ix: usize, _: &mut Window, _: &mut Context<TableState<Self>>) -> impl IntoElement {
+        let col = self.columns[col_ix];
+        table_header(col.column().name.clone(), col.numeric())
+    }
+
+    fn render_empty(&mut self, _: &mut Window, _: &mut Context<TableState<Self>>) -> impl IntoElement {
+        let text = if self.query.text.is_some() { "Nothing matches the search." } else { "Nothing found yet. Analyse a disk to fill this list." };
+        table_empty(text.into())
     }
 
     fn perform_sort(&mut self, col_ix: usize, sort: ColumnSort, _: &mut Window, _: &mut Context<TableState<Self>>) {
