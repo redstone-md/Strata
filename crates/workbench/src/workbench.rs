@@ -38,6 +38,18 @@ impl Workbench {
         self.case.scan_state(id)
     }
 
+    pub fn events(&self, q: &strata_case::EventQuery) -> Result<Vec<(EvidenceId, strata_timeline::TimelineEvent)>> {
+        self.case.events(q)
+    }
+
+    pub fn events_per_day(&self, evidence: Option<EvidenceId>) -> Result<Vec<(strata_kernel::Timestamp, u64, u64)>> {
+        self.case.events_per_day(evidence)
+    }
+
+    pub fn host_facts(&self, evidence: Option<EvidenceId>) -> Result<Vec<strata_case::HostFact>> {
+        self.case.facts(evidence)
+    }
+
     /// Disk overview grid with `cells` cells.
     pub fn sector_map(&self, id: EvidenceId, cells: usize) -> Result<crate::SectorMap> {
         crate::SectorMap::build(&self.case, id, cells)
@@ -114,7 +126,7 @@ impl Workbench {
                     return;
                 }
                 // Follow-ups: each one is optional and runs only while nothing was cancelled.
-                for kind in [JobKind::ClassifyFiles, JobKind::Carve, JobKind::CheckBalances] {
+                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::CheckBalances] {
                     let job = this.enqueue(kind, evidence);
                     this.run_job(&job);
                     if job.control.is_cancelled() {
@@ -184,6 +196,7 @@ impl Workbench {
             JobKind::Scan => format!("Deep scan {evidence}"),
             JobKind::ClassifyFiles => format!("Classify files {evidence}"),
             JobKind::Carve => format!("Carve free space {evidence}"),
+            JobKind::Artifacts => format!("Artefacts and timeline {evidence}"),
             JobKind::CheckBalances => "Check balances".to_string(),
         };
         let job = Arc::new(Job {
@@ -215,6 +228,9 @@ impl Workbench {
             JobKind::ClassifyFiles => crate::file_types::FileClassifier::new(&self.case)
                 .run(job.evidence, &job.control)
                 .map(|(n, s)| format!("{n} files, {s} suspicious renames")),
+            JobKind::Artifacts => crate::artifacts_job::ArtifactsJob::new(&self.case)
+                .run(job.evidence)
+                .map(|(e, i, f)| format!("{e} events, {i} identities, {f} host facts")),
             JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
                 .run(job.evidence, &job.control)
                 .map(|(n, w)| format!("{n} files carved, {w} wallets")),

@@ -80,6 +80,29 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS files_path ON files(path);
 CREATE INDEX IF NOT EXISTS files_hash ON files(sha256);
 
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY,
+    evidence_id INTEGER NOT NULL REFERENCES evidence(id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artifact TEXT NOT NULL,
+    path TEXT NOT NULL,
+    deleted INTEGER NOT NULL,
+    crypto INTEGER NOT NULL,
+    data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_at ON events(at);
+CREATE INDEX IF NOT EXISTS events_evidence ON events(evidence_id, at);
+
+CREATE TABLE IF NOT EXISTS facts (
+    evidence_id INTEGER NOT NULL REFERENCES evidence(id),
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    artifact TEXT NOT NULL,
+    source TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS balances (
     address TEXT PRIMARY KEY,
     funded_sat INTEGER NOT NULL,

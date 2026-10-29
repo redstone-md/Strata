@@ -12,6 +12,7 @@ strata-volume.workspace = true
 strata-fs.workspace = true
 strata-engine.workspace = true
 strata-chain = { path = "../chain" }
+strata-timeline = { path = "../timeline" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

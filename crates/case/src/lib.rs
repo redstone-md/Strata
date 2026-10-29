@@ -10,8 +10,10 @@ mod case;
 mod correlation;
 mod schema;
 mod store;
+mod timeline;
 
 pub use attribution::{Attribution, EvidenceLayout, FileRef};
 pub use case::{Case, EvidenceRecord};
 pub use correlation::{CorrelationService, FileComplement, SameMedium, SharedFinding};
 pub use store::{HitQuery, StoredHit};
+pub use timeline::{EventQuery, HostFact};

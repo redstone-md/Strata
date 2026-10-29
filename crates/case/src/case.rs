@@ -288,6 +288,10 @@ impl Case {
         store::counts(&self.conn.lock(), evidence).map_err(db)
     }
 
+    pub(crate) fn with_conn_mut<T>(&self, f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>) -> Result<T> {
+        f(&mut self.conn.lock()).map_err(db)
+    }
+
     pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
         f(&self.conn.lock()).map_err(db)
     }

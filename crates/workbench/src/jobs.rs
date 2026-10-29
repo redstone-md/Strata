@@ -11,6 +11,8 @@ pub struct JobId(pub u32);
 pub enum JobKind {
     /// Parse filesystems and store the file listing.
     IndexFiles,
+    /// Browser history, registry, LNK, prefetch... into the timeline.
+    Artifacts,
     /// Identify every file by content; flag renamed extensions.
     ClassifyFiles,
     /// Carve files from unallocated space and parse wallets found there.

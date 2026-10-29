@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::time::Duration;
-use strata_workbench::{EvidenceId, HitCategory, HitQuery, JobState, Workbench};
+use strata_workbench::{EventQuery, EvidenceId, HitCategory, HitQuery, JobState, Workbench};
 
 #[derive(Parser)]
 #[command(name = "strata-cli", about = "Strata forensic workbench (headless)")]
@@ -48,6 +48,19 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Print the timeline (artefacts; add --with-fs for filesystem times).
+    Timeline {
+        #[arg(long)]
+        text: Option<String>,
+        #[arg(long)]
+        crypto: bool,
+        #[arg(long)]
+        with_fs: bool,
+        #[arg(long, default_value_t = 500)]
+        limit: usize,
+    },
+    /// Host facts: computer name, users, USB devices, wallet folders...
+    Facts,
     /// Show looked-up address balances; `--endpoint` changes the Esplora server.
     Balances {
         #[arg(long)]
@@ -99,6 +112,18 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Report { format, out } => {
             let dir = out.unwrap_or_else(|| cli.case.join("reports"));
             println!("{}", wb.export_report(&format, &dir)?.display());
+        }
+        Command::Timeline { text, crypto, with_fs, limit } => {
+            let q = EventQuery { text, crypto_only: crypto, skip_filesystem: !with_fs, limit, ..Default::default() };
+            for (ev, e) in wb.events(&q)? {
+                let deleted = if e.source().deleted { " [deleted]" } else { "" };
+                println!("{} {} {:<16} {}  ({}{deleted})", e.at(), ev, format!("{:?}", e.kind()), e.title(), e.source().path);
+            }
+        }
+        Command::Facts => {
+            for f in wb.host_facts(None)? {
+                println!("{} {:<24} {}  ({})", f.evidence, f.key, f.value, f.source);
+            }
         }
         Command::Balances { endpoint } => {
             if let Some(url) = endpoint {
