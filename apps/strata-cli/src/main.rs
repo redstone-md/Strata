@@ -26,7 +26,7 @@ enum Command {
         /// Evidence id; all evidence when omitted.
         id: Option<u32>,
     },
-    /// Run a single step: IndexFiles, Scan, Artifacts, ClassifyFiles, Carve, CheckBalances, Triage.
+    /// Run a single step: IndexFiles, Scan, Artifacts, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
     Step { kind: String, id: u32 },
     /// Print stored findings.
     Hits {
@@ -63,6 +63,11 @@ enum Command {
     },
     /// Host facts: computer name, users, USB devices, wallet folders...
     Facts,
+    /// Passwords of your own archives, tried on encrypted ZIP members by the Archives step.
+    /// With arguments the list is replaced; without, it is printed.
+    ArchivePasswords { passwords: Vec<String> },
+    /// Members unpacked from archives by the Archives step.
+    Members { id: u32 },
     /// Show looked-up address balances; `--endpoint` changes the Esplora server.
     Balances {
         #[arg(long)]
@@ -138,6 +143,24 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Facts => {
             for f in wb.host_facts(None)? {
                 println!("{} {:<24} {}  ({})", f.evidence, f.key, f.value, f.source);
+            }
+        }
+        Command::ArchivePasswords { passwords } => {
+            if !passwords.is_empty() {
+                wb.set_archive_passwords(&passwords)?;
+            }
+            println!("{} archive passwords set", wb.archive_passwords().len());
+        }
+        Command::Members { id } => {
+            for m in wb.case().archive_members(EvidenceId::new(id))? {
+                let flags = format!("{}{}", if m.encrypted { "E" } else { "-" }, if m.extension_mismatch { "R" } else { "-" });
+                println!(
+                    "{flags} {:>12} {:<24} {} {}",
+                    m.recovered,
+                    m.detected_type.as_deref().unwrap_or("?"),
+                    m.member_path,
+                    if m.damage == "[]" { String::new() } else { m.damage.clone() }
+                );
             }
         }
         Command::Balances { endpoint } => {
