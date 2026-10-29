@@ -11,6 +11,11 @@ use strata_kernel::{Confidence, EvidenceId, Result};
 /// Head bytes read per file; enough for headers, directories and structure probes.
 const HEAD_BYTES: usize = 1 << 20;
 
+/// Extensions of plain user documents: random bytes behind these are worth a look
+/// (encrypted containers, wallets saved as text files). Random bytes behind media or
+/// binaries are normal compression or overwritten clusters.
+const PLAIN_DOCUMENTS: &[&str] = &["txt", "doc", "rtf", "csv", "ini", "log", "xml", "htm", "html", "dat", "bak"];
+
 pub struct FileClassifier<'a> {
     case: &'a Case,
 }
@@ -18,6 +23,29 @@ pub struct FileClassifier<'a> {
 impl<'a> FileClassifier<'a> {
     pub fn new(case: &'a Case) -> Self {
         Self { case }
+    }
+
+    /// Content we read may not be the file's own: deleted files whose clusters were reused,
+    /// or extents over unreadable sectors. Such files and headerless random data behind
+    /// media/binary extensions produced ~1,400 false alarms on a 40 GB test disk.
+    fn worth_reporting(e: &strata_fs::FileEntry, v: &strata_identify::TypeVerdict) -> bool {
+        if !e.damage.is_empty() {
+            return false;
+        }
+        // Hidden valuables are wallets, databases, archives, documents, mail — not programs.
+        if v.category == strata_identify::Category::Executable {
+            return false;
+        }
+        let path = e.path.to_ascii_lowercase();
+        let in_system = ["windows/", "winnt/", "program files/", "program files (x86)/"].iter().any(|p| path.starts_with(p));
+        if in_system && !matches!(v.category, strata_identify::Category::Wallet | strata_identify::Category::Database) {
+            return false;
+        }
+        if v.method == strata_identify::Method::Entropy {
+            let ext = e.extension().unwrap_or_default().to_ascii_lowercase();
+            return e.state == strata_fs::EntryState::Allocated && PLAIN_DOCUMENTS.contains(&ext.as_str());
+        }
+        true
     }
 
     /// Returns `(files classified, suspicious mismatches)`.
@@ -42,7 +70,7 @@ impl<'a> FileClassifier<'a> {
                 let v = identifier.identify(&head, Some(&e.name));
                 let mismatch = v.extension_mismatch.as_ref();
                 let notes = mismatch.map(|m| m.reason.clone()).unwrap_or_default();
-                if let Some(m) = mismatch.filter(|m| m.suspicious) {
+                if let Some(m) = mismatch.filter(|m| m.suspicious && Self::worth_reporting(e, &v)) {
                     let offset = vol.range.start() + e.extents.first().and_then(|x| x.volume_offset).unwrap_or(0);
                     let confidence = if v.confidence.get() > Confidence::MEDIUM.get() { v.confidence } else { Confidence::MEDIUM };
                     let hit = Hit::new("identify.mismatch", HitCategory::FileSignature, offset, head.len())

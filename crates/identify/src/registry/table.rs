@@ -54,7 +54,8 @@ macro_rules! ole_child {
 
 pub(super) static TYPES: &[FileType] = &[
     row!(Zip, "zip", "ZIP archive", Archive {
-        extensions: &["zip", "zipx", "zip64", "kmz", "xpi", "nupkg", "whl", "crx", "appx", "msix", "ipa"],
+        extensions: &["zip", "zipx", "zip64", "kmz", "xpi", "nupkg", "whl", "crx", "appx", "msix", "ipa",
+                     "thmx", "eftx", "elmx", "glox", "xps", "oxps", "vsdx", "vsix"],
         magics: &[m(0, b"PK\x03\x04"), m(0, b"PK\x05\x06"), m(0, b"PK\x07\x08PK\x03\x04")],
         validator: Some(zip::validate), dense: true, max_size: 4 * GB,
     }),
@@ -108,7 +109,8 @@ pub(super) static TYPES: &[FileType] = &[
         validator: Some(document::pdf), max_size: 512 * MB,
     }),
     row!(Ole2, "ole2", "OLE2 compound file", Document {
-        extensions: &["ole", "cfb", "doc", "dot", "xls", "xlt", "ppt", "pps", "pot", "msg", "msi", "msp", "db", "pub", "vsd", "mpp", "wps"],
+        extensions: &["ole", "cfb", "doc", "dot", "xls", "xlt", "ppt", "pps", "pot", "msg", "msi", "msp", "db", "pub", "vsd", "mpp", "wps",
+                     "feed-ms", "feedsdb-ms", "ilg", "suo", "ost", "max", "sldprt", "dwg"],
         magics: &[m(0, b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1")],
         validator: Some(ole::validate), max_size: 2 * GB,
     }),
@@ -122,14 +124,16 @@ pub(super) static TYPES: &[FileType] = &[
         validator: Some(document::rtf), max_size: 256 * MB,
     }),
     row!(Pe, "pe", "Windows PE image", Executable {
-        extensions: &["exe", "dll", "sys", "ocx", "cpl", "scr", "drv", "efi", "mui", "ax", "tlb", "com", "msstyles"],
+        extensions: &["exe", "dll", "sys", "ocx", "cpl", "scr", "drv", "efi", "mui", "ax", "tlb", "com", "msstyles",
+                     "acm", "tsp", "ime", "ds", "rll", "iec", "dlm", "flt", "ppd", "nls", "vbx", "xll", "wll", "pyd", "bpl", "fon", "dpl", "api", "lex", "spl", "sfx", "bin", "ocx"],
         magics: &[m(0, b"MZ")], validator: Some(exec::pe), max_size: 2 * GB,
     }),
     row!(Exe, "exe", "Windows executable", Executable {
         extensions: &["exe", "scr", "com", "efi"], parent: Some(T::Pe), max_size: 2 * GB,
     }),
     row!(Dll, "dll", "Windows DLL", Executable {
-        extensions: &["dll", "ocx", "cpl", "ax", "mui", "drv", "tlb", "msstyles"], parent: Some(T::Pe), max_size: 2 * GB,
+        extensions: &["dll", "ocx", "cpl", "ax", "mui", "drv", "tlb", "msstyles",
+                     "acm", "tsp", "ime", "ds", "rll", "iec", "dlm", "flt", "ppd", "nls", "vbx", "xll", "wll", "pyd", "bpl", "fon", "dpl", "api", "lex", "spl", "sfx", "bin", "ocx"], parent: Some(T::Pe), max_size: 2 * GB,
     }),
     row!(Sys, "sys", "Windows driver", Executable {
         extensions: &["sys", "drv"], parent: Some(T::Pe), max_size: 256 * MB,
