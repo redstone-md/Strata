@@ -86,7 +86,7 @@ pub fn build(hit: &StoredHit, disk: &str, chain: &Chain, show_raw: bool) -> Vec<
     let details = &hit.hit.details;
     let f = Fields::new(details);
     let mut out = match hit.hit.category {
-        HitCategory::PrivateKey => key::build(&hit.hit.label, &f, chain),
+        HitCategory::PrivateKey => key::build(&f, chain),
         HitCategory::Mnemonic => seed::mnemonic(&f, chain),
         HitCategory::ExtendedKey => seed::extended(&f, chain),
         HitCategory::Wallet => wallet::build(&f, chain),

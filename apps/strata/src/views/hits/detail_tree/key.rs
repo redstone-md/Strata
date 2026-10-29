@@ -27,12 +27,11 @@ pub fn addresses(set: &Value, chain: &Chain, extra_for: impl Fn(&str) -> Vec<Tre
     Some(TreeNode::group("Addresses", rows).summary(tally))
 }
 
-pub fn build(label: &str, f: &Fields, chain: &Chain) -> Vec<TreeNode> {
+pub fn build(f: &Fields, chain: &Chain) -> Vec<TreeNode> {
     let compressed = f.bool("compressed");
     let key = TreeNode::group(
         "Key",
         [
-            Some(TreeNode::text("Format", label)),
             f.str("network").map(|n| TreeNode::text("Network", n)),
             compressed.map(|c| TreeNode::yes_no("Compressed", c)),
         ]
@@ -71,7 +70,7 @@ mod tests {
             "compressed": true, "network": "mainnet", "hex": "0c28",
             "wif_compressed": "KwdM", "wif_uncompressed": "5Hue"
         });
-        let t = build("WIF compressed mainnet", &Fields::new(&d), &Chain::default());
+        let t = build(&Fields::new(&d), &Chain::default());
         assert_eq!(find(&t, "WIF").and_then(|n| n.copy.clone()).as_deref(), Some("KwdM"));
         assert_eq!(find(&t, "WIF uncompressed").and_then(|n| n.cell.clone()), Some(Cell::Data("5Hue".into())));
         let addrs = find(&t, "Addresses").expect("addresses group");
