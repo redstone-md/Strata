@@ -2,6 +2,7 @@
 
 mod address;
 mod bdb;
+mod bdb_fragment;
 mod context;
 mod der;
 mod extended;
@@ -16,6 +17,7 @@ mod wif;
 
 pub use address::AddressDetector;
 pub use bdb::BdbDetector;
+pub use bdb_fragment::BdbFragmentDetector;
 pub use context::Context;
 pub use der::DerKeyDetector;
 pub use extended::ExtendedKeyDetector;
@@ -44,6 +46,7 @@ pub fn detectors_with(plan: DerivationPlan) -> Vec<Box<dyn Detector>> {
         Box::new(MnemonicDetector::new(plan)),
         Box::new(AddressDetector::default()),
         Box::new(BdbDetector),
+        Box::new(BdbFragmentDetector),
         Box::new(MarkerDetector),
     ]
 }

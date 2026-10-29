@@ -6,8 +6,8 @@ mod page;
 #[cfg(test)]
 pub(crate) mod fixture;
 
-pub use page::{Endian, MetaPage};
-use page::{leaf_item, looks_like_leaf, valid_page_size, Item, PageHeader, HEADER_LEN, P_OVERFLOW};
+pub use page::{Endian, MetaPage, looks_like_leaf};
+use page::{leaf_item, valid_page_size, Item, PageHeader, HEADER_LEN, P_OVERFLOW};
 use strata_kernel::{ByteRange, Damage, DamageKind};
 
 /// One key/value pair from a leaf page.
