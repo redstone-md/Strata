@@ -15,6 +15,7 @@ strata-source = { path = "crates/source" }
 strata-volume = { path = "crates/volume" }
 strata-fs = { path = "crates/fs" }
 strata-identify = { path = "crates/identify" }
+strata-archive = { path = "crates/archive" }
 strata-crypto = { path = "crates/crypto" }
 strata-engine = { path = "crates/engine" }
 strata-case = { path = "crates/case" }

@@ -1,0 +1,28 @@
+[package]
+name = "strata-archive"
+description = "Recursive, damage-tolerant archive unpacking (ZIP/ZIP64, GZIP, BZIP2, XZ, TAR, 7z, RAR, CAB)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-identify.workspace = true
+serde.workspace = true
+flate2 = "1.1"
+crc32fast = "1.5"
+bzip2 = "0.6"
+lzma-rust2 = "0.16"
+sevenz-rust2 = { version = "0.24", default-features = false, features = ["aes256", "bzip2", "deflate", "ppmd"] }
+unrar = "0.5"
+cab = "0.6"
+aes = "0.8"
+ctr = "0.9"
+hmac = "0.12"
+sha1 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+
+[dev-dependencies]
+zip = { version = "2", default-features = false, features = ["deflate", "aes-crypto"] }
+tar = "0.4"
+sevenz-rust2 = { version = "0.24", default-features = false, features = ["compress", "aes256"] }
