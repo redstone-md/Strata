@@ -4,7 +4,7 @@ use crate::browser::{self, FirefoxLogins, IndexDat, OperaGlobalHistory, OperaTyp
 use crate::mail::{Dbx, Mailbox};
 use crate::registry::{self, RegistryHive};
 use crate::results::{ArtifactResults, Recorder};
-use crate::windows::{EventLog, Info2, Lnk, Prefetch, RecycleI};
+use crate::windows::{EventLog, Evtx, Info2, Lnk, Prefetch, RecycleI};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -21,6 +21,8 @@ pub enum ArtifactKind {
     RecycleInfo2,
     RecycleI,
     EventLog,
+    /// Vista+ `.evtx` log, or carved `ElfChnk` chunks.
+    Evtx,
     OutlookDbx,
     Mailbox,
 }
@@ -54,6 +56,7 @@ impl ArtifactKind {
             _ if ext == "lnk" && (under("/recent/") || under("/desktop/")) => Self::Lnk,
             _ if ext == "pf" && under("/prefetch/") => Self::Prefetch,
             _ if ext == "evt" => Self::EventLog,
+            _ if ext == "evtx" => Self::Evtx,
             _ if ext == "dbx" => Self::OutlookDbx,
             _ if matches!(ext, "eml" | "mbx" | "mbox") => Self::Mailbox,
             _ if ext.is_empty() && (under("/thunderbird/profiles/") && (under("/mail/") || under("/imapmail/"))) => Self::Mailbox,
@@ -75,6 +78,8 @@ impl ArtifactKind {
             Self::Prefetch
         } else if EventLog::is_evt(data) {
             Self::EventLog
+        } else if Evtx::is_evtx(data) {
+            Self::Evtx
         } else if Dbx::is_dbx(data) {
             Self::OutlookDbx
         } else {
@@ -138,6 +143,7 @@ impl ArtifactKind {
             Self::RecycleInfo2 => one("windows.recycle_info2", &|r| Info2::parse(data, r)),
             Self::RecycleI => one("windows.recycle_i", &|r| RecycleI::parse(data, r)),
             Self::EventLog => one("windows.evt", &|r| EventLog::parse(data, r)),
+            Self::Evtx => one("windows.evtx", &|r| Evtx::parse(data, r)),
             Self::OutlookDbx => one("mail.outlook_express", &|r| Dbx::parse(data, r)),
             Self::Mailbox => one("mail.mbox", &|r| Mailbox::parse(data, r)),
         }
@@ -166,6 +172,7 @@ mod tests {
         assert_eq!(k("Documents and Settings/Admin/Recent/wallet.dat.lnk"), Some(ArtifactKind::Lnk));
         assert_eq!(k("Program Files/Google/Chrome/History"), Some(ArtifactKind::BrowserSqlite));
         assert_eq!(k("Program Files/app/History"), None);
-        assert_eq!(k("Windows/System32/winevt/Logs/x.evtx"), None);
+        assert_eq!(k("Windows/System32/winevt/Logs/Security.evtx"), Some(ArtifactKind::Evtx));
+        assert_eq!(k("Windows/System32/winevt/Logs/Security.evtx.bak"), None);
     }
 }

@@ -12,6 +12,7 @@ strata-timeline = { path = "../timeline" }
 strata-accounts = { path = "../accounts" }
 serde.workspace = true
 serde_json.workspace = true
+crc32fast = "1.5"
 rusqlite = { workspace = true, features = ["serialize"] }
 
 [dev-dependencies]

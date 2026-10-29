@@ -5968,6 +5968,7 @@ dependencies = [
 name = "strata-artifacts"
 version = "0.1.0"
 dependencies = [
+ "crc32fast",
  "rusqlite",
  "serde",
  "serde_json",
