@@ -13,7 +13,8 @@ use strata_workbench::Workbench;
 const INSTRUCTIONS: &str = "Strata is a disk-forensics workbench used to find lost cryptocurrency wallets on old disks. \
 This server gives read-only access to one Strata case: findings (keys, seeds, wallets, addresses, identities), \
 on-chain balances, the timeline, accounts, ranked leads, file listings, stored searches, recovered e-mail \
-messages (list_mail, get_mail: live, deleted and carved from free space) and job progress. \
+messages (list_mail, get_mail: live, deleted and carved from free space), the computers each disk held and when \
+they were in use (machines, usage_periods) and job progress. \
 Start with case_overview. Findings are grouped by value like in the app and hide noise below confidence 0.2 \
 unless you lower min_confidence. Disks are referred to by numeric id. Times are UTC, written as YYYY-MM-DD HH:MM:SS. \
 Lists are paged: pass offset=next_offset to continue. Secrets are shown in clear on purpose; nothing here can \
