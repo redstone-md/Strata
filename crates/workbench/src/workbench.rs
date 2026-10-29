@@ -18,6 +18,7 @@ pub struct Workbench {
     pub(crate) policy: Mutex<CheckpointPolicy>,
     monitor: Monitor,
     indexes: crate::disk_index::IndexCache,
+    pub(crate) connections: crate::connections::GraphCache,
 }
 
 impl Workbench {
@@ -50,7 +51,7 @@ impl Workbench {
         let case = Arc::new(Case::open(case_dir)?);
         let queue = Arc::new(JobQueue::load(&case)?);
         let monitor = Monitor::start(Arc::downgrade(&queue));
-        Ok(Arc::new(Self { case, queue, policy: Mutex::new(CheckpointPolicy::default()), monitor, indexes: Default::default() }))
+        Ok(Arc::new(Self { case, queue, policy: Mutex::new(CheckpointPolicy::default()), monitor, indexes: Default::default(), connections: Default::default() }))
     }
 
     pub fn auto_resume(&self) -> bool {

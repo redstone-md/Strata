@@ -3,7 +3,7 @@
 
 use crate::edge::Edge;
 use crate::node::{Node, NodeKey, NodeKind};
-use crate::view::{GraphView, Link, NodeDetail, Scope, ViewEdge, ViewNode};
+use crate::view::{GraphView, Link, NodeDetail, ViewScope, ViewEdge, ViewNode};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 
@@ -109,7 +109,7 @@ impl Graph {
     /// The ego network of `key`: rings of neighbours out to `scope.depth`, strongest first, at
     /// most `scope.limit` nodes. Hubs (disks, services) are shown but not walked through
     /// unless they are the centre.
-    pub fn around(&self, key: &NodeKey, scope: &Scope) -> Option<GraphView> {
+    pub fn around(&self, key: &NodeKey, scope: &ViewScope) -> Option<GraphView> {
         let centre = *self.index.get(key)?;
         let mut depth_of: HashMap<usize, u32> = HashMap::from([(centre, 0)]);
         let mut order = vec![centre];
@@ -148,7 +148,7 @@ impl Graph {
 
     /// The most important part of the whole case: the best-ranked entities, what connects
     /// them, and the disks and services they hang off.
-    pub fn overview(&self, scope: &Scope) -> GraphView {
+    pub fn overview(&self, scope: &ViewScope) -> GraphView {
         let mut ranked: Vec<usize> = (0..self.nodes.len()).filter(|i| !self.nodes[*i].kind.is_hub() && scope.allows(self.nodes[*i].kind)).collect();
         ranked.sort_by(|a, b| by_rank((self.nodes[*a].score, &self.nodes[*a].key), (self.nodes[*b].score, &self.nodes[*b].key)));
         let core_len = (scope.limit * 11 / 20).max(1);
@@ -193,7 +193,7 @@ impl Graph {
         self.view(&picked, |i| if core.contains(&i) { 0 } else { 1 }, scope)
     }
 
-    fn view(&self, order: &[usize], depth: impl Fn(usize) -> u32, scope: &Scope) -> GraphView {
+    fn view(&self, order: &[usize], depth: impl Fn(usize) -> u32, scope: &ViewScope) -> GraphView {
         let position: HashMap<usize, usize> = order.iter().enumerate().map(|(v, g)| (*g, v)).collect();
         let mut edges = Vec::new();
         let mut shown: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); order.len()];

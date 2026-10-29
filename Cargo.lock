@@ -6573,6 +6573,7 @@ dependencies = [
  "strata-crypto",
  "strata-engine",
  "strata-fs",
+ "strata-graph",
  "strata-identify",
  "strata-index",
  "strata-kernel",

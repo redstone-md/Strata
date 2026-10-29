@@ -25,7 +25,7 @@ pub use graph::Graph;
 pub use layout::Layout;
 pub use node::{ChainState, Flags, Node, NodeKey, NodeKind};
 pub use paths::{PathClass, classify as classify_path, file_name};
-pub use view::{GraphView, Link, NodeDetail, Scope, ViewEdge, ViewNode};
+pub use view::{GraphView, Link, NodeDetail, ViewScope, ViewEdge, ViewNode};
 
 #[cfg(test)]
 mod tests;

@@ -7,7 +7,7 @@ use serde::Serialize;
 
 /// What a view may hold.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scope {
+pub struct ViewScope {
     /// Steps from the centre (ego views).
     pub depth: u32,
     /// Most nodes in the view.
@@ -16,13 +16,13 @@ pub struct Scope {
     pub kinds: Vec<NodeKind>,
 }
 
-impl Default for Scope {
+impl Default for ViewScope {
     fn default() -> Self {
         Self { depth: 2, limit: 80, kinds: Vec::new() }
     }
 }
 
-impl Scope {
+impl ViewScope {
     pub const MAX_LIMIT: usize = 400;
     pub const MAX_DEPTH: u32 = 4;
 

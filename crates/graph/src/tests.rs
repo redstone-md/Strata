@@ -170,19 +170,19 @@ fn leaves_noise_out_and_finds_the_owner() {
 fn ego_networks_respect_caps_and_hubs() {
     let g = GraphBuilder::build(&facts());
     let owner = NodeKey::identity(OWNER);
-    let small = g.around(&owner, &Scope::new(2, 4)).unwrap();
+    let small = g.around(&owner, &ViewScope::new(2, 4)).unwrap();
     assert_eq!((small.nodes.len(), small.centre), (4, Some(0)));
     assert_eq!(small.nodes[0].node.key(), &owner);
     assert!(small.left_out > 0 && small.nodes.iter().any(|n| n.more > 0));
     assert!(small.edges.iter().all(|e| e.from < 4 && e.to < 4));
     // The usb disk is reachable from the key only through the funded address, never through
     // the laptop disk.
-    let wide = g.around(&NodeKey::secret(KEY), &Scope::new(3, 400)).unwrap();
+    let wide = g.around(&NodeKey::secret(KEY), &ViewScope::new(3, 400)).unwrap();
     let laptop = wide.index_of(&NodeKey::disk(disk(1))).unwrap();
     assert!(wide.neighbours(laptop).iter().all(|n| wide.nodes[*n].depth < wide.nodes[laptop].depth || wide.nodes[*n].depth <= 2));
-    let only = g.around(&owner, &Scope::new(2, 50).kinds(vec![NodeKind::Identity])).unwrap();
+    let only = g.around(&owner, &ViewScope::new(2, 50).kinds(vec![NodeKind::Identity])).unwrap();
     assert!(only.nodes.len() >= 2 && only.nodes.iter().all(|n| n.node.kind() == NodeKind::Identity));
-    let all = g.overview(&Scope::new(2, 6));
+    let all = g.overview(&ViewScope::new(2, 6));
     assert!(all.nodes.len() <= 6 && all.nodes.iter().any(|n| n.node.key() == &NodeKey::address(FUNDED)));
     let detail = g.detail(&NodeKey::secret(KEY)).unwrap();
     assert!(detail.links.iter().any(|l| l.kind == EdgeKind::Derives && l.outgoing && l.phrase() == "derives"));
@@ -192,7 +192,7 @@ fn ego_networks_respect_caps_and_hubs() {
 #[test]
 fn layout_is_deterministic_and_finite() {
     let g = GraphBuilder::build(&facts());
-    let view = g.around(&NodeKey::identity(OWNER), &Scope::default()).unwrap();
+    let view = g.around(&NodeKey::identity(OWNER), &ViewScope::default()).unwrap();
     let (a, b) = (Layout::compute(&view), Layout::compute(&view));
     assert_eq!(a, b);
     assert_eq!(a.len(), view.nodes.len());
@@ -206,6 +206,6 @@ fn layout_is_deterministic_and_finite() {
         }
     }
     let rebuilt = GraphBuilder::build(&facts());
-    assert_eq!(Layout::compute(&rebuilt.around(&NodeKey::identity(OWNER), &Scope::default()).unwrap()), a, "same facts, same picture");
+    assert_eq!(Layout::compute(&rebuilt.around(&NodeKey::identity(OWNER), &ViewScope::default()).unwrap()), a, "same facts, same picture");
     assert!(Layout::compute(&GraphView::default()).is_empty());
 }
