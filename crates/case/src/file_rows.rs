@@ -123,6 +123,12 @@ impl Case {
         self.with_conn(|conn| conn.query_row("SELECT EXISTS (SELECT 1 FROM files WHERE evidence_id = ?1)", [id.get()], |r| r.get(0)))
     }
 
+    /// Number of files and folders indexed on one disk.
+    pub fn file_count(&self, id: EvidenceId) -> Result<u64> {
+        self.with_conn(|conn| conn.query_row("SELECT COUNT(*) FROM files WHERE evidence_id = ?1", [id.get()], |r| r.get::<_, i64>(0)))
+            .map(|n| n as u64)
+    }
+
     /// Content types recorded for one disk by the classify step.
     pub fn file_types(&self, id: EvidenceId) -> Result<FileTypes> {
         self.with_conn(|conn| {

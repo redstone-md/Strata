@@ -1,4 +1,4 @@
-use crate::attribution::EvidenceLayout;
+use crate::attribution::{Attribution, EvidenceLayout};
 use crate::store::{self, HitQuery, StoredHit};
 use crate::pool::ReadPool;
 use crate::repeats::RepeatCap;
@@ -210,6 +210,33 @@ impl Case {
         let layout = Arc::new(EvidenceLayout::build(&self.source(id)?, &self.record(id)?.volumes));
         self.layouts.lock().insert(id, layout.clone());
         Ok(layout)
+    }
+
+    /// Attribute findings stored as free space to the files the current listing knows there
+    /// (after a re-index found files an older version missed, such as the file system left
+    /// behind by a quick format). Returns the number of findings now inside a file.
+    pub fn relink_unattributed(&self, id: EvidenceId) -> Result<usize> {
+        let layout = self.layout(id)?;
+        let rows: Vec<(i64, u64)> = self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT id, offset FROM hits WHERE evidence_id = ?1 AND file_path IS NULL")?;
+            stmt.query_map([id.get()], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64)))?.collect()
+        })?;
+        let linked: Vec<(i64, Attribution)> =
+            rows.into_iter().map(|(row, offset)| (row, layout.attribute(offset))).filter(|(_, a)| a.file.is_some()).collect();
+        self.with_write(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "UPDATE hits SET volume_idx = ?2, file_path = ?3, file_state = ?4, file_offset = ?5 WHERE id = ?1",
+                )?;
+                for (row, a) in &linked {
+                    let Some(f) = &a.file else { continue };
+                    stmt.execute(params![row, a.volume, f.path, format!("{:?}", f.state), f.file_offset as i64])?;
+                }
+            }
+            tx.commit()?;
+            Ok(linked.len())
+        })
     }
 
     /// Run (or resume) the single-pass scan of one evidence item and store attributed hits.

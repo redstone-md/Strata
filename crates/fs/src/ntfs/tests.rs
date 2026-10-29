@@ -192,10 +192,8 @@ fn carves_stray_records_from_free_space() {
     let stray = RecordBuilder::new(4321, 3).std_info().file_name(fref(900, 1), "wallet.dat", 1).resident(DATA, "", b"keys").build();
     img.write_free(150 * CS as usize, &stray);
     let bytes = img.finish();
-    let plain = open(bytes.clone());
-    assert!(!plain.entries().iter().any(|e| e.name == "wallet.dat"));
     let fs = open_filesystem_with(mem(bytes), FsKind::Ntfs, FsOptions::default().with_record_carving(true)).unwrap();
-    let (id, e) = find(fs.as_ref(), "$Orphans/wallet.dat");
+    let (id, e) = find(fs.as_ref(), "$Reformatted/$Orphans/wallet.dat");
     assert_eq!((e.state, e.native_id), (EntryState::Orphan, 4321));
     assert_eq!(read_all(fs.as_ref(), id), b"keys");
     assert!(fs.children(e.parent.unwrap()).contains(&id));
@@ -247,4 +245,24 @@ fn hostile_input_never_panics() {
             let _ = fs.read(FileId::new(i), 0, &mut buf);
         }
     }
+}
+
+#[test]
+fn rebuilds_the_file_system_left_by_a_quick_format() {
+    let mut img = sample();
+    let old = [
+        RecordBuilder::new(5, 5).dir().std_info().file_name(fref(5, 5), ".", 3).build(),
+        RecordBuilder::new(40, 2).dir().std_info().file_name(fref(5, 5), "Bitcoin", 1).build(),
+        RecordBuilder::new(41, 1).std_info().file_name(fref(40, 2), "wallet.dat", 1).resident(DATA, "", b"keys").build(),
+    ];
+    for (i, rec) in old.iter().enumerate() {
+        img.write_free(150 * CS as usize + i * RS, rec);
+    }
+    let fs = open(img.finish());
+    let (id, e) = find(fs.as_ref(), "$Reformatted/Bitcoin/wallet.dat");
+    assert_eq!((e.state, e.native_id), (EntryState::Deleted, 41));
+    assert_eq!(read_all(fs.as_ref(), id), b"keys");
+    let (dir, _) = find(fs.as_ref(), "$Reformatted/Bitcoin");
+    assert!(fs.children(dir).contains(&id));
+    assert_eq!(find(fs.as_ref(), "hello.txt").1.state, EntryState::Allocated, "the live tree is untouched");
 }

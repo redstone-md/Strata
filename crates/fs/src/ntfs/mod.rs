@@ -23,11 +23,12 @@ mod tests;
 
 use crate::tree::FsTree;
 use crate::{EntryState, FileEntry, FileId, FileSystem, FsOptions};
-use assemble::Assembler;
+use assemble::{Assembler, Built};
 use boot::NtfsBoot;
 use mft::Mft;
 use record::MftRecord;
-use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use strata_kernel::{ByteRange, Damage, Error, Result};
 use strata_source::BlockSource;
@@ -58,28 +59,36 @@ impl NtfsFileSystem {
             records[n] = Some(r);
         }));
         let mut builder = TreeBuilder::default();
-        Self::add_live(&mut builder, &records, &boot, &mft);
+        let live: Vec<(&MftRecord, u64)> =
+            records.iter().flatten().map(|r| (r, mft.record_volume_offset(r.number()).unwrap_or(0))).collect();
+        Self::add_records(&mut builder, &live, &boot, |_, _| {});
+        drop(live);
         drop(records);
 
         let (mut entries, mut compressed) = builder.finish();
         let (unallocated, free_damage) = freespace::unallocated(src, &boot, &entries, mft.extents());
         damage.extend(free_damage);
+        let mut stray = carve::after_mft(src, &boot, mft.extents(), &unallocated);
         if options.carve_records() {
-            Self::add_carved(&mut entries, &mut compressed, src, &boot, &unallocated);
+            let seen: HashSet<u64> = stray.iter().map(|(_, at)| *at).collect();
+            stray.extend(carve::carve(src, &boot, &unallocated).into_iter().filter(|(_, at)| !seen.contains(at)));
         }
+        Self::add_previous(&mut entries, &mut compressed, &boot, stray);
         let tree = FsTree::new(FsKind::Ntfs, source, entries, unallocated, damage);
         Ok(Self { tree, compressed })
     }
 
-    fn add_live(builder: &mut TreeBuilder, records: &[Option<MftRecord>], boot: &NtfsBoot, mft: &Mft) {
+    /// Build files from base records and their extension records; `mark` sees each built file
+    /// with the volume offset of its record.
+    fn add_records(builder: &mut TreeBuilder, records: &[(&MftRecord, u64)], boot: &NtfsBoot, mut mark: impl FnMut(&mut Built, u64)) {
         let assembler = Assembler::new(boot);
         let mut extensions: HashMap<u64, Vec<&MftRecord>> = HashMap::new();
-        for rec in records.iter().flatten() {
+        for (rec, _) in records {
             if let Some(base) = rec.base() {
                 extensions.entry(base.record()).or_default().push(rec);
             }
         }
-        for rec in records.iter().flatten().filter(|r| r.base().is_none()) {
+        for &(rec, offset) in records.iter().filter(|(r, _)| r.base().is_none()) {
             let ext: Vec<&MftRecord> = extensions
                 .get(&rec.number())
                 .into_iter()
@@ -87,35 +96,61 @@ impl NtfsFileSystem {
                 .copied()
                 .filter(|e| e.base().is_some_and(|b| b.points_to(rec.seq(), rec.in_use())))
                 .collect();
-            let offset = mft.record_volume_offset(rec.number()).unwrap_or(0);
-            if let Some(built) = assembler.build(rec, &ext, offset) {
+            if let Some(mut built) = assembler.build(rec, &ext, offset) {
+                mark(&mut built, offset);
                 builder.add(built);
             }
         }
     }
 
-    /// Carved records join the finished tree directly under `$Orphans`.
-    fn add_carved(
-        entries: &mut Vec<FileEntry>,
-        compressed: &mut HashMap<usize, u64>,
-        src: &dyn BlockSource,
-        boot: &NtfsBoot,
-        unallocated: &[ByteRange],
-    ) {
-        let Some(orphans) = entries.iter().position(|e| e.native_id == u64::MAX && e.path == tree::ORPHANS) else { return };
-        let assembler = Assembler::new(boot);
-        for (rec, at) in carve::carve(src, boot, unallocated) {
-            let Some(mut built) = assembler.build(&rec, &[], at) else { continue };
-            let unit = built.compression_unit();
-            let entry = built.entry_mut();
-            entry.state = EntryState::Orphan;
-            entry.parent = Some(FileId::new(orphans));
-            entry.path = crate::entry::join_path(tree::ORPHANS, &entry.name);
-            entry.damage.push(Damage::corrupt(ByteRange::new(at, boot.record_size() as u64), "carved MFT record from free space"));
-            if let Some(unit) = unit {
-                compressed.insert(entries.len(), unit);
+    /// Records outside the live `$MFT` (an older `$MFT` left by a quick format, stray records in
+    /// free space) are rebuilt into their own tree with folders and names, under
+    /// [`tree::REFORMATTED`]. None of it belongs to the current file system, so files read as
+    /// deleted; those whose folder is gone too land in its `$Orphans`.
+    fn add_previous(entries: &mut Vec<FileEntry>, compressed: &mut HashMap<usize, u64>, boot: &NtfsBoot, stray: Vec<(MftRecord, u64)>) {
+        if stray.is_empty() {
+            return;
+        }
+        let Some(root) = entries.iter().position(|e| e.parent.is_none()) else { return };
+        // One record per number: several copies of an old `$MFT` overlap; the one in use wins.
+        let mut by_number: HashMap<u64, (MftRecord, u64)> = HashMap::new();
+        for (rec, at) in stray {
+            match by_number.entry(rec.number()) {
+                Entry::Occupied(mut o) if rec.in_use() && !o.get().0.in_use() => {
+                    o.insert((rec, at));
+                }
+                Entry::Occupied(_) => {}
+                Entry::Vacant(v) => {
+                    v.insert((rec, at));
+                }
             }
-            entries.push(built.into_entry());
+        }
+        let records: Vec<(&MftRecord, u64)> = by_number.values().map(|(r, at)| (r, *at)).collect();
+        let mut builder = TreeBuilder::default();
+        let rs = boot.record_size() as u64;
+        Self::add_records(&mut builder, &records, boot, |built, at| {
+            built.entry_mut().damage.push(Damage::corrupt(ByteRange::new(at, rs), "MFT record from before the volume was reformatted"));
+        });
+        let (old, old_compressed) = builder.finish();
+        let base = entries.len();
+        for (i, mut entry) in old.into_iter().enumerate() {
+            match entry.parent {
+                None => {
+                    entry.name = tree::REFORMATTED.to_string();
+                    entry.path = tree::REFORMATTED.to_string();
+                    entry.parent = Some(FileId::new(root));
+                    entry.state = EntryState::Orphan;
+                }
+                Some(p) => {
+                    entry.parent = Some(FileId::new(base + p.index()));
+                    entry.state = if entry.path.starts_with(tree::ORPHANS) { EntryState::Orphan } else { EntryState::Deleted };
+                    entry.path = crate::entry::join_path(tree::REFORMATTED, &entry.path);
+                }
+            }
+            if let Some(unit) = old_compressed.get(&i) {
+                compressed.insert(base + i, *unit);
+            }
+            entries.push(entry);
         }
     }
 }

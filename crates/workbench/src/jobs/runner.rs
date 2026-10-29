@@ -8,6 +8,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use strata_kernel::{EvidenceId, Result};
 
+/// A disk this large with fewer listed files than [`NEARLY_EMPTY`] was not really read: an
+/// older version missed its file system.
+const NEARLY_EMPTY_DISK: u64 = 8 << 30;
+const NEARLY_EMPTY: u64 = 1000;
+
 impl Workbench {
     /// The standard "analyse this disk" pipeline ([`JobKind::PIPELINE`]) on a background
     /// thread. Every step is queued (and persisted) up front, so a crash resumes the rest.
@@ -38,17 +43,27 @@ impl Workbench {
         for disk in self.case.evidence()? {
             let mut kinds = Vec::new();
             let scanned = self.case.scan_state(disk.id)?.is_some();
+            let indexed = self.case.has_files(disk.id)?;
+            // Version 8 rebuilds the file system a quick format left behind. Re-index every
+            // disk (findings in free space move into the files found); a disk whose listing
+            // was nearly empty also gets its files analysed again.
+            let rebuild = stored < 8 && indexed;
+            if rebuild {
+                kinds.push(JobKind::IndexFiles);
+            }
             // Detector rules changed in versions 2, 5, 7 and 8; Recheck also tidies (repeat cap
             // and triage, changed in 4).
             if stored < 8 && scanned {
                 kinds.push(JobKind::Recheck);
             }
-            let indexed = self.case.has_files(disk.id)?;
+            if rebuild && self.case.file_count(disk.id)? < NEARLY_EMPTY && disk.info.len > NEARLY_EMPTY_DISK {
+                kinds.extend([JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Archives, JobKind::Mail]);
+            }
             // Version 6 parses more of the registry and Linux system files (machine profiles).
-            if stored < 6 && indexed {
+            if stored < 6 && indexed && !kinds.contains(&JobKind::Artifacts) {
                 kinds.push(JobKind::Artifacts);
             }
-            if stored < 3 && indexed {
+            if stored < 3 && indexed && !kinds.contains(&JobKind::Mail) {
                 kinds.push(JobKind::Mail);
             }
             if !kinds.is_empty() {

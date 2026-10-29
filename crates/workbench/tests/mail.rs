@@ -168,7 +168,7 @@ fn older_cases_read_their_mail_when_opened() {
     // and the mail job.
     wb.run_step(JobKind::Scan, id).unwrap();
     wb.case().set_setting("rules_version", "1").unwrap();
-    assert_eq!(wb.recheck_if_rules_changed().unwrap(), 3);
+    assert_eq!(wb.recheck_if_rules_changed().unwrap(), 4);
     wait_idle(&wb);
     let kinds: Vec<JobKind> = wb.jobs().iter().map(|j| j.kind).collect();
     assert!(kinds.contains(&JobKind::Recheck), "{kinds:?}");

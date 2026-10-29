@@ -58,6 +58,12 @@ pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
             found.len()
         }
     };
+    // Findings stored before this listing (an older version missed files) move into them.
+    ctx.current("linking findings to files");
+    let linked = ctx.case().relink_unattributed(id)?;
+    if linked > 0 {
+        ctx.log(format!("{linked} findings in free space now belong to a file"));
+    }
     ctx.control().item_done();
     Ok(format!("{} entries, {wallets} wallet files", cur.entries))
 }

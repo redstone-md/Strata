@@ -4,6 +4,9 @@
 use super::assemble::Built;
 use super::record::FileRef;
 pub(super) use crate::tree::ORPHANS;
+
+/// Virtual folder holding the file system found before the volume was reformatted.
+pub(super) const REFORMATTED: &str = "$Reformatted";
 use crate::tree::resolve_paths;
 use crate::{EntryState, FileEntry, FileId};
 use std::collections::HashMap;
