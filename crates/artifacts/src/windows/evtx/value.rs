@@ -3,7 +3,7 @@
 use super::binxml::Node;
 use crate::text::utf16_at;
 use strata_kernel::Timestamp;
-use strata_kernel::bytes::{array, i64_le, u8_at, u16_le, u32_le, u64_le};
+use strata_kernel::bytes::{i64_le, u8_at, u16_le, u32_le, u64_le};
 
 pub(super) const TYPE_NULL: u8 = 0x00;
 pub(super) const TYPE_STRING: u8 = 0x01;
@@ -51,7 +51,7 @@ impl Value {
             0x0B => u32_le(b, 0).map_or(Value::Null, |v| Value::Real(f64::from(f32::from_bits(v)))),
             0x0C => u64_le(b, 0).map_or(Value::Null, |v| Value::Real(f64::from_bits(v))),
             0x0D => u32_le(b, 0).map_or(Value::Null, |v| Value::Bool(v != 0)),
-            0x0F => guid(b).map_or(Value::Null, Value::Guid),
+            0x0F => crate::text::guid_at(b, 0).map_or(Value::Null, Value::Guid),
             0x10 => match b.len() {
                 4 => u32_le(b, 0).map_or(Value::Null, |v| Value::Hex(u64::from(v))),
                 _ => u64_le(b, 0).map_or(Value::Null, Value::Hex),
@@ -115,15 +115,6 @@ fn fixed_size(ty: u8) -> Option<usize> {
         0x0F | 0x12 => 16,
         _ => return None,
     })
-}
-
-fn guid(b: &[u8]) -> Option<String> {
-    let raw: [u8; 16] = array(b, 0)?;
-    let d1 = u32_le(&raw, 0)?;
-    let d2 = u16_le(&raw, 4)?;
-    let d3 = u16_le(&raw, 6)?;
-    let tail: String = raw[10..].iter().map(|x| format!("{x:02X}")).collect();
-    Some(format!("{{{d1:08X}-{d2:04X}-{d3:04X}-{:02X}{:02X}-{tail}}}", raw[8], raw[9]))
 }
 
 /// `S-1-5-21-…`: revision, sub-authority count, 48-bit big-endian authority, u32 sub-authorities.
