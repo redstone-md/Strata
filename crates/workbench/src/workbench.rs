@@ -150,6 +150,22 @@ impl Workbench {
     }
 
     pub const CHAIN_ENDPOINT_KEY: &'static str = "chain_endpoint";
+    pub const SCAN_THREADS_KEY: &'static str = "scan_threads";
+
+    /// Detector threads for the deep scan (case setting; default [`Scanner::DEFAULT_WORKERS`]).
+    pub fn scan_threads(&self) -> usize {
+        self.case
+            .setting(Self::SCAN_THREADS_KEY)
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(Scanner::DEFAULT_WORKERS)
+            .clamp(1, 64)
+    }
+
+    pub fn set_scan_threads(&self, threads: usize) -> Result<()> {
+        self.case.set_setting(Self::SCAN_THREADS_KEY, &threads.clamp(1, 64).to_string())
+    }
 
     /// Esplora endpoint used for balance checks (case setting, mempool.space by default).
     pub fn chain_endpoint(&self) -> String {
@@ -250,7 +266,7 @@ impl Workbench {
                 Ok(format!("{n} entries, {wallets} wallet files"))
             }),
             JobKind::Scan => {
-                let scanner = Scanner::new(DetectorCatalog::all());
+                let scanner = Scanner::new(DetectorCatalog::all()).with_workers(self.scan_threads());
                 self.case.scan(job.evidence, &scanner, &job.control).and_then(|s| {
                     let downgraded = crate::triage::Triage::new(&self.case).run(job.evidence)?;
                     Ok(format!("{} hits in {:.0}s, {downgraded} inside system files", s.hits, s.elapsed_secs))

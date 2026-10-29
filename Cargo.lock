@@ -6136,7 +6136,7 @@ dependencies = [
 name = "strata-accounts"
 version = "0.1.0"
 dependencies = [
- "regex",
+ "memchr",
  "serde",
  "serde_json",
  "strata-kernel",
@@ -6264,6 +6264,7 @@ dependencies = [
  "serde",
  "strata-kernel",
  "strata-source",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -1,39 +1,22 @@
 use crate::service::{Service, ServiceKind};
-use crate::text::wide_runs;
-use regex::bytes::Regex;
+use crate::text::{expand, stride_at};
+use memchr::memchr_iter;
+use memchr::memmem::Finder;
 use std::sync::Arc;
 use strata_kernel::Confidence;
 use strata_kernel::scan::{Detector, Hit, HitCategory, HitSink};
 
-/// Shared driver: run `regex` over ASCII bytes and UTF-16LE runs, report absolute offsets.
-struct TextMatcher {
-    regex: Regex,
+/// Characters allowed in each part (ASCII view).
+fn local_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'%' | b'+' | b'-')
 }
 
-impl TextMatcher {
-    fn new(pattern: &str) -> Self {
-        Self { regex: Regex::new(pattern).expect("static pattern") }
-    }
+fn host_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-')
+}
 
-    /// Calls `f(raw_offset, raw_len, matched_text, is_wide)`.
-    fn each(&self, chunk: &[u8], mut f: impl FnMut(usize, usize, &str, bool)) {
-        for m in self.regex.find_iter(chunk) {
-            if let Ok(s) = std::str::from_utf8(m.as_bytes()) {
-                f(m.start(), m.len(), s, false);
-            }
-        }
-        // Cheap prefilter: UTF-16 text has many `x 00` pairs; skip chunks without any.
-        if !chunk.windows(4).any(|w| w[1] == 0 && w[3] == 0 && w[0] > 0x20 && w[2] > 0x20) {
-            return;
-        }
-        for run in wide_runs(chunk, 6) {
-            for m in self.regex.find_iter(&run.text) {
-                if let Ok(s) = std::str::from_utf8(m.as_bytes()) {
-                    f(run.start + 2 * m.start(), 2 * m.len(), s, true);
-                }
-            }
-        }
-    }
+fn url_char(c: u8) -> bool {
+    c.is_ascii_graphic() && !matches!(c, b'<' | b'>' | b'"' | b'\'' | b'`')
 }
 
 fn service_details(text: &str, wide: bool) -> (serde_json::Value, Option<Service>) {
@@ -54,19 +37,9 @@ fn confidence_for(service: Option<Service>) -> Confidence {
     }
 }
 
-pub struct EmailDetector {
-    matcher: TextMatcher,
-}
-
-impl Default for EmailDetector {
-    fn default() -> Self {
-        Self {
-            matcher: TextMatcher::new(
-                r"(?i)[a-z0-9][a-z0-9._%+-]{0,63}@[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})*\.[a-z]{2,10}\b",
-            ),
-        }
-    }
-}
+/// Finds `@` with memchr and expands around it (ASCII or UTF-16LE).
+#[derive(Default)]
+pub struct EmailDetector;
 
 /// Top-level domains seen on old disks. Used to cut addresses glued to following text
 /// (`user@mail.rupass` -> `user@mail.ru`).
@@ -103,27 +76,38 @@ impl Detector for EmailDetector {
     }
 
     fn scan(&self, chunk: &[u8], base: u64, sink: &mut dyn HitSink) {
-        self.matcher.each(chunk, |off, len, text, wide| {
-            let Some(email) = Self::clean(text) else { return };
-            let (details, service) = service_details(&email, wide);
+        for at in memchr_iter(b'@', chunk) {
+            let span = expand(chunk, at, stride_at(chunk, at), 128, local_char, host_char);
+            let Some(email) = Self::clean(span.text.trim_matches(['.', '-'])) else { continue };
+            let (details, service) = service_details(&email, span.wide);
             sink.emit(
-                Hit::new(self.id(), HitCategory::Identity, base + off as u64, len)
+                Hit::new(self.id(), HitCategory::Identity, base + span.start as u64, span.raw_len)
                     .label("e-mail")
                     .value(email)
                     .confidence(if service.is_some() { confidence_for(service) } else { Confidence::MEDIUM })
                     .details(details),
             );
-        });
+        }
     }
 }
 
+/// URL starts, matched in ASCII and UTF-16LE, upper and lower case.
+const URL_ANCHORS: &[&str] = &["http://", "https://", "www.", "HTTP://", "HTTPS://", "WWW."];
+
 pub struct UrlDetector {
-    matcher: TextMatcher,
+    /// `(finder, stride)`: stride 2 for the UTF-16LE form of an anchor.
+    finders: Vec<(Finder<'static>, usize)>,
 }
 
 impl Default for UrlDetector {
     fn default() -> Self {
-        Self { matcher: TextMatcher::new(r"(?i)\b(?:https?://|www\.)[a-z0-9][a-z0-9.-]{1,253}(?:/[!-~&&[^\s<>]]{0,512})?") }
+        let mut finders = Vec::new();
+        for a in URL_ANCHORS {
+            finders.push((Finder::new(a.as_bytes()).into_owned(), 1));
+            let wide: Vec<u8> = a.bytes().flat_map(|b| [b, 0]).collect();
+            finders.push((Finder::new(&wide).into_owned(), 2));
+        }
+        Self { finders }
     }
 }
 
@@ -139,20 +123,33 @@ impl Detector for UrlDetector {
     /// Every disk holds millions of generic URLs (social sites alone gave 5M hits on a 40 GB
     /// disk), so only crypto and payment services are reported, matched on the host.
     fn scan(&self, chunk: &[u8], base: u64, sink: &mut dyn HitSink) {
-        self.matcher.each(chunk, |off, len, text, wide| {
-            let host = text.split("://").last().unwrap_or(text).split('/').next().unwrap_or_default();
-            let (details, service) = service_details(host, wide);
-            if !matches!(service.map(|s| s.kind), Some(ServiceKind::Crypto | ServiceKind::Payment)) {
-                return;
+        for (finder, stride) in &self.finders {
+            for at in finder.find_iter(chunk) {
+                // `www.` right after `://` belongs to a URL its scheme anchor already reported.
+                let before = at.checked_sub(*stride).and_then(|i| chunk.get(i));
+                if before == Some(&b'/') {
+                    continue;
+                }
+                // Expand right only: the anchor is the start of the URL.
+                let span = expand(chunk, at, *stride, 800, |_| false, url_char);
+                let text = span.text.as_str();
+                let host = text.split("://").last().unwrap_or(text).split(['/', '?', '#', ':']).next().unwrap_or_default();
+                if !host.bytes().all(host_char) || !host.contains('.') {
+                    continue;
+                }
+                let (details, service) = service_details(host, span.wide);
+                if !matches!(service.map(|s| s.kind), Some(ServiceKind::Crypto | ServiceKind::Payment)) {
+                    continue;
+                }
+                sink.emit(
+                    Hit::new(self.id(), HitCategory::Url, base + span.start as u64, span.raw_len)
+                        .label(service.map_or("url", |s| s.name))
+                        .value(text)
+                        .confidence(confidence_for(service))
+                        .details(details),
+                );
             }
-            sink.emit(
-                Hit::new(self.id(), HitCategory::Url, base + off as u64, len)
-                    .label(service.map_or("url", |s| s.name))
-                    .value(text)
-                    .confidence(confidence_for(service))
-                    .details(details),
-            );
-        });
+        }
     }
 }
 

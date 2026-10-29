@@ -31,9 +31,13 @@ pub struct Scanner {
 }
 
 impl Scanner {
+    /// Default worker count: evidence is read at disk speed (≈100–200 MB/s) and all detectors
+    /// together sustain ≈150 MB/s per core, so a few workers keep up without hogging the CPU.
+    pub const DEFAULT_WORKERS: usize = 3;
+
     pub fn new(detectors: Vec<Arc<dyn Detector>>) -> Self {
-        let workers = std::thread::available_parallelism().map_or(4, |n| n.get()).max(2) - 1;
-        Self { detectors, chunk_size: 16 << 20, workers }
+        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+        Self { detectors, chunk_size: 16 << 20, workers: Self::DEFAULT_WORKERS.min(cores.saturating_sub(1)).max(1) }
     }
 
     pub fn with_chunk_size(mut self, bytes: usize) -> Self {
@@ -115,6 +119,7 @@ impl Scanner {
                 let rx = chunk_rx.clone();
                 let tx = hit_tx.clone();
                 scope.spawn(move || {
+                    crate::priority::lower_current_thread();
                     for chunk in rx {
                         let hits = self.scan_chunk(&chunk);
                         let end = chunk.base + chunk.owned as u64;

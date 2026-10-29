@@ -25,6 +25,9 @@ enum Command {
     Analyse {
         /// Evidence id; all evidence when omitted.
         id: Option<u32>,
+        /// Detector threads (saved in the case; default 3).
+        #[arg(long)]
+        threads: Option<usize>,
     },
     /// Run a single step: IndexFiles, Scan, Artifacts, ClassifyFiles, Archives, Carve, CheckBalances, Triage.
     Step { kind: String, id: u32 },
@@ -107,7 +110,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}: {:?}", view.title, view.state);
             }
         }
-        Command::Analyse { id } => analyse(&wb, id)?,
+        Command::Analyse { id, threads } => {
+            if let Some(t) = threads {
+                wb.set_scan_threads(t)?;
+            }
+            analyse(&wb, id)?
+        }
         Command::Hits { category, text, min_confidence, limit, json, group } => {
             let categories = category
                 .map(|c| serde_json::from_value::<HitCategory>(serde_json::Value::String(c)))

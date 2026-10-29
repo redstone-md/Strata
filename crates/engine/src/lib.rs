@@ -4,6 +4,7 @@
 //! Sequential reading matters: evidence often lives on slow or failing spinning disks.
 
 mod control;
+mod priority;
 mod scanner;
 
 pub use control::{ScanControl, ScanSnapshot};
