@@ -3,7 +3,7 @@
 
 use crate::results::Recorder;
 use crate::sqlite::{RowExt, SqliteDb};
-use crate::text::host_of;
+use crate::text::{host_of, percent_decode};
 use strata_kernel::{Damage, DamageKind, Timestamp};
 use strata_timeline::EventKind;
 
@@ -49,7 +49,37 @@ impl FirefoxPlaces {
                 rec.emit(prtime(r.int(2)), EventKind::Download, r.text(0), format!("from {} ({} bytes)", r.text(1), r.int(3)));
             });
         }
+        if db.has_table("moz_annos") && db.has_table("moz_anno_attributes") {
+            Self::annotated_downloads(db, rec);
+        }
     }
+
+    /// Firefox ≥ 26 keeps downloads as page annotations: the source URL is the annotated
+    /// place, the saved file is `downloads/destinationFileURI`, the size is in the JSON of
+    /// `downloads/metaData`.
+    fn annotated_downloads(db: &mut SqliteDb, rec: &mut Recorder) {
+        const SQL: &str = "SELECT p.url, d.content, d.dateAdded,
+                (SELECT m.content FROM moz_annos m JOIN moz_anno_attributes mn ON mn.id = m.anno_attribute_id
+                  WHERE m.place_id = d.place_id AND mn.name = 'downloads/metaData')
+            FROM moz_annos d JOIN moz_anno_attributes n ON n.id = d.anno_attribute_id JOIN moz_places p ON p.id = d.place_id
+            WHERE n.name = 'downloads/destinationFileURI'";
+        db.each(SQL, |r| {
+            let size = serde_json::from_str::<serde_json::Value>(&r.text(3))
+                .ok()
+                .and_then(|m| m.get("fileSize").and_then(serde_json::Value::as_i64))
+                .unwrap_or(0);
+            let detail = format!("from {} ({size} bytes)", r.text(0));
+            rec.emit(prtime(r.int(2)), EventKind::Download, file_path(&r.text(1)), detail);
+        });
+    }
+}
+
+/// `file:///C:/Users/a%20b/x.zip` → `C:/Users/a b/x.zip`; `file:///home/a/x` → `/home/a/x`.
+fn file_path(uri: &str) -> String {
+    let Some(rest) = uri.strip_prefix("file://") else { return uri.to_string() };
+    let path = percent_decode(rest);
+    let drive = path.as_bytes().get(1..3).is_some_and(|b| b[0].is_ascii_alphabetic() && b[1] == b':');
+    if drive { path[1..].to_string() } else { path }
 }
 
 pub(crate) struct FirefoxForms;

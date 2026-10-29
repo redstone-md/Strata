@@ -127,13 +127,7 @@ pub fn mac_at(data: &[u8], off: usize) -> Option<String> {
     (raw != [0; 6]).then(|| raw.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":"))
 }
 
-/// Host part of a URL (`https://user@Host:80/x` → `host`).
-pub fn host_of(url: &str) -> Option<String> {
-    let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let host = authority.rsplit('@').next()?.split(':').next()?.trim_start_matches('.');
-    (!host.is_empty()).then(|| host.to_ascii_lowercase())
-}
+pub use strata_accounts::{host_of, percent_decode};
 
 /// Conservative e-mail shape check (`local@domain.tld`).
 pub fn is_email(s: &str) -> bool {

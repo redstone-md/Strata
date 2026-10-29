@@ -11,10 +11,12 @@ mod catalogue;
 mod detectors;
 mod service;
 mod text;
+mod url;
 mod url_accounts;
 
 pub use account::{Account, AccountResolver, AccountSource, IdentifierKind, Observation, SourceRef};
 pub use catalogue::{Catalogue, ServiceEntry, ServiceKind, Years};
 pub use detectors::{EmailDetector, LoginDetector, UrlDetector, detectors};
 pub use service::Service;
+pub use url::{host_of, percent_decode};
 pub use url_accounts::{LOGIN_FIELDS, UrlAccount, UrlAccounts};

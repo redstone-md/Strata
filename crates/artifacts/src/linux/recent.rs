@@ -2,6 +2,7 @@
 //! visited="..">` with ISO-8601 UTC times and the applications that opened each file.
 
 use crate::results::Recorder;
+use crate::text::percent_decode;
 use strata_kernel::Timestamp;
 use strata_timeline::EventKind;
 
@@ -26,26 +27,6 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let start = tag.find(&format!("{name}=\""))? + name.len() + 2;
     let len = tag[start..].find('"')?;
     Some(&tag[start..start + len])
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = |b: u8| (b as char).to_digit(16);
-        match (bytes[i], bytes.get(i + 1).copied().and_then(hex), bytes.get(i + 2).copied().and_then(hex)) {
-            (b'%', Some(a), Some(b)) => {
-                out.push((a * 16 + b) as u8);
-                i += 3;
-            }
-            (b, _, _) => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

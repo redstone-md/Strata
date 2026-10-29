@@ -184,3 +184,57 @@ fn truncated_and_garbage_never_panic() {
     let _ = parse_sqlite("History", &fake);
 }
 
+
+#[test]
+fn legacy_web_data_with_logins_table_reads_autofill_and_logins() {
+    // Chrome ≤ 20 kept a `logins` table inside Web Data; it must not hide the autofill rows.
+    let web = db_bytes(&format!(
+        "CREATE TABLE logins(origin_url VARCHAR, action_url VARCHAR, username_element VARCHAR, username_value VARCHAR,
+            password_element VARCHAR, password_value BLOB, submit_element VARCHAR, signon_realm VARCHAR, date_created INTEGER);
+         CREATE TABLE autofill(name VARCHAR, value VARCHAR, value_lower VARCHAR, pair_id INTEGER PRIMARY KEY, count INTEGER);
+         CREATE TABLE autofill_dates(pair_id INTEGER, date_created INTEGER);
+         CREATE TABLE keywords(id INTEGER PRIMARY KEY, short_name VARCHAR, keyword VARCHAR);
+         INSERT INTO logins VALUES('https://shop.example.com/login','','user','tester.one','pass',x'0102','','https://shop.example.com/',{UNIX});
+         INSERT INTO autofill VALUES('nickname','tester.two','tester.two',1,3);
+         INSERT INTO autofill_dates VALUES(1,{UNIX});"
+    ));
+    let out = parse_sqlite("Web Data", &web);
+    assert!(out.events.iter().all(|e| e.source().artifact == "chrome.web_data"));
+    let form = out.events.iter().find(|e| e.kind() == EventKind::FormInput).expect("autofill row");
+    assert_eq!(form.title(), "nickname = tester.two");
+    assert_eq!(form.at().to_string(), "2011-05-14 17:36:09");
+    let login = out.events.iter().find(|e| e.kind() == EventKind::AccountSeen).expect("legacy login row");
+    assert_eq!(login.title(), "tester.one @ shop.example.com");
+    assert!(out.identities.iter().any(|i| i.value == "tester.one"));
+}
+
+#[test]
+fn firefox_annotated_downloads() {
+    let places = db_bytes(&format!(
+        "CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url LONGVARCHAR, title LONGVARCHAR, rev_host LONGVARCHAR,
+            visit_count INTEGER, hidden INTEGER, typed INTEGER, favicon_id INTEGER, frecency INTEGER, last_visit_date INTEGER);
+         CREATE TABLE moz_historyvisits(id INTEGER PRIMARY KEY, from_visit INTEGER, place_id INTEGER, visit_date INTEGER,
+            visit_type INTEGER, session INTEGER);
+         CREATE TABLE moz_anno_attributes(id INTEGER PRIMARY KEY, name VARCHAR(32) UNIQUE NOT NULL);
+         CREATE TABLE moz_annos(id INTEGER PRIMARY KEY, place_id INTEGER NOT NULL, anno_attribute_id INTEGER,
+            content LONGVARCHAR, flags INTEGER, expiration INTEGER, type INTEGER, dateAdded INTEGER, lastModified INTEGER);
+         INSERT INTO moz_places VALUES(1,'https://downloads.example.com/wallet-setup.exe',NULL,'',1,0,0,0,0,{PRTIME});
+         INSERT INTO moz_places VALUES(2,'https://downloads.example.org/notes.pdf',NULL,'',1,0,0,0,0,{PRTIME});
+         INSERT INTO moz_historyvisits VALUES(1,0,1,{PRTIME},7,0);
+         INSERT INTO moz_historyvisits VALUES(2,0,2,{PRTIME},7,0);
+         INSERT INTO moz_anno_attributes VALUES(1,'downloads/destinationFileURI');
+         INSERT INTO moz_anno_attributes VALUES(2,'downloads/metaData');
+         INSERT INTO moz_annos VALUES(1,1,1,'file:///C:/Users/tester/Downloads/wallet%20setup.exe',0,4,3,{PRTIME},{PRTIME});
+         INSERT INTO moz_annos VALUES(2,1,2,'{{\"state\":1,\"endTime\":1305394600000,\"fileSize\":4242}}',0,4,3,{PRTIME},{PRTIME});
+         INSERT INTO moz_annos VALUES(3,2,1,'file:///home/tester/notes.pdf',0,4,3,{PRTIME},{PRTIME});"
+    ));
+    let out = parse_sqlite("places.sqlite", &places);
+    assert!(out.damage.is_empty(), "{:?}", out.damage);
+    let downloads: Vec<_> = out.events.iter().filter(|e| e.kind() == EventKind::Download).collect();
+    assert_eq!(downloads.len(), 2, "{downloads:?}");
+    assert_eq!(downloads[0].title(), "C:/Users/tester/Downloads/wallet setup.exe");
+    assert_eq!(downloads[0].detail(), "from https://downloads.example.com/wallet-setup.exe (4242 bytes)");
+    assert_eq!(downloads[0].at().to_string(), "2011-05-14 17:36:09");
+    assert_eq!(downloads[1].title(), "/home/tester/notes.pdf");
+    assert_eq!(downloads[1].detail(), "from https://downloads.example.org/notes.pdf (0 bytes)");
+}
