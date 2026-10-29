@@ -43,6 +43,9 @@ fn key_findings_carry_file_times_and_addresses() {
     })
     .unwrap();
 
+    let by_id = case.hits(&crate::HitQuery { ids: vec![1], ..Default::default() }).unwrap();
+    assert_eq!(by_id.len(), 1);
+    assert_eq!(by_id[0].hit.value, "synthetic-wif");
     let found = case.key_findings(0.0).unwrap();
     assert_eq!(found.len(), 1, "addresses without history stay out");
     let k = &found[0];
@@ -108,4 +111,7 @@ fn accounts_leads_and_lead_events_round_trip() {
     .unwrap();
     let events = case.lead_events(100).unwrap();
     assert_eq!(events.iter().map(|e| e.event.title()).collect::<Vec<_>>(), ["https://mtgox.com/", "user @ example.com"]);
+    let picked = case.events_by_id(&[events[1].id]).unwrap();
+    assert_eq!(picked.len(), 1);
+    assert_eq!(picked[0].event.title(), "user @ example.com");
 }

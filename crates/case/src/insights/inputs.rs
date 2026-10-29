@@ -66,6 +66,26 @@ impl Case {
         })
     }
 
+    /// Events by row id (what a lead points at), oldest first.
+    pub fn events_by_id(&self, ids: &[i64]) -> Result<Vec<EventRecord>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list: Vec<String> = ids.iter().map(i64::to_string).collect();
+        self.event_records(&format!("SELECT id, evidence_id, data FROM events WHERE id IN ({}) ORDER BY at, id", list.join(",")))
+    }
+
+    fn event_records(&self, sql: &str) -> Result<Vec<EventRecord>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?, r.get::<_, String>(2)?)))?;
+            Ok(rows
+                .filter_map(|r| r.ok())
+                .filter_map(|(id, ev, data)| Some(EventRecord { id, evidence: EvidenceId::new(ev), event: serde_json::from_str(&data).ok()? }))
+                .collect())
+        })
+    }
+
     /// Non-filesystem events that are crypto-tagged or about accounts, downloads and mail,
     /// oldest first.
     pub fn lead_events(&self, limit: usize) -> Result<Vec<EventRecord>> {
@@ -74,13 +94,6 @@ impl Case {
              WHERE artifact NOT LIKE 'fs.%' AND (crypto = 1 OR kind IN ({ACCOUNT_KINDS}))
              ORDER BY at, id LIMIT {limit}"
         );
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?, r.get::<_, String>(2)?)))?;
-            Ok(rows
-                .filter_map(|r| r.ok())
-                .filter_map(|(id, ev, data)| Some(EventRecord { id, evidence: EvidenceId::new(ev), event: serde_json::from_str(&data).ok()? }))
-                .collect())
-        })
+        self.event_records(&sql)
     }
 }

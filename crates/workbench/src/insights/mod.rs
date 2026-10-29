@@ -73,6 +73,20 @@ impl crate::Workbench {
         self.case().history_of(address)
     }
 
+    /// The findings a lead points at.
+    pub fn lead_hits(&self, lead: &strata_leads::Lead) -> Result<Vec<strata_case::StoredHit>> {
+        let ids: Vec<i64> = lead.hits().collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.case().hits(&strata_case::HitQuery { ids, ..Default::default() })
+    }
+
+    /// The timeline events a lead points at, oldest first.
+    pub fn lead_events(&self, lead: &strata_leads::Lead) -> Result<Vec<strata_leads::EventRecord>> {
+        self.case().events_by_id(&lead.events().collect::<Vec<_>>())
+    }
+
     /// Re-resolve accounts and re-run the lead engine on what the case holds now. Returns
     /// `(accounts, leads)`. Also runs at the end of the balance check.
     pub fn rebuild_insights(&self) -> Result<(usize, usize)> {
