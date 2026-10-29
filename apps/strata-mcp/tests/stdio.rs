@@ -54,7 +54,7 @@ fn initialize_list_and_call_over_stdio() {
     let list = tools["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = list.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(list.iter().all(|t| t["annotations"]["readOnlyHint"] == true), "every tool is marked read-only");
-    for name in ["case_overview", "list_findings", "get_finding", "timeline", "leads", "find_files", "searches", "jobs"] {
+    for name in ["case_overview", "list_findings", "get_finding", "timeline", "leads", "find_files", "searches", "jobs", "list_mail", "get_mail"] {
         assert!(names.contains(&name), "{name} missing from {names:?}");
     }
 

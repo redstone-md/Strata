@@ -25,6 +25,7 @@ clap.workspace = true
 tempfile.workspace = true
 rusqlite.workspace = true
 strata-case.workspace = true
+strata-mail.workspace = true
 strata-kernel.workspace = true
 strata-fs.workspace = true
 strata-timeline = { path = "../../crates/timeline" }
