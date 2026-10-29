@@ -1,0 +1,13 @@
+[package]
+name = "strata-report"
+description = "Case reports: HTML, Markdown, CSV, JSON"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-case.workspace = true
+strata-chain = { path = "../chain" }
+serde.workspace = true
+serde_json.workspace = true

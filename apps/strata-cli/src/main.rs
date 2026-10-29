@@ -41,6 +41,13 @@ enum Command {
     },
     /// Findings shared between disks and files that differ across disks.
     Correlate,
+    /// Export a report: md (Russian), html, csv, json.
+    Report {
+        #[arg(default_value = "html")]
+        format: String,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Show looked-up address balances; `--endpoint` changes the Esplora server.
     Balances {
         #[arg(long)]
@@ -88,6 +95,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             }
+        }
+        Command::Report { format, out } => {
+            let dir = out.unwrap_or_else(|| cli.case.join("reports"));
+            println!("{}", wb.export_report(&format, &dir)?.display());
         }
         Command::Balances { endpoint } => {
             if let Some(url) = endpoint {

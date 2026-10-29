@@ -110,6 +110,17 @@ impl Workbench {
         self.case.set_setting(Self::CHAIN_ENDPOINT_KEY, url)
     }
 
+    /// Write a report (`md`, `html`, `csv`, `json`) and return its path.
+    pub fn export_report(&self, format: &str, dir: &Path) -> Result<std::path::PathBuf> {
+        let renderer = strata_report::renderer_for(format)
+            .ok_or_else(|| strata_kernel::Error::Other(format!("unknown report format {format}")))?;
+        let report = strata_report::CaseReport::gather(&self.case, 0.0)?;
+        std::fs::create_dir_all(dir)?;
+        let path = dir.join(format!("{}-report.{}", self.case.name(), renderer.extension()));
+        std::fs::write(&path, renderer.render(&report))?;
+        Ok(path)
+    }
+
     pub fn balances(&self) -> Result<Vec<AddressBalance>> {
         self.case.balances()
     }

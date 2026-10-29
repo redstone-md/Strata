@@ -4740,6 +4740,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-report"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strata-case",
+ "strata-chain",
+ "strata-kernel",
+]
+
+[[package]]
 name = "strata-source"
 version = "0.1.0"
 dependencies = [
@@ -4773,6 +4784,7 @@ dependencies = [
  "strata-chain",
  "strata-engine",
  "strata-kernel",
+ "strata-report",
  "strata-source",
  "tempfile",
 ]
