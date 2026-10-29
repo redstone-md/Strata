@@ -24,8 +24,9 @@ impl Workbench {
     /// Case setting: resume interrupted jobs when the case opens (on unless set to `0`).
     pub const AUTO_RESUME_KEY: &'static str = "auto_resume_jobs";
     /// Version of the detector and triage rules stored findings were made with. Bump it when
-    /// a rule change alters what is a finding; older cases are re-checked on open.
-    pub const RULES_VERSION: u32 = 2;
+    /// a rule change alters what is a finding or adds a step older cases lack; older cases
+    /// catch up on open (see [`Workbench::recheck_if_rules_changed`]).
+    pub const RULES_VERSION: u32 = 3;
     /// Findings below this confidence are noise: hashes, rows of hex blocks, prose that happens
     /// to pass a checksum, matches inside system files. Lists hide them unless asked.
     pub const NOISE_FLOOR: f32 = 0.2;

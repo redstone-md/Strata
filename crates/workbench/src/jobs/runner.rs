@@ -26,9 +26,9 @@ impl Workbench {
         Ok(job.view())
     }
 
-    /// Re-check stored findings when this version's detector or triage rules are newer than
-    /// the ones the case was scanned with: one background `Recheck` job per scanned disk.
-    /// Returns how many were queued.
+    /// Bring a case made by an older version up to date in the background, per disk:
+    /// below rules version 2 a scanned disk re-checks its findings (`Recheck`); below 3 a disk
+    /// with a file listing reads its mail (`Mail`). Returns how many jobs were queued.
     pub fn recheck_if_rules_changed(self: &Arc<Self>) -> Result<usize> {
         let stored: u32 = self.case.setting(Self::RULES_KEY)?.and_then(|v| v.parse().ok()).unwrap_or(1);
         if stored >= Self::RULES_VERSION {
@@ -36,9 +36,16 @@ impl Workbench {
         }
         let mut queued = 0;
         for disk in self.case.evidence()? {
-            if self.case.scan_state(disk.id)?.is_some() {
-                self.spawn(self.queue.enqueue(&self.case, disk.id, &[JobKind::Recheck])?);
-                queued += 1;
+            let mut kinds = Vec::new();
+            if stored < 2 && self.case.scan_state(disk.id)?.is_some() {
+                kinds.push(JobKind::Recheck);
+            }
+            if stored < 3 && self.case.has_files(disk.id)? {
+                kinds.push(JobKind::Mail);
+            }
+            if !kinds.is_empty() {
+                queued += kinds.len();
+                self.spawn(self.queue.enqueue(&self.case, disk.id, &kinds)?);
             }
         }
         self.case.set_setting(Self::RULES_KEY, &Self::RULES_VERSION.to_string())?;

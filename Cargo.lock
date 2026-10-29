@@ -6462,6 +6462,7 @@ dependencies = [
  "strata-index",
  "strata-kernel",
  "strata-leads",
+ "strata-mail",
  "strata-report",
  "strata-search",
  "strata-source",

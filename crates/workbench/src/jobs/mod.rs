@@ -35,6 +35,8 @@ pub enum JobKind {
     IndexFiles,
     /// Browser history, registry, LNK, prefetch... into the timeline.
     Artifacts,
+    /// Read e-mail: mail files (live and deleted) and messages carved from free space.
+    Mail,
     /// Identify every file by content; flag renamed extensions.
     ClassifyFiles,
     /// Unpack archives (live, deleted, renamed, carved) recursively and analyse their members.
@@ -57,11 +59,12 @@ pub enum JobKind {
 
 impl JobKind {
     /// The "analyse this disk" pipeline, in order.
-    pub const PIPELINE: [JobKind; 8] = [
+    pub const PIPELINE: [JobKind; 9] = [
         Self::IndexFiles,
         Self::Scan,
         Self::RecoverPartitions,
         Self::Artifacts,
+        Self::Mail,
         Self::ClassifyFiles,
         Self::Carve,
         Self::Archives,
@@ -72,6 +75,7 @@ impl JobKind {
         match self {
             Self::IndexFiles => "IndexFiles",
             Self::Artifacts => "Artifacts",
+            Self::Mail => "Mail",
             Self::ClassifyFiles => "ClassifyFiles",
             Self::Archives => "Archives",
             Self::Carve => "Carve",
@@ -104,6 +108,7 @@ impl JobKind {
             Self::Archives => format!("Unpack archives {evidence}"),
             Self::Carve => format!("Carve free space {evidence}"),
             Self::Artifacts => format!("Artefacts and timeline {evidence}"),
+            Self::Mail => format!("Read mail {evidence}"),
             Self::CheckBalances => "Check balances".to_string(),
             Self::RecoverPartitions => format!("Recover partitions {evidence}"),
             Self::Search => format!("Search {evidence}"),

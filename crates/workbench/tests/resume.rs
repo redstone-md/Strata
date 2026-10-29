@@ -28,7 +28,8 @@ fn image(dir: &Path) -> PathBuf {
         .file(b"NOTES   TXT", note.as_bytes())
         .file(b"BUNDLE  ZIP", &bundle)
         .file(b"PHOTO   JPG", &nested)
-        .file(b"MAIL    TXT", b"write to alice.sample@example.org about the wallet");
+        .file(b"MAIL    TXT", b"write to alice.sample@example.org about the wallet")
+        .file(b"INBOX   EML", b"Message-ID: <r@example.org>\r\nDate: Mon, 3 Jan 2011 09:00:00 +0000\r\nFrom: alice.sample@example.org\r\nSubject: wallet\r\n\r\nsee the backup");
     let b = Fat16::new(6 * 2048)
         .file(b"README  TXT", b"nothing here")
         .file(b"ARCHIVE ZIP", &nested)
@@ -62,6 +63,9 @@ fn fingerprint(wb: &Workbench, id: EvidenceId) -> Vec<String> {
     }
     for f in wb.host_facts(None).unwrap() {
         out.push(format!("fact {} {} {}", f.key, f.value, f.source));
+    }
+    for m in wb.messages(&strata_workbench::MessageQuery::default()).unwrap() {
+        out.push(format!("message {} {:?} {} {}", m.subject, m.location.state, m.location.offset, m.copies));
     }
     for m in wb.case().archive_members(id).unwrap() {
         out.push(format!("member {} {} {:?}", m.member_path, m.recovered, m.detected_type));
@@ -103,10 +107,11 @@ fn every_step_resumes_after_a_crash_with_identical_results() {
     assert!(expected.iter().any(|l| l.contains("carve.unallocated")), "free space is carved");
     assert!(expected.iter().any(|l| l.contains("identify.mismatch")), "the renamed archive is flagged");
     assert!(expected.iter().any(|l| l.starts_with("file")), "file types are stored");
+    assert!(expected.iter().any(|l| l.starts_with("message wallet")), "mail is read");
     assert!(expected.iter().any(|l| l.contains("wallet") || l.contains(WIF)), "the key is found");
     drop(clean);
 
-    for kind in [JobKind::IndexFiles, JobKind::Scan, JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives] {
+    for kind in [JobKind::IndexFiles, JobKind::Scan, JobKind::Artifacts, JobKind::Mail, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives] {
         let case = dir.path().join(format!("{kind:?}.strata"));
         {
             let (wb, id) = open(&case, &img);

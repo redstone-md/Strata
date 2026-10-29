@@ -7,6 +7,7 @@ mod balances;
 mod carve;
 mod classify;
 mod index;
+mod mail;
 mod partitions;
 pub(crate) mod recheck;
 pub(crate) mod recover;
@@ -31,6 +32,7 @@ pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Resul
         JobKind::Scan => scan::run(ctx, wb),
         JobKind::RecoverPartitions => partitions::run(ctx),
         JobKind::Artifacts => artifacts::run(ctx),
+        JobKind::Mail => mail::run(ctx, wb),
         JobKind::ClassifyFiles => classify::run(ctx),
         JobKind::Carve => carve::run(ctx, wb),
         JobKind::Archives => archives::run(ctx),
