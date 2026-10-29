@@ -4,6 +4,7 @@ mod archives;
 mod artifacts_job;
 mod carving;
 mod catalog;
+pub mod explore;
 mod file_types;
 mod jobs;
 mod sector_map;
@@ -16,6 +17,10 @@ pub use catalog::DetectorCatalog;
 pub use jobs::{Job, JobId, JobKind, JobState, JobView};
 pub use sector_map::{SectorCell, SectorMap};
 pub use workbench::Workbench;
+pub use explore::{DirNode, FileFilter, FileListQuery, FileListing, FileView};
+pub use strata_case::{FileRow, SearchRecord, SearchResultRow};
+pub use strata_identify::Category as TypeCategory;
+pub use strata_search::{Encoding, Pattern, Scope, SearchQuery, Snippet};
 
 pub use strata_case::{EventQuery, HostFact, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 pub use strata_kernel::scan::HitCategory;

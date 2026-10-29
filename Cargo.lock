@@ -6310,6 +6310,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-search"
+version = "0.1.0"
+dependencies = [
+ "aho-corasick",
+ "regex",
+ "serde",
+ "serde_json",
+ "strata-kernel",
+]
+
+[[package]]
 name = "strata-source"
 version = "0.1.0"
 dependencies = [
@@ -6336,6 +6347,7 @@ name = "strata-volume"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "strata-kernel",
  "strata-source",
 ]
@@ -6347,6 +6359,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "strata-accounts",
  "strata-archive",
  "strata-artifacts",
@@ -6359,8 +6372,10 @@ dependencies = [
  "strata-identify",
  "strata-kernel",
  "strata-report",
+ "strata-search",
  "strata-source",
  "strata-timeline",
+ "strata-volume",
  "tempfile",
 ]
 

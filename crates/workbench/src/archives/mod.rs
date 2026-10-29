@@ -60,6 +60,26 @@ impl<'a> ArchiveUnpacker<'a> {
         OpenOptions { passwords, scratch: Some(self.case.root().join("cache").join("archive-tmp")), external: SevenZipTool::detect() }
     }
 
+    /// Bytes and damage notes of one member (`archive!/dir/file`, nested levels included),
+    /// unpacked again from its archive on the evidence.
+    pub fn extract_member(&self, id: EvidenceId, member_path: &str) -> Result<(Vec<u8>, Vec<String>)> {
+        let not_found = || strata_kernel::Error::Other(format!("{member_path}: no such archive member"));
+        let archive = member_path.split_once("!/").map(|(a, _)| a).ok_or_else(not_found)?;
+        let finder = TargetFinder::new(self.case);
+        let target = finder.find(id)?.into_iter().find(|t| t.name == archive).ok_or_else(not_found)?;
+        let bytes = finder.read(id, &target)?;
+        let unpacker = Unpacker::new(UnpackLimits::default(), self.options());
+        let mut found = None;
+        unpacker.unpack(&target.name, &bytes, target.hint, &mut |m| {
+            if m.path == member_path {
+                found = Some((m.bytes.to_vec(), m.damage.iter().map(|d| d.note().to_string()).collect()));
+                return ControlFlow::Break(());
+            }
+            ControlFlow::Continue(())
+        });
+        found.ok_or_else(not_found)
+    }
+
     pub fn run(&self, id: EvidenceId, control: &ScanControl) -> Result<ArchiveSummary> {
         let finder = TargetFinder::new(self.case);
         let targets = finder.find(id)?;

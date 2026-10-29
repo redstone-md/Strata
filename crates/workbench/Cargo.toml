@@ -20,10 +20,14 @@ strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
 strata-timeline = { path = "../timeline" }
 strata-report = { path = "../report" }
+strata-search.workspace = true
+strata-volume.workspace = true
+sha2.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+strata-fs = { workspace = true, features = ["testkit"] }
 strata-identify = { path = "../identify" }

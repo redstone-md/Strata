@@ -126,7 +126,7 @@ impl Workbench {
                     return;
                 }
                 // Follow-ups: each one is optional and runs only while nothing was cancelled.
-                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives, JobKind::CheckBalances] {
+                for kind in [JobKind::RecoverPartitions, JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives, JobKind::CheckBalances] {
                     let job = this.enqueue(kind, evidence);
                     this.run_job(&job);
                     if job.control.is_cancelled() {
@@ -226,6 +226,8 @@ impl Workbench {
     /// Re-detect volumes, re-map stored hits to files, then re-run triage.
     pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
         self.case.refresh_volumes(evidence)?;
+        // Re-detection only knows table and sweep volumes; add back the deep-scan ones.
+        crate::explore::PartitionRecovery::new(&self.case).run(evidence)?;
         let n = self.case.reattribute(evidence)?;
         Ok((n, self.triage(evidence)?))
     }
@@ -245,6 +247,9 @@ impl Workbench {
             JobKind::Carve => format!("Carve free space {evidence}"),
             JobKind::Artifacts => format!("Artefacts and timeline {evidence}"),
             JobKind::CheckBalances => "Check balances".to_string(),
+            JobKind::RecoverPartitions => format!("Recover partitions {evidence}"),
+            JobKind::Search => format!("Search {evidence}"),
+            JobKind::Recover => format!("Recover files {evidence}"),
         };
         let job = Arc::new(Job {
             id: JobId(jobs.len() as u32 + 1),
@@ -256,6 +261,37 @@ impl Workbench {
         });
         jobs.push(job.clone());
         job
+    }
+
+    /// Run `work` as a background job of `kind` with its own title (jobs that carry
+    /// parameters: searches, file recovery). Returns at once.
+    pub(crate) fn spawn_job(
+        self: &Arc<Self>,
+        kind: JobKind,
+        evidence: EvidenceId,
+        title: String,
+        work: impl FnOnce(&Self, &ScanControl) -> Result<String> + Send + 'static,
+    ) -> JobId {
+        let job = self.enqueue(kind, evidence);
+        let job = {
+            let mut jobs = self.jobs.lock();
+            let titled = Arc::new(Job { title, control: job.control.clone(), state: Mutex::new(JobState::Queued), ..*job });
+            if let Some(slot) = jobs.iter_mut().find(|j| j.id == job.id) {
+                *slot = titled.clone();
+            }
+            titled
+        };
+        let this = self.clone();
+        let id = job.id;
+        std::thread::spawn(move || {
+            *job.state.lock() = JobState::Running;
+            let result = work(&this, &job.control);
+            *job.state.lock() = match result {
+                Ok(msg) => JobState::Done(msg),
+                Err(e) => JobState::Failed(e.to_string()),
+            };
+        });
+        id
     }
 
     fn run_job(&self, job: &Job) {
@@ -283,6 +319,8 @@ impl Workbench {
             JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
                 .run(job.evidence, &job.control)
                 .map(|(n, w)| format!("{n} files carved, {w} wallets")),
+            JobKind::RecoverPartitions => crate::explore::PartitionRecovery::new(&self.case).run(job.evidence).map(|r| r.describe()),
+            JobKind::Search | JobKind::Recover => Err(strata_kernel::Error::Other("this job starts from the Search or Files screen".into())),
         };
         *job.state.lock() = match result {
             _ if job.control.is_cancelled() => JobState::Cancelled,

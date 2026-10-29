@@ -23,6 +23,12 @@ pub enum JobKind {
     Scan,
     /// Look up on-chain balances of every found or derived address.
     CheckBalances,
+    /// Turn partition structures the deep scan found into recovered volumes.
+    RecoverPartitions,
+    /// Search the disk for text, bytes or a pattern.
+    Search,
+    /// Copy selected files (live or deleted) out of the evidence.
+    Recover,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
