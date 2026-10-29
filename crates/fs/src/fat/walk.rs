@@ -5,7 +5,8 @@ use super::bpb::Bpb;
 use super::dir::{self, DirBuffer, DirRecord};
 use super::dirent::ShortEntry;
 use super::table::{ChainEnd, FatTable};
-use crate::alloc::{ClusterMap, ExtentList};
+use crate::alloc::ClusterMap;
+use crate::heap::ClusterHeap;
 use crate::{EntryState, FileEntry, FileId};
 use std::collections::{HashSet, VecDeque};
 use strata_kernel::{ByteRange, Damage, DamageKind};
@@ -63,6 +64,10 @@ impl<'a> Walker<'a> {
         self.bpb.kind() == FsKind::Fat32
     }
 
+    fn heap(&self) -> &'a ClusterHeap {
+        self.bpb.heap()
+    }
+
     fn is_used(&self, cluster: u32) -> bool {
         cluster >= 2 && self.used.is_used(u64::from(cluster - 2))
     }
@@ -75,53 +80,36 @@ impl<'a> Walker<'a> {
                 buf.push(r.start(), &self.source.read_vec(r.start(), r.len() as usize).ok()?);
             }
             DirLoc::Chain(start) => {
-                let limit = (MAX_DIR_BYTES / self.bpb.cluster_size()).max(1) as usize;
+                let limit = (MAX_DIR_BYTES / self.heap().cluster_size()).max(1) as usize;
                 let chain = self.fat.chain(start, limit);
                 if let ChainEnd::Broken(why) = chain.end() {
-                    let at = self.cluster_range(start);
+                    let at = self.heap().cluster_range(start);
                     self.entries[owner].damage.push(Damage::corrupt(at, format!("directory {why}")));
                 }
-                self.read_clusters(chain.clusters(), &mut buf);
+                self.heap().read_clusters(self.source, chain.clusters(), &mut buf);
             }
             DirLoc::Recovered(start) => self.read_recovered_dir(start, owner, &mut buf)?,
         }
         Some(buf)
     }
 
-    /// Read clusters, merging physically consecutive ones into single reads.
-    fn read_clusters(&self, clusters: &[u32], buf: &mut DirBuffer) {
-        let cs = self.bpb.cluster_size();
-        let mut i = 0;
-        while i < clusters.len() {
-            let mut j = i + 1;
-            while j < clusters.len() && clusters[j] == clusters[j - 1].wrapping_add(1) {
-                j += 1;
-            }
-            if let Some(off) = self.bpb.cluster_offset(clusters[i]) {
-                let data = self.source.read_vec(off, ((j - i) as u64 * cs) as usize).unwrap_or_default();
-                buf.push(off, &data);
-            }
-            i = j;
-        }
-    }
-
     /// A deleted directory is trusted only if its first cluster still starts with its own `.`
     /// entry; following clusters are taken while free and still holding directory entries.
     fn read_recovered_dir(&mut self, start: u32, owner: usize, buf: &mut DirBuffer) -> Option<()> {
-        let cs = self.bpb.cluster_size() as usize;
-        let at = self.cluster_range(start);
-        let first = self.source.read_vec(self.bpb.cluster_offset(start)?, cs).ok()?;
+        let cs = self.heap().cluster_size() as usize;
+        let at = self.heap().cluster_range(start);
+        let first = self.source.read_vec(self.heap().cluster_offset(start)?, cs).ok()?;
         let intact = ShortEntry::parse(&first).is_some_and(|s| s.is_self_entry(start));
         if !intact || self.is_used(start) {
             self.entries[owner].damage.push(Damage::missing(Some(at), "deleted directory overwritten; contents lost"));
             return None;
         }
         buf.push(at.start(), &first);
-        for c in (start + 1..start.saturating_add(MAX_RECOVERED_DIR_CLUSTERS)).take_while(|c| self.bpb.is_cluster(*c)) {
+        for c in (start + 1..start.saturating_add(MAX_RECOVERED_DIR_CLUSTERS)).take_while(|c| self.heap().is_cluster(*c)) {
             if self.is_used(c) {
                 break;
             }
-            let Some(off) = self.bpb.cluster_offset(c) else { break };
+            let Some(off) = self.heap().cluster_offset(c) else { break };
             let data = self.source.read_vec(off, cs).ok()?;
             let mut probe = DirBuffer::default();
             probe.push(off, &data);
@@ -131,10 +119,6 @@ impl<'a> Walker<'a> {
             buf.push(off, &data);
         }
         Some(())
-    }
-
-    fn cluster_range(&self, cluster: u32) -> ByteRange {
-        ByteRange::new(self.bpb.cluster_offset(cluster).unwrap_or(0), self.bpb.cluster_size())
     }
 
     /// Add a record under `parent`; returns the directory to descend into, if any.
@@ -163,7 +147,7 @@ impl<'a> Walker<'a> {
         }
         let idx = self.entries.len();
         self.entries.push(entry);
-        if !is_dir || !self.bpb.is_cluster(cluster) || !self.visited.insert(cluster) {
+        if !is_dir || !self.heap().is_cluster(cluster) || !self.visited.insert(cluster) {
             return None;
         }
         Some((idx, if deleted { DirLoc::Recovered(cluster) } else { DirLoc::Chain(cluster) }))
@@ -171,7 +155,7 @@ impl<'a> Walker<'a> {
 
     fn first_cluster(&self, short: &ShortEntry, deleted: bool) -> u32 {
         let full = short.cluster(self.fat32());
-        if deleted && !self.bpb.is_cluster(full) && self.bpb.is_cluster(short.cluster_low()) {
+        if deleted && !self.heap().is_cluster(full) && self.heap().is_cluster(short.cluster_low()) {
             return short.cluster_low();
         }
         full
@@ -181,18 +165,14 @@ impl<'a> Walker<'a> {
         if entry.size == 0 {
             return;
         }
-        let cs = self.bpb.cluster_size();
         let at = ByteRange::new(entry.native_id, 32);
-        if !self.bpb.is_cluster(cluster) {
+        if !self.heap().is_cluster(cluster) {
             entry.damage.push(Damage::corrupt(at, "non-empty file has no valid first cluster"));
             return;
         }
-        let need = entry.size.div_ceil(cs) as usize;
+        let need = self.heap().clusters_for(entry.size) as usize;
         let chain = self.fat.chain(cluster, need);
-        let mut list = ExtentList::default();
-        for c in chain.clusters() {
-            list.push(self.bpb.cluster_offset(*c), cs);
-        }
+        let list = self.heap().extents_of(chain.clusters());
         if let ChainEnd::Broken(why) = chain.end() {
             entry.damage.push(Damage::corrupt(at, format!("file {why}")));
         }
@@ -204,24 +184,8 @@ impl<'a> Walker<'a> {
 
     /// Undelete heuristic: the file is assumed to occupy consecutive clusters from its first.
     fn recover_content(&self, entry: &mut FileEntry, cluster: u32) {
-        if entry.size == 0 {
-            return;
-        }
-        let cs = self.bpb.cluster_size();
-        let Some(off) = self.bpb.cluster_offset(cluster) else {
-            entry.damage.push(Damage::missing(None, "deleted file's first cluster is unknown"));
-            return;
-        };
-        let wanted = entry.size.div_ceil(cs);
-        let available = u64::from(self.bpb.max_cluster() - cluster + 1);
-        let clusters = wanted.min(available);
-        let range = ByteRange::new(off, clusters * cs);
-        entry.extents = vec![crate::Extent { file_offset: 0, volume_offset: Some(off), len: entry.size.min(clusters * cs) }];
-        if clusters < wanted {
-            entry.damage.push(Damage::new(DamageKind::Truncated, Some(range), "deleted file runs past the volume end"));
-        }
-        if self.used.any_used(u64::from(cluster - 2), clusters) {
-            entry.damage.push(Damage::missing(Some(range), "clusters now allocated to another file; content likely overwritten"));
-        }
+        let (extents, damage) = self.heap().contiguous(cluster, entry.size, &self.used, true);
+        entry.extents = extents;
+        entry.damage.extend(damage);
     }
 }

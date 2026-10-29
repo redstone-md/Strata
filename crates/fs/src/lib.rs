@@ -4,9 +4,11 @@
 //! shared [`ExtentReader`], so the rest of Strata never cares which filesystem a file came from.
 
 mod alloc;
+mod dirbuf;
 mod entry;
 mod extent;
 mod fat;
+mod heap;
 mod ntfs;
 mod options;
 mod ownership;

@@ -3,7 +3,7 @@
 mod bpb;
 mod dir;
 mod dirent;
-mod table;
+pub(crate) mod table;
 mod walk;
 
 #[cfg(test)]
@@ -24,10 +24,10 @@ pub(crate) fn open(source: Arc<dyn BlockSource>) -> Result<FsTree> {
     let src = source.as_ref();
     let (bpb, mut damage) = Bpb::locate(src);
     let bpb = bpb.ok_or_else(|| Error::format("no valid FAT boot sector"))?;
-    let (fat, fat_damage) = FatTable::load(src, &bpb);
+    let (fat, fat_damage) = FatTable::load(src, &bpb.fat_layout());
     damage.extend(fat_damage);
     let (entries, used, walk_damage) = Walker::new(src, &bpb, &fat).walk();
     damage.extend(walk_damage);
-    let unallocated = used.free_ranges(bpb.data_start(), bpb.cluster_size());
+    let unallocated = used.free_ranges(bpb.heap().start(), bpb.heap().cluster_size());
     Ok(FsTree::new(bpb.kind(), source, entries, unallocated, damage))
 }
