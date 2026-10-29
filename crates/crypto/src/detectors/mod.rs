@@ -15,7 +15,7 @@ pub mod text;
 mod wif;
 
 pub use address::AddressDetector;
-pub use bdb::{BdbDetector, BdbMeta};
+pub use bdb::BdbDetector;
 pub use context::Context;
 pub use der::DerKeyDetector;
 pub use extended::ExtendedKeyDetector;

@@ -3,58 +3,30 @@
 //! 64 KiB turn a generic BDB hit into a high-confidence wallet hit.
 
 use super::report::hit;
+use crate::wallets::bdb::{Endian, MetaPage};
 use crate::wallets::records::{record_prefixes, RECORD_TYPES};
 use aho_corasick::AhoCorasick;
 use serde_json::json;
 use std::sync::LazyLock;
-use strata_kernel::bytes;
 use strata_kernel::scan::{Detector, HitCategory, HitSink};
 use strata_kernel::Confidence;
 
 const ALIGN: u64 = 512;
 const RECORD_WINDOW: usize = 64 * 1024;
-const MAGIC_BTREE: u32 = 0x0005_3162;
-const MAGIC_HASH: u32 = 0x0006_1561;
 const META_HASH: u8 = 8;
 const META_BTREE: u8 = 9;
 
 static RECORDS: LazyLock<AhoCorasick> =
     LazyLock::new(|| AhoCorasick::new(record_prefixes()).expect("static patterns"));
 
-/// Fields of a plausible BDB metadata page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BdbMeta {
-    pub btree: bool,
-    pub big_endian: bool,
-    pub version: u32,
-    pub page_size: u32,
-    pub last_pgno: u32,
-}
-
-impl BdbMeta {
-    /// Port of `valid_bdb_wallet_header`, extended with endianness, page type and pgno 0.
-    pub fn parse(page: &[u8]) -> Option<Self> {
-        let le = bytes::u32_le(page, 12)?;
-        let (big_endian, magic) = match le {
-            MAGIC_BTREE | MAGIC_HASH => (false, le),
-            _ => (true, bytes::u32_be(page, 12)?),
-        };
-        let btree = match magic {
-            MAGIC_BTREE => true,
-            MAGIC_HASH => false,
-            _ => return None,
-        };
-        let rd = |off| if big_endian { bytes::u32_be(page, off) } else { bytes::u32_le(page, off) };
-        let pgno = rd(8)?;
-        let version = rd(16)?;
-        let page_size = rd(20)?;
-        let page_type = bytes::u8_at(page, 25)?;
-        let last_pgno = rd(32)?;
-        let type_ok = page_type == if btree { META_BTREE } else { META_HASH };
-        let size_ok = page_size.is_power_of_two() && (512..=65536).contains(&page_size);
-        (pgno == 0 && (1..=20).contains(&version) && size_ok && type_ok)
-            .then_some(Self { btree, big_endian, version, page_size, last_pgno })
-    }
+/// A metadata page as written at the start of a BDB file: the shared wallet parser's
+/// validation, plus page number 0 and a matching meta page type (fewer false positives
+/// when probing raw disk sectors).
+pub fn meta_at(page: &[u8]) -> Option<MetaPage> {
+    let meta = MetaPage::parse(page)?;
+    let pgno = meta.endian.u32(page, 8)?;
+    let want_type = if meta.is_btree() { META_BTREE } else { META_HASH };
+    (pgno == 0 && meta.page_type == want_type).then_some(meta)
 }
 
 #[derive(Default)]
@@ -94,7 +66,7 @@ impl Detector for BdbDetector {
         let first = ((ALIGN - base % ALIGN) % ALIGN) as usize;
         let mut pos = first;
         while pos + 36 <= chunk.len() {
-            if let Some(meta) = chunk.get(pos..).and_then(BdbMeta::parse) {
+            if let Some(meta) = chunk.get(pos..).and_then(meta_at) {
                 let end = pos.saturating_add(RECORD_WINDOW).min(chunk.len());
                 let (records, strong) = Self::wallet_records(&chunk[pos..end]);
                 let wallet = strong && records.len() >= 2;
@@ -103,15 +75,15 @@ impl Detector for BdbDetector {
                 } else {
                     (Confidence::new(0.2), "Berkeley DB file")
                 };
-                let size = u64::from(meta.last_pgno).saturating_add(1) * u64::from(meta.page_size);
+                let size = u64::from(meta.last_pgno).saturating_add(1) * meta.page_size as u64;
                 sink.emit(
-                    hit(self.id(), HitCategory::Wallet, base, pos, meta.page_size as usize)
+                    hit(self.id(), HitCategory::Wallet, base, pos, meta.page_size)
                         .confidence(confidence)
                         .label(label)
                         .value(format!("bdb@{:#x}", base.saturating_add(pos as u64)))
                         .details(json!({
-                            "db_type": if meta.btree { "btree" } else { "hash" },
-                            "big_endian": meta.big_endian,
+                            "db_type": if meta.is_btree() { "btree" } else { "hash" },
+                            "big_endian": meta.endian == Endian::Big,
                             "version": meta.version,
                             "page_size": meta.page_size,
                             "last_pgno": meta.last_pgno,
@@ -128,7 +100,7 @@ impl Detector for BdbDetector {
 #[cfg(test)]
 pub(crate) fn synthetic_meta(page_size: u32, last_pgno: u32) -> Vec<u8> {
     let mut page = vec![0u8; page_size as usize];
-    page[12..16].copy_from_slice(&MAGIC_BTREE.to_le_bytes());
+    page[12..16].copy_from_slice(&0x0005_3162u32.to_le_bytes());
     page[16..20].copy_from_slice(&9u32.to_le_bytes());
     page[20..24].copy_from_slice(&page_size.to_le_bytes());
     page[25] = META_BTREE;
@@ -143,12 +115,15 @@ mod tests {
     #[test]
     fn meta_validation() {
         let page = synthetic_meta(4096, 3);
-        let meta = BdbMeta::parse(&page).unwrap();
-        assert!(meta.btree && !meta.big_endian);
+        let meta = meta_at(&page).unwrap();
+        assert!(meta.is_btree() && meta.endian == Endian::Little);
         let mut bad = page.clone();
         bad[20..24].copy_from_slice(&3000u32.to_le_bytes());
-        assert!(BdbMeta::parse(&bad).is_none());
-        assert!(BdbMeta::parse(&page[..20]).is_none());
+        assert!(meta_at(&bad).is_none());
+        assert!(meta_at(&page[..20]).is_none());
+        let mut not_first = page.clone();
+        not_first[8] = 1;
+        assert!(meta_at(&not_first).is_none());
     }
 
     #[test]
