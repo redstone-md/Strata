@@ -80,6 +80,15 @@ fn ensure(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(SCHEMA)
 }
 
+/// The tables exist (reads run on read-only connections and cannot create them).
+fn present(conn: &Connection) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT COUNT(*) = 2 FROM sqlite_master WHERE type = 'table' AND name IN ('searches', 'search_results')",
+        [],
+        |r| r.get(0),
+    )
+}
+
 impl Case {
     /// Start a search record; results are added with [`Case::store_search_results`].
     pub fn begin_search(&self, query_json: &str, summary: &str) -> Result<i64> {
@@ -112,7 +121,9 @@ impl Case {
 
     pub fn search_record(&self, id: i64) -> Result<Option<SearchRecord>> {
         self.with_conn(|conn| {
-            ensure(conn)?;
+            if !present(conn)? {
+                return Ok(None);
+            }
             conn.query_row("SELECT id, query, summary, created_at, state, results, truncated FROM searches WHERE id = ?1", [id], record)
                 .optional()
         })
@@ -121,7 +132,9 @@ impl Case {
     /// Searches, newest first.
     pub fn searches(&self, limit: usize) -> Result<Vec<SearchRecord>> {
         self.with_conn(|conn| {
-            ensure(conn)?;
+            if !present(conn)? {
+                return Ok(Vec::new());
+            }
             let mut stmt = conn.prepare(
                 "SELECT id, query, summary, created_at, state, results, truncated FROM searches ORDER BY id DESC LIMIT ?1",
             )?;
@@ -133,7 +146,9 @@ impl Case {
     /// Results of one search in disk order, a page at a time.
     pub fn search_results(&self, search: i64, offset: usize, limit: usize) -> Result<Vec<SearchResultRow>> {
         self.with_conn(|conn| {
-            ensure(conn)?;
+            if !present(conn)? {
+                return Ok(Vec::new());
+            }
             let mut stmt = conn.prepare(
                 "SELECT search_id, evidence_id, offset, len, encoding, context, context_start, preview, match_from, match_to,
                         volume_idx, file_path, file_state, file_offset, location
@@ -164,7 +179,9 @@ impl Case {
 
     pub fn search_result_count(&self, search: i64) -> Result<u64> {
         self.with_conn(|conn| {
-            ensure(conn)?;
+            if !present(conn)? {
+                return Ok(0);
+            }
             conn.query_row("SELECT COUNT(*) FROM search_results WHERE search_id = ?1", [search], |r| r.get::<_, i64>(0)).map(|n| n as u64)
         })
     }

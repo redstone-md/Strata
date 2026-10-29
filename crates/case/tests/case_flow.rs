@@ -38,3 +38,13 @@ fn two_disks_share_an_identity() {
     case.scan(a.id, &scanner, &ScanControl::default()).unwrap();
     assert_eq!(case.hits(&HitQuery::default()).unwrap().len(), 2);
 }
+
+#[test]
+fn a_case_without_searches_lists_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let case = Case::open(&dir.path().join("t.strata")).unwrap();
+    assert!(case.searches(10).unwrap().is_empty());
+    assert!(case.search_record(1).unwrap().is_none());
+    assert!(case.search_results(1, 0, 10).unwrap().is_empty());
+    assert_eq!(case.search_result_count(1).unwrap(), 0);
+}
