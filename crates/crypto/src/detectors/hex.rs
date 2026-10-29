@@ -1,6 +1,7 @@
 //! Raw 64-hex-digit private keys. Hex runs of this length are mostly hashes, so a run is
 //! only reported when it is a valid scalar AND its surroundings say "key": a wallet keyword
-//! within the context radius, or the value standing alone on its line.
+//! labelling it, a strong wallet word within the context radius, or the value standing alone
+//! on its line.
 
 use super::context::{Context, CONTEXT_RADIUS};
 use super::report::{hit, key_details, with};
@@ -21,6 +22,12 @@ const HASH_LOOKBACK: usize = 48;
 /// A hash word this close before the run labels it outright (`SHA256: `, `sha256:`,
 /// `"digest": "`), even when wallet words are nearby (apt lists describe wallet packages).
 const HASH_LABEL_LOOKBACK: usize = 16;
+/// Bytes around a run within which a word labels it (`key: `, `"seed":"`). Common words
+/// further away (`key`, `secret`, `seed` anywhere in a page) say nothing about the run.
+const LABEL_RADIUS: usize = 40;
+/// Leading or trailing zero digits a random 256-bit key practically never has (2^-32): such
+/// values are counters, padded fields and table entries.
+const ZERO_RUN: usize = 8;
 /// Confidence of a run inside a block of hex lines (fonts, dumps, certificates) with no
 /// wallet word near it: kept, but below the default noise threshold.
 const HEX_BLOCK_CONFIDENCE: f32 = 0.15;
@@ -88,6 +95,11 @@ impl HexKeyDetector {
         if upper && lower || !(upper || lower) {
             return false;
         }
+        let leading = text.iter().take_while(|b| **b == b'0').count();
+        let trailing = text.iter().rev().take_while(|b| **b == b'0').count();
+        if leading >= ZERO_RUN || trailing >= ZERO_RUN {
+            return false;
+        }
         let mut seen = 0u32;
         for b in text {
             seen |= 1 << (b.to_ascii_lowercase() as u32 % 32);
@@ -145,8 +157,10 @@ impl HexKeyDetector {
         prev.is_some_and(hex_row) || next.is_some_and(hex_row)
     }
 
-    fn confidence(ctx: &Context) -> Option<Confidence> {
-        let c = match (ctx.strong(), ctx.weak(), ctx.alone_on_line()) {
+    /// `ctx` covers the context radius, `label` only the few bytes next to the run: a strong
+    /// word far away counts like a weak label, a weak word far away not at all.
+    fn confidence(ctx: &Context, label: &Context) -> Option<Confidence> {
+        let c = match (label.strong(), ctx.strong() || label.weak(), ctx.alone_on_line()) {
             (true, _, true) => 0.75,
             (true, _, false) => 0.6,
             (false, true, true) => 0.45,
@@ -182,11 +196,12 @@ impl Detector for HexKeyDetector {
             {
                 return;
             }
-            let Some(mut confidence) = Self::confidence(&ctx) else { return };
+            let label = Context::around(chunk, run.start, end, LABEL_RADIUS, run.encoding);
+            let Some(mut confidence) = Self::confidence(&ctx, &label) else { return };
             let ascii = matches!(run.encoding, Encoding::Ascii);
             let noise = Self::in_hex_block(chunk, run.start, end)
                 || ascii && (Self::in_binary(chunk, run.start, end) || Self::json_value_of_other_field(chunk, run.start));
-            if !ctx.strong() && noise {
+            if !label.strong() && noise {
                 confidence = Confidence::new(HEX_BLOCK_CONFIDENCE);
             }
             let details = with(
@@ -291,5 +306,41 @@ mod json_tests {
     #[test]
     fn a_bare_hex_line_is_noise() {
         assert!(confidence(&format!("notes\n{KEY}\nend\n")).is_some_and(|c| c <= HEX_BLOCK_CONFIDENCE));
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+    use strata_kernel::scan::Hit;
+
+    const KEY: &str = "0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d";
+
+    fn confidence(text: &str) -> Option<f32> {
+        let mut hits: Vec<Hit> = Vec::new();
+        HexKeyDetector::default().scan(text.as_bytes(), 0, &mut hits);
+        hits.first().map(|h| h.confidence.get())
+    }
+
+    #[test]
+    fn a_common_word_far_away_says_nothing() {
+        let filler = "lorem ipsum dolor sit amet ".repeat(4);
+        assert_eq!(confidence(&format!("the key of the map {filler} value={KEY};")), None);
+        assert!(confidence(&format!("key: {KEY};")).is_some_and(|c| c > HEX_BLOCK_CONFIDENCE));
+    }
+
+    #[test]
+    fn a_strong_word_far_away_counts_like_a_weak_label() {
+        let filler = "lorem ipsum dolor sit amet ".repeat(4);
+        let far = confidence(&format!("my bitcoin {filler} value={KEY};")).unwrap();
+        let near = confidence(&format!("bitcoin privkey={KEY};")).unwrap();
+        assert!(far < near, "{far} {near}");
+    }
+
+    #[test]
+    fn zero_padded_values_are_not_keys() {
+        assert_eq!(confidence(&format!("privkey: 00000000{}", &KEY[8..])), None);
+        assert_eq!(confidence(&format!("privkey: {}00000000", &KEY[..56])), None);
+        assert!(confidence(&format!("privkey: {KEY}")).is_some());
     }
 }

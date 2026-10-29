@@ -25,8 +25,21 @@ use strata_kernel::Result;
 
 pub(crate) use archives::PASSWORDS_KEY;
 
-/// Run one step; returns its summary in words.
+/// Run one step; returns its summary in words. Steps that store findings outside the main
+/// scan (files inside archives, carved data, artifacts) end with triage, so their findings
+/// in system files and repeated constants are judged like the scan's.
 pub(crate) fn run(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Result<String> {
+    let summary = step(ctx, kind, wb)?;
+    let stores_findings =
+        matches!(kind, JobKind::Artifacts | JobKind::ClassifyFiles | JobKind::Carve | JobKind::Archives | JobKind::Recover);
+    if stores_findings && !ctx.should_stop() {
+        ctx.current("re-applying triage");
+        crate::triage::Triage::new(ctx.case()).run(ctx.evidence())?;
+    }
+    Ok(summary)
+}
+
+fn step(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Result<String> {
     match kind {
         JobKind::IndexFiles => index::run(ctx),
         JobKind::Scan => scan::run(ctx, wb),

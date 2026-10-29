@@ -38,9 +38,9 @@ impl Workbench {
         for disk in self.case.evidence()? {
             let mut kinds = Vec::new();
             let scanned = self.case.scan_state(disk.id)?.is_some();
-            // Detector rules changed in versions 2, 5 and 7; Recheck also tidies (repeat cap
+            // Detector rules changed in versions 2, 5, 7 and 8; Recheck also tidies (repeat cap
             // and triage, changed in 4).
-            if stored < 7 && scanned {
+            if stored < 8 && scanned {
                 kinds.push(JobKind::Recheck);
             }
             let indexed = self.case.has_files(disk.id)?;

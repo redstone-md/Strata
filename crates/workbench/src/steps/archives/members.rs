@@ -13,6 +13,8 @@ use strata_kernel::scan::{Detector, Hit, HitCategory};
 const CHUNK: usize = 16 << 20;
 /// Wallet files are small; bigger members are not parsed whole.
 const MAX_WALLET_BYTES: usize = 256 << 20;
+/// Confidence of a wallet file with no keys, addresses or encrypted content.
+const EMPTY_WALLET_CONFIDENCE: f32 = 0.1;
 
 pub(crate) struct MemberAnalyzer {
     detectors: Vec<Arc<dyn Detector>>,
@@ -71,6 +73,9 @@ impl MemberAnalyzer {
             return None;
         }
         let report = strata_crypto::analyze_wallet(m.bytes)?;
+        // A wallet-shaped file with nothing inside (an empty MultiBit stub, a template) is
+        // kept for the record but stays below the noise floor.
+        let empty = report.keys().is_empty() && report.addresses().is_empty() && report.encrypted() != Some(true);
         Some(
             Hit::new("wallet.archive", HitCategory::Wallet, 0, m.bytes.len())
                 .label(format!(
@@ -79,7 +84,7 @@ impl MemberAnalyzer {
                     if report.encrypted() == Some(true) { " (encrypted)" } else { "" }
                 ))
                 .value(format!("{} keys, {} addresses", report.keys().len(), report.addresses().len()))
-                .confidence(Confidence::CERTAIN)
+                .confidence(if empty { Confidence::new(EMPTY_WALLET_CONFIDENCE) } else { Confidence::CERTAIN })
                 .details(report.to_json()),
         )
     }
