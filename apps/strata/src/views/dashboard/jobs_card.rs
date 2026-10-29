@@ -28,6 +28,9 @@ impl JobsCard {
         let (kind, verb) = match job.kind {
             JobKind::IndexFiles => ("IDX", "Index files"),
             JobKind::Scan => ("SCN", "Deep scan"),
+            JobKind::ClassifyFiles => ("TYP", "Classify files"),
+            JobKind::Carve => ("CRV", "Carve free space"),
+            JobKind::CheckBalances => ("BAL", "Check balances"),
         };
         let status = match &job.state {
             JobState::Queued => RowStatus::Queued,

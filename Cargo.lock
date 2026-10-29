@@ -5965,6 +5965,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-artifacts"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "strata-accounts",
+ "strata-fs",
+ "strata-kernel",
+ "strata-source",
+ "strata-timeline",
+ "strata-volume",
+]
+
+[[package]]
 name = "strata-carve"
 version = "0.1.0"
 dependencies = [
@@ -6101,6 +6116,14 @@ dependencies = [
  "strata-kernel",
  "tempfile",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "strata-timeline"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "strata-kernel",
 ]
 
 [[package]]
