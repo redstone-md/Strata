@@ -1,0 +1,31 @@
+[package]
+name = "strata-mcp"
+description = "Read-only MCP server: lets an AI assistant look into a Strata case"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "strata-mcp"
+path = "src/main.rs"
+
+[dependencies]
+strata-workbench = { path = "../../crates/workbench" }
+rmcp = { version = "3.8", default-features = false, features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+schemars = "1"
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+rusqlite.workspace = true
+strata-case.workspace = true
+strata-kernel.workspace = true
+strata-fs.workspace = true
+strata-timeline = { path = "../../crates/timeline" }
+strata-chain = { path = "../../crates/chain" }
