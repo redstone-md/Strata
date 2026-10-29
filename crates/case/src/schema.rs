@@ -103,6 +103,22 @@ CREATE TABLE IF NOT EXISTS facts (
     source TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS archive_members (
+    evidence_id INTEGER NOT NULL REFERENCES evidence(id),
+    archive_path TEXT NOT NULL,
+    member_path TEXT NOT NULL,
+    depth INTEGER NOT NULL,
+    size INTEGER,
+    packed INTEGER,
+    recovered INTEGER NOT NULL,
+    encrypted INTEGER NOT NULL,
+    detected_type TEXT,
+    extension_mismatch INTEGER NOT NULL,
+    modified INTEGER,
+    damage TEXT NOT NULL,
+    PRIMARY KEY (evidence_id, member_path)
+);
+
 CREATE TABLE IF NOT EXISTS balances (
     address TEXT PRIMARY KEY,
     funded_sat INTEGER NOT NULL,

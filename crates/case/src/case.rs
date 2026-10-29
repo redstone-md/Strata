@@ -296,13 +296,13 @@ impl Case {
     }
 
     /// Recompute volume/file attribution of stored raw-scan hits (after parser upgrades),
-    /// without rescanning. File-level hits (wallet files, artefacts) keep theirs.
+    /// without rescanning. File-level hits (wallet files, artefacts, archive members) keep theirs.
     pub fn reattribute(&self, id: EvidenceId) -> Result<usize> {
         let layout = self.layout(id)?;
         let mut conn = self.conn.lock();
         let rows: Vec<(i64, i64)> = {
             let mut stmt = conn
-                .prepare("SELECT id, offset FROM hits WHERE evidence_id = ?1 AND detector NOT LIKE 'wallet.%' AND detector NOT LIKE 'artifacts.%' AND detector <> 'identify.mismatch'")
+                .prepare("SELECT id, offset FROM hits WHERE evidence_id = ?1 AND detector NOT LIKE 'wallet.%' AND detector NOT LIKE 'artifacts.%' AND detector <> 'identify.mismatch' AND (file_path IS NULL OR file_path NOT LIKE '%!/%')")
                 .map_err(db)?;
             let rows = stmt.query_map([id.get()], |r| Ok((r.get(0)?, r.get(1)?))).map_err(db)?;
             rows.collect::<rusqlite::Result<_>>().map_err(db)?
