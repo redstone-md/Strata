@@ -1,5 +1,6 @@
 //! Application layer. GUI and CLI talk to Strata only through [`Workbench`].
 
+mod archives;
 mod artifacts_job;
 mod carving;
 mod catalog;
@@ -10,6 +11,7 @@ mod triage;
 mod wallet_files;
 mod workbench;
 
+pub use archives::ArchiveSummary;
 pub use catalog::DetectorCatalog;
 pub use jobs::{Job, JobId, JobKind, JobState, JobView};
 pub use sector_map::{SectorCell, SectorMap};

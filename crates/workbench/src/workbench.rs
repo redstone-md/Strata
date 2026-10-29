@@ -126,7 +126,7 @@ impl Workbench {
                     return;
                 }
                 // Follow-ups: each one is optional and runs only while nothing was cancelled.
-                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::CheckBalances] {
+                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Archives, JobKind::Carve, JobKind::CheckBalances] {
                     let job = this.enqueue(kind, evidence);
                     this.run_job(&job);
                     if job.control.is_cancelled() {
@@ -136,6 +136,17 @@ impl Workbench {
             })
             .expect("spawn analysis thread");
         scan_id
+    }
+
+    /// Passwords of the user's own archives, tried on encrypted ZIP members by the
+    /// unpack step. Nothing is generated or brute-forced.
+    pub fn set_archive_passwords(&self, passwords: &[String]) -> Result<()> {
+        self.case.set_setting(crate::archives::PASSWORDS_KEY, &passwords.join("\n"))
+    }
+
+    pub fn archive_passwords(&self) -> Vec<String> {
+        let stored = self.case.setting(crate::archives::PASSWORDS_KEY).ok().flatten().unwrap_or_default();
+        stored.lines().filter(|l| !l.is_empty()).map(str::to_string).collect()
     }
 
     pub const CHAIN_ENDPOINT_KEY: &'static str = "chain_endpoint";
@@ -213,6 +224,7 @@ impl Workbench {
             JobKind::IndexFiles => format!("Index files {evidence}"),
             JobKind::Scan => format!("Deep scan {evidence}"),
             JobKind::ClassifyFiles => format!("Classify files {evidence}"),
+            JobKind::Archives => format!("Unpack archives {evidence}"),
             JobKind::Carve => format!("Carve free space {evidence}"),
             JobKind::Artifacts => format!("Artefacts and timeline {evidence}"),
             JobKind::CheckBalances => "Check balances".to_string(),
@@ -250,6 +262,7 @@ impl Workbench {
             JobKind::Artifacts => crate::artifacts_job::ArtifactsJob::new(&self.case)
                 .run(job.evidence)
                 .map(|(e, i, f)| format!("{e} events, {i} identities, {f} host facts")),
+            JobKind::Archives => crate::archives::ArchiveUnpacker::new(&self.case).run(job.evidence, &job.control).map(|s| s.describe()),
             JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
                 .run(job.evidence, &job.control)
                 .map(|(n, w)| format!("{n} files carved, {w} wallets")),

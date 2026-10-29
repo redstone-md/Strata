@@ -6345,6 +6345,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strata-accounts",
+ "strata-archive",
  "strata-artifacts",
  "strata-carve",
  "strata-case",
