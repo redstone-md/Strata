@@ -1,0 +1,20 @@
+[package]
+name = "strata-index"
+description = "Disk index: per-block content map, signature and boot-record side tables, R-Studio scan import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+strata-engine.workspace = true
+strata-identify = { path = "../identify" }
+strata-volume = { path = "../volume" }
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+crc32fast = "1.5"
+
+[dev-dependencies]
+tempfile.workspace = true
+strata-source.workspace = true
