@@ -15,6 +15,16 @@ pub struct StoredHit {
     pub file_path: Option<String>,
     pub file_state: Option<String>,
     pub file_offset: Option<u64>,
+    /// Places this value was found (1 unless the query grouped by value).
+    #[serde(default = "one")]
+    pub occurrences: u64,
+    /// Disks the value was found on (just `evidence` unless grouped).
+    #[serde(default)]
+    pub disks: Vec<EvidenceId>,
+}
+
+fn one() -> u64 {
+    1
 }
 
 #[derive(Debug, Clone, Default)]
@@ -25,7 +35,15 @@ pub struct HitQuery {
     pub text: Option<String>,
     pub limit: usize,
     pub offset: usize,
+    /// One row per distinct value (best-confidence occurrence), with occurrence counts.
+    /// File-level findings (wallet files, carved/renamed files) are never merged.
+    pub group_by_value: bool,
+    /// Only this exact value (lists every place a grouped value was found).
+    pub exact_value: Option<String>,
 }
+
+/// Grouping key: equal values merge, except findings that describe one specific file.
+const GROUP_KEY: &str = "CASE WHEN detector LIKE 'wallet.%' OR detector LIKE 'carve.%' OR detector LIKE 'identify.%'      THEN 'id:' || id ELSE category || '|' || value END";
 
 pub(crate) fn category_name(c: HitCategory) -> String {
     format!("{c:?}")
@@ -67,9 +85,15 @@ pub(crate) fn insert(conn: &mut Connection, evidence: EvidenceId, hits: &[(Hit, 
 }
 
 pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<StoredHit>> {
-    let mut sql = String::from(
-        "SELECT id, evidence_id, detector, category, offset, len, confidence, label, value, details,
-                volume_idx, file_path, file_state, file_offset FROM hits WHERE confidence >= ?1",
+    // With GROUP BY, SQLite takes the bare columns from the row holding MAX(confidence).
+    let (aggregates, grouping) = if q.group_by_value {
+        ("MAX(confidence), COUNT(*), GROUP_CONCAT(DISTINCT evidence_id)", format!(" GROUP BY {GROUP_KEY}"))
+    } else {
+        ("confidence, 1, evidence_id", String::new())
+    };
+    let mut sql = format!(
+        "SELECT id, evidence_id, detector, category, offset, len, {aggregates}, label, value, details,
+                volume_idx, file_path, file_state, file_offset FROM hits WHERE confidence >= ?1"
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(q.min_confidence)];
     if let Some(e) = q.evidence {
@@ -85,26 +109,38 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
         let n = args.len();
         sql += &format!(" AND (value LIKE ?{n} OR label LIKE ?{n} OR file_path LIKE ?{n})");
     }
-    sql += " ORDER BY confidence DESC, evidence_id, offset";
+    if let Some(v) = &q.exact_value {
+        args.push(Box::new(v.clone()));
+        sql += &format!(" AND value = ?{}", args.len());
+    }
+    sql += &grouping;
+    sql += if q.group_by_value { " ORDER BY 7 DESC, 8 DESC, value" } else { " ORDER BY confidence DESC, evidence_id, offset" };
     if q.limit > 0 {
         sql += &format!(" LIMIT {} OFFSET {}", q.limit, q.offset);
     }
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())), |r| {
-        let details: String = r.get(9)?;
+        let details: String = r.get(11)?;
         let mut hit = Hit::new(&r.get::<_, String>(2)?, category_from(&r.get::<_, String>(3)?), r.get::<_, i64>(4)? as u64, r.get::<_, u32>(5)? as usize)
             .confidence(strata_kernel::Confidence::new(r.get(6)?))
-            .label(r.get::<_, String>(7)?)
-            .value(r.get::<_, String>(8)?);
+            .label(r.get::<_, String>(9)?)
+            .value(r.get::<_, String>(10)?);
         hit.details = serde_json::from_str(&details).unwrap_or_default();
+        let disks: String = r.get::<_, rusqlite::types::Value>(8).map(|v| match v {
+            rusqlite::types::Value::Integer(i) => i.to_string(),
+            rusqlite::types::Value::Text(t) => t,
+            _ => String::new(),
+        })?;
         Ok(StoredHit {
             id: r.get(0)?,
             evidence: EvidenceId::new(r.get(1)?),
             hit,
-            volume: r.get(10)?,
-            file_path: r.get(11)?,
-            file_state: r.get(12)?,
-            file_offset: r.get::<_, Option<i64>>(13)?.map(|v| v as u64),
+            volume: r.get(12)?,
+            file_path: r.get(13)?,
+            file_state: r.get(14)?,
+            file_offset: r.get::<_, Option<i64>>(15)?.map(|v| v as u64),
+            occurrences: r.get::<_, i64>(7)? as u64,
+            disks: disks.split(',').filter_map(|d| d.parse().ok()).map(EvidenceId::new).collect(),
         })
     })?;
     rows.collect()

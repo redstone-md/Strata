@@ -81,8 +81,26 @@ fn location(hit: &StoredHit, disk: &str, f: &Fields) -> TreeNode {
     TreeNode::group("Location", rows)
 }
 
-/// The full tree for one finding.
-pub fn build(hit: &StoredHit, disk: &str, chain: &Chain, show_raw: bool) -> Vec<TreeNode> {
+/// Every other place the same value was found: disk, file (or raw offset), state.
+fn found_at(places: &[(String, StoredHit)]) -> Option<TreeNode> {
+    (places.len() > 1).then(|| {
+        let rows = places
+            .iter()
+            .map(|(disk, p)| {
+                let at = p.file_path.clone().unwrap_or_else(|| format!("unallocated {}", format::hex_offset(p.hit.offset)));
+                let row = TreeNode::data(disk.clone(), at);
+                match p.file_state.as_deref().filter(|s| matches!(*s, "Deleted" | "Orphan")) {
+                    Some(state) => row.summary(Cell::Badge(state.to_lowercase(), false)),
+                    None => row,
+                }
+            })
+            .collect();
+        TreeNode::group(format!("Found at {} places", places.len()), rows).closed()
+    })
+}
+
+/// The full tree for one finding. `places` lists every occurrence of a grouped value.
+pub fn build(hit: &StoredHit, disk: &str, places: &[(String, StoredHit)], chain: &Chain, show_raw: bool) -> Vec<TreeNode> {
     let details = &hit.hit.details;
     let f = Fields::new(details);
     let mut out = match hit.hit.category {
@@ -95,6 +113,7 @@ pub fn build(hit: &StoredHit, disk: &str, chain: &Chain, show_raw: bool) -> Vec<
     };
     out.extend(context(&f));
     out.push(location(hit, disk, &f));
+    out.extend(found_at(places));
     out.extend(f.rest());
     if show_raw {
         let raw = serde_json::to_string_pretty(details).unwrap_or_default();
@@ -120,17 +139,19 @@ mod tests {
             file_path: Some(r"Users\a\wallet.dat".into()),
             file_state: Some("Deleted".into()),
             file_offset: Some(16),
+            occurrences: 1,
+            disks: Vec::new(),
         }
     }
 
     #[test]
     fn every_finding_gets_location_and_unknown_fields() {
         let hit = stored(HitCategory::Address, json!({"kind": "p2pkh", "triage": "inside system file", "odd": 1, "encoding": "ascii"}));
-        let t = build(&hit, "laptop.img", &Chain::default(), false);
+        let t = build(&hit, "laptop.img", &[], &Chain::default(), false);
         assert!(find(&t, "Location").is_some_and(|l| l.children.iter().any(|n| n.note)));
         assert_eq!(find(&t, "File").and_then(|n| n.cell.clone()), Some(Cell::Badge("deleted".into(), false)));
         assert!(find(&t, "Other").is_some_and(|o| o.children[0].label == "Odd"));
         assert!(find(&t, "Raw").is_none());
-        assert!(find(&build(&hit, "x", &Chain::default(), true), "Raw").is_some());
+        assert!(find(&build(&hit, "x", &[], &Chain::default(), true), "Raw").is_some());
     }
 }

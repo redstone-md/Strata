@@ -12,6 +12,7 @@ pub fn config() -> BrowserConfig {
             HitColumn::Value,
             HitColumn::Kind,
             HitColumn::Confidence,
+            HitColumn::Seen,
             HitColumn::Disk,
             HitColumn::File,
             HitColumn::Offset,

@@ -25,6 +25,8 @@ pub enum HitColumn {
     File,
     Offset,
     Details,
+    /// How many places the value was found.
+    Seen,
 }
 
 impl HitColumn {
@@ -38,6 +40,7 @@ impl HitColumn {
             Self::File => ("file", "File", 300.),
             Self::Offset => ("offset", "Offset", 120.),
             Self::Details => ("details", "Details", 280.),
+            Self::Seen => ("seen", "Found", 80.),
         };
         let col = Column::new(key, name).width(px(width)).sortable();
         if self.numeric() { col.text_right() } else { col }
@@ -45,7 +48,7 @@ impl HitColumn {
 
     /// Right-aligned columns.
     pub fn numeric(self) -> bool {
-        matches!(self, Self::Confidence | Self::Offset)
+        matches!(self, Self::Confidence | Self::Offset | Self::Seen)
     }
 
     pub fn text(self, h: &StoredHit, disks: &DiskLabels) -> String {
@@ -54,7 +57,9 @@ impl HitColumn {
             Self::Kind => h.hit.label.clone(),
             Self::Service => HitDetails(&h.hit.details).service().unwrap_or("").to_string(),
             Self::Value => h.hit.value.clone(),
+            Self::Disk if h.disks.len() > 1 => format!("{} disks", h.disks.len()),
             Self::Disk => disks.get(&h.evidence).cloned().unwrap_or_else(|| h.evidence.to_string()),
+            Self::Seen => format!("{}×", h.occurrences),
             Self::File => h.file_path.clone().unwrap_or_else(|| "unallocated".into()),
             Self::Offset => format::hex_offset(h.hit.offset),
             Self::Details => HitDetails(&h.hit.details).summary(),
@@ -65,6 +70,7 @@ impl HitColumn {
         match self {
             Self::Confidence => a.hit.confidence.get().total_cmp(&b.hit.confidence.get()),
             Self::Offset => a.hit.offset.cmp(&b.hit.offset),
+            Self::Seen => a.occurrences.cmp(&b.occurrences),
             _ => self.text(a, disks).to_lowercase().cmp(&self.text(b, disks).to_lowercase()),
         }
     }
@@ -103,6 +109,7 @@ impl HitColumn {
             }
             Self::Offset => mono().w_full().text_right().text_size(t.size_body).text_color(t.text_secondary).child(text).into_any_element(),
             Self::Disk | Self::Details => plain(t.text_secondary).into_any_element(),
+            Self::Seen => plain(if h.occurrences > 1 { t.text } else { t.text_secondary }).text_right().into_any_element(),
             Self::Kind | Self::Service => plain(t.text).into_any_element(),
         }
     }

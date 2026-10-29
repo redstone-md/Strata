@@ -35,6 +35,8 @@ pub struct HitBrowser {
     config: BrowserConfig,
     table: Entity<TableState<HitTableDelegate>>,
     selected: Option<StoredHit>,
+    /// Every place the selected value was found (when it was found more than once).
+    places: Vec<StoredHit>,
     /// Groups the user opened or closed in the selected finding's tree.
     tree_state: TreeState,
     /// Chain lookups by address, refreshed with the table.
@@ -60,6 +62,7 @@ impl HitBrowser {
             cx.subscribe_in(&table, window, |this, table, event: &TableEvent, _, cx| {
                 if let TableEvent::SelectRow(ix) = event {
                     this.selected = table.read(cx).delegate().row(*ix).cloned();
+                    this.places = this.selected.as_ref().map(|h| table.read(cx).delegate().places(h)).unwrap_or_default();
                     this.tree_state.clear();
                     cx.notify();
                 }
@@ -72,6 +75,7 @@ impl HitBrowser {
             config,
             table,
             selected: None,
+            places: Vec::new(),
             tree_state: TreeState::new(),
             chain: Rc::new(Chain::default()),
             only: None,
@@ -154,7 +158,9 @@ impl Render for HitBrowser {
         let show_raw = self.session.read(cx).show_raw();
         let detail = self.selected.clone().map(|hit| {
             let disk = self.table.read(cx).delegate().disk_label(&hit);
-            let nodes = detail_tree::build(&hit, &disk, &self.chain, show_raw);
+            let delegate = self.table.read(cx).delegate();
+            let places: Vec<(String, StoredHit)> = self.places.iter().map(|p| (delegate.disk_label(p), p.clone())).collect();
+            let nodes = detail_tree::build(&hit, &disk, &places, &self.chain, show_raw);
             let this = cx.entity().downgrade();
             let tree = DetailTree::new(nodes, self.tree_state.clone(), move |path, open, _, cx| {
                 let _ = this.update(cx, |b, cx| {

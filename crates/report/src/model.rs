@@ -48,7 +48,7 @@ impl CaseReport {
                 findings: case.hit_counts(Some(e.id))?,
             });
         }
-        let query = |cats: &[HitCategory]| HitQuery { categories: cats.to_vec(), min_confidence, limit: 20_000, ..Default::default() };
+        let query = |cats: &[HitCategory]| HitQuery { categories: cats.to_vec(), min_confidence, limit: 20_000, group_by_value: true, ..Default::default() };
         let correlation = CorrelationService::new(case);
         Ok(Self {
             case_name: case.name(),

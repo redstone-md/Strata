@@ -24,6 +24,11 @@ fn two_disks_share_an_identity() {
     }
     let hits = case.hits(&HitQuery { categories: vec![HitCategory::Identity], ..Default::default() }).unwrap();
     assert_eq!(hits.len(), 2);
+    let grouped = case.hits(&HitQuery { categories: vec![HitCategory::Identity], group_by_value: true, ..Default::default() }).unwrap();
+    assert_eq!(grouped.len(), 1);
+    assert_eq!((grouped[0].occurrences, grouped[0].disks.len()), (2, 2));
+    let places = case.hits(&HitQuery { exact_value: Some("olga.test1@mail.ru".into()), ..Default::default() }).unwrap();
+    assert_eq!(places.len(), 2);
     let shared = CorrelationService::new(&case).shared_findings(&[HitCategory::Identity]).unwrap();
     assert_eq!(shared.len(), 1);
     assert_eq!(shared[0].value, "olga.test1@mail.ru");

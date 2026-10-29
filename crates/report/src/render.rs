@@ -29,19 +29,21 @@ fn location(h: &StoredHit) -> String {
 }
 
 /// Rows shared by the tabular renderers (one definition of the hit columns).
-fn hit_row(h: &StoredHit) -> [String; 7] {
+fn hit_row(h: &StoredHit) -> [String; 8] {
+    let disks = if h.disks.len() > 1 { h.disks.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ") } else { h.evidence.to_string() };
     [
-        h.evidence.to_string(),
+        disks,
         format!("{:?}", h.hit.category),
         h.hit.label.clone(),
         h.hit.value.clone(),
         h.hit.confidence.to_string(),
         location(h),
         format!("{:#x}", h.hit.offset),
+        h.occurrences.to_string(),
     ]
 }
 
-const HIT_HEADERS: [&str; 7] = ["Диск", "Категория", "Тип", "Значение", "Уверенность", "Расположение", "Смещение"];
+const HIT_HEADERS: [&str; 8] = ["Диск", "Категория", "Тип", "Значение", "Уверенность", "Расположение", "Смещение", "Мест"];
 
 pub struct MarkdownRenderer;
 

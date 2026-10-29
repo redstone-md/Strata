@@ -40,6 +40,9 @@ enum Command {
         limit: usize,
         #[arg(long)]
         json: bool,
+        /// One line per distinct value with the number of places it was found.
+        #[arg(long)]
+        group: bool,
     },
     /// Findings shared between disks and files that differ across disks.
     Correlate,
@@ -100,13 +103,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Analyse { id } => analyse(&wb, id)?,
-        Command::Hits { category, text, min_confidence, limit, json } => {
+        Command::Hits { category, text, min_confidence, limit, json, group } => {
             let categories = category
                 .map(|c| serde_json::from_value::<HitCategory>(serde_json::Value::String(c)))
                 .transpose()?
                 .into_iter()
                 .collect();
-            let hits = wb.hits(&HitQuery { categories, text, min_confidence, limit, ..Default::default() })?;
+            let hits = wb.hits(&HitQuery { categories, text, min_confidence, limit, group_by_value: group, ..Default::default() })?;
             for h in hits {
                 if json {
                     println!("{}", serde_json::to_string(&h)?);

@@ -9,6 +9,8 @@ use strata_workbench::{HitCategory, HitQuery, StoredHit, Workbench};
 
 /// Rows fetched per page; more are loaded as the user scrolls.
 const PAGE: usize = 2000;
+/// Occurrences listed under "Found at" in the detail panel.
+const MAX_PLACES: usize = 500;
 
 pub struct HitTableDelegate {
     workbench: Arc<Workbench>,
@@ -22,7 +24,7 @@ pub struct HitTableDelegate {
 
 impl HitTableDelegate {
     pub fn new(workbench: Arc<Workbench>, columns: Vec<HitColumn>, query: HitQuery) -> Self {
-        Self { workbench, columns, query: HitQuery { limit: PAGE, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, sort: None }
+        Self { workbench, columns, query: HitQuery { limit: PAGE, group_by_value: true, ..query }, rows: Vec::new(), disks: DiskLabels::new(), has_more: false, sort: None }
     }
 
     pub fn set_text(&mut self, text: &str) {
@@ -60,6 +62,20 @@ impl HitTableDelegate {
 
     pub fn has_more_rows(&self) -> bool {
         self.has_more
+    }
+
+    /// Every occurrence of a grouped value (capped), for the detail panel.
+    pub fn places(&self, hit: &StoredHit) -> Vec<StoredHit> {
+        if hit.occurrences <= 1 {
+            return Vec::new();
+        }
+        let q = HitQuery {
+            categories: vec![hit.hit.category],
+            exact_value: Some(hit.hit.value.clone()),
+            limit: MAX_PLACES,
+            ..HitQuery::default()
+        };
+        self.workbench.hits(&q).unwrap_or_default()
     }
 
     pub fn disk_label(&self, hit: &StoredHit) -> String {
