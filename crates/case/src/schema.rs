@@ -162,7 +162,8 @@ pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
 
 /// Columns added after a case may already exist on disk. `ADD COLUMN` fails harmlessly with
 /// "duplicate column" when the column is already there.
-const ADDED_COLUMNS: &[(&str, &str)] = &[("files", "type_notes TEXT")];
+/// `hits.repeats`: copies beyond the stored ones (see `repeats.rs`).
+const ADDED_COLUMNS: &[(&str, &str)] = &[("files", "type_notes TEXT"), ("hits", "repeats INTEGER NOT NULL DEFAULT 0")];
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     for (table, column) in ADDED_COLUMNS {

@@ -1,5 +1,7 @@
 use crate::attribution::EvidenceLayout;
 use crate::store::{self, HitQuery, StoredHit};
+use crate::pool::ReadPool;
+use crate::repeats::RepeatCap;
 use crate::schema;
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -43,6 +45,7 @@ pub(crate) fn now() -> i64 {
 pub struct Case {
     root: PathBuf,
     conn: Mutex<Connection>,
+    readers: ReadPool,
     sources: Mutex<HashMap<EvidenceId, Arc<dyn BlockSource>>>,
     layouts: Mutex<HashMap<EvidenceId, Arc<EvidenceLayout>>>,
 }
@@ -53,7 +56,9 @@ impl Case {
         std::fs::create_dir_all(root.join("cache"))?;
         let conn = Connection::open(root.join("case.db")).map_err(db)?;
         schema::apply(&conn).map_err(db)?;
-        Ok(Self { root: root.to_path_buf(), conn: Mutex::new(conn), sources: Mutex::default(), layouts: Mutex::default() })
+        conn.busy_timeout(Duration::from_secs(30)).map_err(db)?;
+        let readers = ReadPool::new(root.join("case.db"));
+        Ok(Self { root: root.to_path_buf(), conn: Mutex::new(conn), readers, sources: Mutex::default(), layouts: Mutex::default() })
     }
 
     pub fn root(&self) -> &Path {
@@ -143,7 +148,7 @@ impl Case {
     }
 
     pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
-        let conn = self.conn.lock();
+        let conn = self.readers.get().map_err(db)?;
         let mut stmt = conn.prepare("SELECT id, info FROM evidence ORDER BY id").map_err(db)?;
         let rows: Vec<(u32, String)> =
             stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(db)?.collect::<rusqlite::Result<_>>().map_err(db)?;
@@ -231,14 +236,17 @@ impl Case {
         let range = ByteRange::from_bounds(start, source.len());
         let mut last_save = Instant::now();
         let mut failure: Option<Error> = None;
+        let mut cap = RepeatCap::default();
         let summary = scanner.run(source.as_ref(), range, control, |hits| {
             if failure.is_some() || (hits.is_empty() && last_save.elapsed() < save_every) {
                 return;
             }
             let attributed: Vec<_> = hits.into_iter().map(|h| { let a = layout.attribute(h.offset); (h, a) }).collect();
+            let (attributed, overflow) = cap.filter(attributed);
             let mark = control.snapshot().watermark.max(start);
             let stored = self.write(|w| {
                 w.hits(id, &attributed)?;
+                w.repeats(id, &overflow)?;
                 w.scan_progress(id, source.len(), mark, false, &detectors)?;
                 on_commit(w, mark)
             });
@@ -264,7 +272,7 @@ impl Case {
     /// Where the next scan with `detectors` starts: the stored watermark of an unfinished
     /// scan by the same detectors, else 0.
     pub fn resume_point(&self, id: EvidenceId, detectors: &str) -> Result<u64> {
-        let conn = self.conn.lock();
+        let conn = self.readers.get().map_err(db)?;
         let row: Option<(i64, bool, String)> = conn
             .query_row("SELECT watermark, completed, detectors FROM scans WHERE evidence_id = ?1", [id.get()], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?))
@@ -279,8 +287,9 @@ impl Case {
 
     /// `(watermark, total, completed)` of the last scan, if any.
     pub fn scan_state(&self, id: EvidenceId) -> Result<Option<(u64, u64, bool)>> {
-        self.conn
-            .lock()
+        self.readers
+            .get()
+            .map_err(db)?
             .query_row("SELECT watermark, range_len, completed FROM scans WHERE evidence_id = ?1", [id.get()], |r| {
                 Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64, r.get(2)?))
             })
@@ -290,7 +299,7 @@ impl Case {
 
     /// Count of significant findings per `cell_len`-sized bucket of the disk.
     pub fn finding_density(&self, id: EvidenceId, cell_len: u64) -> Result<std::collections::HashMap<u64, u32>> {
-        let conn = self.conn.lock();
+        let conn = self.readers.get().map_err(db)?;
         let mut stmt = conn
             .prepare(
                 "SELECT offset / ?2, COUNT(*) FROM hits WHERE evidence_id = ?1
@@ -303,24 +312,29 @@ impl Case {
         rows.collect::<rusqlite::Result<_>>().map_err(db)
     }
 
-    /// Lower the confidence of key-like findings inside live system files (by path prefix or
-    /// extension) and tag them in `details.triage`. Idempotent: tagged hits are skipped.
-    pub fn downgrade_system_hits(&self, id: EvidenceId, prefixes: &[&str], extensions: &[&str], factor: f32) -> Result<usize> {
+    /// Lower the confidence of findings inside live system files (by path prefix, by a folder
+    /// anywhere in the path, e.g. under container layers, or by extension) and tag them in
+    /// `details.triage`. Idempotent: tagged hits are skipped.
+    pub fn downgrade_system_hits(&self, id: EvidenceId, prefixes: &[&str], folders: &[&str], extensions: &[&str], factor: f32) -> Result<usize> {
         // Rules are crate constants, not user input, so they are inlined into the SQL.
-        let path_rule: Vec<String> = prefixes.iter().map(|p| format!("lower(file_path) LIKE '{}%'", p)).collect();
+        let path_rule: Vec<String> = prefixes
+            .iter()
+            .map(|p| format!("lower(file_path) LIKE '{p}%'"))
+            .chain(folders.iter().map(|f| format!("lower(file_path) LIKE '{f}%' OR lower(file_path) LIKE '%/{f}%'")))
+            .collect();
         let ext_rule: Vec<String> = extensions.iter().map(|e| format!("lower(file_path) LIKE '%.{}'", e)).collect();
         let sql = format!(
             "UPDATE hits SET confidence = confidence * ?2,
                  details = json_set(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END,
                                     '$.triage', 'inside system file')
              WHERE evidence_id = ?1 AND file_state = 'Allocated'
-               AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker')
+               AND category IN ('PrivateKey','ExtendedKey','Mnemonic','Address','Marker','Identity','Url')
                AND json_extract(CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{{}}' END, '$.triage') IS NULL
                AND ({} OR {})",
             path_rule.join(" OR "),
             ext_rule.join(" OR ")
         );
-        self.conn.lock().execute(&sql, params![id.get(), factor]).map_err(db)
+        self.with_write(|conn| conn.execute(&sql, params![id.get(), factor]))
     }
 
     /// Recompute volume/file attribution of stored raw-scan hits (after parser upgrades),
@@ -362,11 +376,11 @@ impl Case {
     }
 
     pub fn hits(&self, q: &HitQuery) -> Result<Vec<StoredHit>> {
-        store::query(&self.conn.lock(), q).map_err(db)
+        store::query(&*self.readers.get().map_err(db)?, q).map_err(db)
     }
 
     pub fn hit_counts(&self, evidence: Option<EvidenceId>) -> Result<Vec<(HitCategory, u64)>> {
-        store::counts(&self.conn.lock(), evidence).map_err(db)
+        store::counts(&*self.readers.get().map_err(db)?, evidence).map_err(db)
     }
 
     /// The connection, held until the guard drops (one transaction at a time).
@@ -378,7 +392,14 @@ impl Case {
         f(&mut self.conn.lock()).map_err(db)
     }
 
+    /// Run a read on a pooled read-only connection; never waits for a write transaction.
     pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
+        let conn = self.readers.get().map_err(db)?;
+        f(&conn).map_err(db)
+    }
+
+    /// Run a single write statement (or a few) on the write connection.
+    pub(crate) fn with_write<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
         f(&self.conn.lock()).map_err(db)
     }
 }

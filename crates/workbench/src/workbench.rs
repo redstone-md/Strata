@@ -247,8 +247,10 @@ impl Workbench {
         Ok((n, self.triage(evidence)?))
     }
 
-    /// Re-apply false-positive triage (also part of the deep scan step).
+    /// Fold repeated copies, then re-apply false-positive triage (both also part of the deep
+    /// scan step).
     pub fn triage(&self, evidence: EvidenceId) -> Result<usize> {
+        self.case.compact_repeats(evidence)?;
         crate::triage::Triage::new(&self.case).run(evidence)
     }
 }

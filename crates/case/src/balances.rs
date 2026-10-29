@@ -63,7 +63,7 @@ impl Case {
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        self.with_conn(|conn| conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", [key, value]).map(|_| ()))
+        self.with_write(|conn| conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", [key, value]).map(|_| ()))
     }
 }
 

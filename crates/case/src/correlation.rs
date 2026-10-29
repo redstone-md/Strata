@@ -47,7 +47,7 @@ impl<'a> CorrelationService<'a> {
     pub fn shared_findings(&self, categories: &[HitCategory]) -> Result<Vec<SharedFinding>> {
         let list: Vec<String> = categories.iter().map(|c| format!("'{}'", category_name(*c))).collect();
         let sql = format!(
-            "SELECT category, value, GROUP_CONCAT(DISTINCT evidence_id), COUNT(*) FROM hits
+            "SELECT category, value, GROUP_CONCAT(DISTINCT evidence_id), COUNT(*) + SUM(repeats) FROM hits
              WHERE category IN ({}) AND value <> ''
              GROUP BY category, value HAVING COUNT(DISTINCT evidence_id) > 1
              ORDER BY COUNT(DISTINCT evidence_id) DESC, COUNT(*) DESC LIMIT 5000",

@@ -9,7 +9,7 @@ use strata_kernel::Result;
 impl Case {
     pub fn store_history(&self, h: &AddressHistory) -> Result<()> {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             conn.execute(
                 "INSERT OR REPLACE INTO address_history (address, first_seen, last_seen, tx_count, complete, data, checked_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",

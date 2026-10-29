@@ -70,7 +70,7 @@ fn record(r: &Row<'_>) -> rusqlite::Result<JobRecord> {
 impl Case {
     /// Queue a job owned by process `owner`; returns its id (stable across restarts).
     pub fn add_job(&self, owner: u32, evidence: EvidenceId, kind: &str, title: &str, state: &str) -> Result<u32> {
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             let t = now();
             conn.execute(
                 "INSERT INTO jobs (evidence_id, kind, title, state, owner_pid, created_at, updated_at)
@@ -93,7 +93,7 @@ impl Case {
     }
 
     pub fn update_job(&self, id: u32, state: &str, detail: &str, stamp: JobStamp) -> Result<()> {
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             let t = now();
             match stamp {
                 JobStamp::Started { pid } => conn.execute(
@@ -120,7 +120,7 @@ impl Case {
 
     /// Progress without a checkpoint (steps that have nothing to resume).
     pub fn job_progress(&self, id: u32, done: u64, total: u64) -> Result<()> {
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             conn.execute(
                 "UPDATE jobs SET done = ?2, total = ?3, updated_at = ?4 WHERE id = ?1",
                 params![id, done as i64, total as i64, now()],

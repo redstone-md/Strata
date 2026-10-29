@@ -85,12 +85,23 @@ pub(crate) fn insert(conn: &Connection, evidence: EvidenceId, hits: &[(Hit, Attr
     Ok(inserted)
 }
 
+/// Add copies dropped by the repetition cap to the stored copy they follow.
+pub(crate) fn add_repeats(conn: &Connection, evidence: EvidenceId, overflow: &[crate::repeats::Overflow]) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare_cached(
+        "UPDATE hits SET repeats = repeats + ?4 WHERE evidence_id = ?1 AND detector = ?2 AND offset = ?3 AND value = ?5",
+    )?;
+    for o in overflow {
+        stmt.execute(params![evidence.get(), o.detector, o.offset as i64, o.extra as i64, o.value])?;
+    }
+    Ok(())
+}
+
 pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<StoredHit>> {
     // With GROUP BY, SQLite takes the bare columns from the row holding MAX(confidence).
     let (aggregates, grouping) = if q.group_by_value {
-        ("MAX(confidence), COUNT(*), GROUP_CONCAT(DISTINCT evidence_id)", format!(" GROUP BY {GROUP_KEY}"))
+        ("MAX(confidence), COUNT(*) + SUM(repeats), GROUP_CONCAT(DISTINCT evidence_id)", format!(" GROUP BY {GROUP_KEY}"))
     } else {
-        ("confidence, 1, evidence_id", String::new())
+        ("confidence, 1 + repeats, evidence_id", String::new())
     };
     let mut sql = format!(
         "SELECT id, evidence_id, detector, category, offset, len, {aggregates}, label, value, details,
@@ -153,7 +164,7 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
 
 pub(crate) fn counts(conn: &Connection, evidence: Option<EvidenceId>) -> rusqlite::Result<Vec<(HitCategory, u64)>> {
     let mut stmt = conn.prepare(
-        "SELECT category, COUNT(*) FROM hits WHERE (?1 IS NULL OR evidence_id = ?1) GROUP BY category ORDER BY 2 DESC",
+        "SELECT category, COUNT(*) + SUM(repeats) FROM hits WHERE (?1 IS NULL OR evidence_id = ?1) GROUP BY category ORDER BY 2 DESC",
     )?;
     let rows = stmt.query_map([evidence.map(|e| e.get())], |r| Ok((category_from(&r.get::<_, String>(0)?), r.get::<_, i64>(1)? as u64)))?;
     rows.collect()

@@ -29,6 +29,7 @@ pub(super) fn run(ctx: &StepContext<'_>, wb: &Workbench) -> Result<String> {
     let builder = index.prepare(id)?;
     let scanner = Scanner::new(DetectorCatalog::all()).with_workers(wb.scan_threads()).with_observer(builder.clone());
     let len = ctx.case().source(id)?.len().max(1);
+    compact(ctx, id)?;
     let summary = index.run_scan(id, &builder, ctx.control(), || {
         let mut logged = None;
         ctx.case().scan_with(id, &scanner, ctx.control(), ctx.policy().every, &mut |w, watermark| {
@@ -44,7 +45,18 @@ pub(super) fn run(ctx: &StepContext<'_>, wb: &Workbench) -> Result<String> {
     if !summary.completed {
         return Ok(String::new());
     }
+    compact(ctx, id)?;
     let downgraded = Triage::new(ctx.case()).run(id)?;
     ctx.log(format!("{} hits, {downgraded} inside system files", summary.hits));
     Ok(format!("{} hits in {:.0}s, {downgraded} inside system files", summary.hits, summary.elapsed_secs))
+}
+
+/// Fold repeated copies of e-mails, URLs and markers (stored before a resume, or by a case
+/// scanned before the cap existed) into counts on the kept ones.
+fn compact(ctx: &StepContext<'_>, id: strata_kernel::EvidenceId) -> Result<()> {
+    let removed = ctx.case().compact_repeats(id)?;
+    if removed > 0 {
+        ctx.log(format!("{removed} repeated copies folded into counts"));
+    }
+    Ok(())
 }

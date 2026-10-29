@@ -34,7 +34,7 @@ fn key_findings_carry_file_times_and_addresses() {
     let lone = Hit::new("crypto.address", HitCategory::Address, 9000, 34).value("1OtherAddressWithoutHistoryXXXXXX").confidence(strata_kernel::Confidence::HIGH);
     let file = FileRef { path: path.into(), state: EntryState::Deleted, file_offset: 0 };
     case.store_hits(disk, &[(key, Attribution { volume: Some(0), file: Some(file) }), (lone, Attribution::default())]).unwrap();
-    case.with_conn(|c| {
+    case.with_write(|c| {
         c.execute(
             "INSERT INTO files (evidence_id, volume_idx, file_idx, path, name, size, is_dir, state, created, modified)
              VALUES (?1, 0, 7, ?2, 'wallet.dat', 4096, 0, 'Deleted', 1300000000, 1310000000)",

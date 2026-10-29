@@ -83,7 +83,7 @@ fn ensure(conn: &Connection) -> rusqlite::Result<()> {
 impl Case {
     /// Start a search record; results are added with [`Case::store_search_results`].
     pub fn begin_search(&self, query_json: &str, summary: &str) -> Result<i64> {
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             ensure(conn)?;
             conn.execute(
                 "INSERT INTO searches (query, summary, created_at, state) VALUES (?1, ?2, strftime('%s','now'), 'running')",
@@ -94,7 +94,7 @@ impl Case {
     }
 
     pub fn finish_search(&self, id: i64, state: &str, truncated: bool) -> Result<()> {
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             ensure(conn)?;
             conn.execute(
                 "UPDATE searches SET state = ?2, truncated = ?3,

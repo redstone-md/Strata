@@ -24,7 +24,7 @@ impl Case {
         let index = record.volumes.iter().map(|v| v.index + 1).max().unwrap_or(0);
         let label = format!("{DELETED_PARTITION} P{index} {} ({note})", fs.name());
         let volume = Volume { index, range, fs, origin: VolumeOrigin::Recovered, label };
-        self.with_conn(|conn| {
+        self.with_write(|conn| {
             conn.execute(
                 "INSERT INTO volumes (evidence_id, idx, start, len, fs, origin, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![

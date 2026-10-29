@@ -35,6 +35,16 @@ impl CaseWriter<'_> {
         store::insert(&self.tx, id, hits).map_err(db)
     }
 
+    /// Run trusted maintenance SQL (crate constants only) inside this transaction.
+    pub(crate) fn batch(&self, sql: &str) -> Result<()> {
+        self.tx.execute_batch(sql).map_err(db)
+    }
+
+    /// Count copies the repetition cap did not store (see `repeats.rs`).
+    pub(crate) fn repeats(&self, id: EvidenceId, overflow: &[crate::repeats::Overflow]) -> Result<()> {
+        store::add_repeats(&self.tx, id, overflow).map_err(db)
+    }
+
     pub fn events(&self, id: EvidenceId, events: &[TimelineEvent]) -> Result<usize> {
         timeline::insert_events(&self.tx, id, events).map_err(db)
     }
