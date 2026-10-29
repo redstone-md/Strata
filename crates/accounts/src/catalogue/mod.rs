@@ -2,10 +2,12 @@
 //! mail and messenger, loaded once from `data/services.toml` (embedded in the binary).
 
 mod entry;
+mod group;
 mod kind;
 mod matcher;
 
 pub use entry::{ServiceEntry, Years};
+pub use group::ServiceGroup;
 pub use kind::ServiceKind;
 
 use matcher::{Found, Matcher, NeedleKind};

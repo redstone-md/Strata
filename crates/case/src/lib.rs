@@ -40,5 +40,6 @@ pub use system_paths::is_system_path;
 pub use recovered::DELETED_PARTITION;
 pub use search_store::{SearchRecord, SearchResultRow};
 pub use correlation::{CorrelationService, FileComplement, SameMedium, SharedFinding};
+pub use insights::{AccountQuery, AccountRow, MailboxTrace, Mention};
 pub use store::{HitQuery, StoredHit};
 pub use timeline::{EventQuery, HostFact};

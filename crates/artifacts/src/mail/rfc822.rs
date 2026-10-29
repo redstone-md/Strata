@@ -34,9 +34,11 @@ impl MailHeaders {
             Some(ev) => rec.push(ev),
             None => rec.emit(None, EventKind::Email, title, ""),
         }
-        for field in [&e.from, &e.to, &e.cc] {
+        // Header addresses are correspondents, not proof of whose mail it is (the mailbox owner
+        // is found from the stored messages as a whole).
+        for (field, note) in [(&e.from, "mail sender"), (&e.to, "mail recipient"), (&e.cc, "mail recipient")] {
             for addr in addresses(field) {
-                rec.identity(IdentityKind::Email, &addr, None, at);
+                rec.identity_noted(IdentityKind::Email, &addr, None, at, note);
             }
         }
         // Mail from a catalogued service to an address: that address has an account there; a

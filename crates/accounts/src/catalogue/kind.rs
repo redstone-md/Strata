@@ -1,3 +1,4 @@
+use super::ServiceGroup;
 use serde::{Deserialize, Serialize};
 
 /// What a catalogued service is. The order is the display order of the Accounts screen.
@@ -15,6 +16,7 @@ pub enum ServiceKind {
     Mixer,
     Marketplace,
     Payment,
+    Bank,
     Explorer,
     Forum,
     Info,
@@ -22,11 +24,13 @@ pub enum ServiceKind {
     Mail,
     Social,
     Im,
+    Game,
+    Shop,
     Other,
 }
 
 impl ServiceKind {
-    pub const ALL: [ServiceKind; 19] = [
+    pub const ALL: [ServiceKind; 22] = [
         Self::Exchange,
         Self::WebWallet,
         Self::Faucet,
@@ -38,6 +42,7 @@ impl ServiceKind {
         Self::Mixer,
         Self::Marketplace,
         Self::Payment,
+        Self::Bank,
         Self::Explorer,
         Self::Forum,
         Self::Info,
@@ -45,6 +50,8 @@ impl ServiceKind {
         Self::Mail,
         Self::Social,
         Self::Im,
+        Self::Game,
+        Self::Shop,
         Self::Other,
     ];
 
@@ -62,6 +69,7 @@ impl ServiceKind {
             Self::Mixer => "mixer",
             Self::Marketplace => "marketplace",
             Self::Payment => "payment system",
+            Self::Bank => "bank",
             Self::Explorer => "block explorer",
             Self::Forum => "forum",
             Self::Info => "news and charts",
@@ -69,13 +77,20 @@ impl ServiceKind {
             Self::Mail => "mail",
             Self::Social => "social network",
             Self::Im => "messenger",
+            Self::Game => "game",
+            Self::Shop => "shop",
             Self::Other => "other",
         }
     }
 
+    /// Kind from its [`Self::label`] (as stored with accounts).
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.label() == label)
+    }
+
     /// Touches cryptocurrency directly (a visit is a crypto trace).
     pub fn is_crypto(self) -> bool {
-        !matches!(self, Self::Payment | Self::CloudStorage | Self::Mail | Self::Social | Self::Im | Self::Other)
+        !matches!(self, Self::Payment | Self::Bank | Self::CloudStorage | Self::Mail | Self::Social | Self::Im | Self::Game | Self::Shop | Self::Other)
     }
 
     /// Worth reporting as a URL finding: crypto services plus e-money systems used to buy coins.
@@ -92,11 +107,25 @@ impl ServiceKind {
         )
     }
 
+    /// The section of the Accounts screen a service of this kind belongs to.
+    pub fn group(self) -> ServiceGroup {
+        match self {
+            k if k.is_crypto() => ServiceGroup::Crypto,
+            Self::Payment | Self::Bank => ServiceGroup::Money,
+            Self::Mail => ServiceGroup::Mail,
+            Self::CloudStorage => ServiceGroup::Cloud,
+            Self::Social | Self::Im => ServiceGroup::Social,
+            Self::Game => ServiceGroup::Games,
+            Self::Shop => ServiceGroup::Shopping,
+            _ => ServiceGroup::Other,
+        }
+    }
+
     /// Timeline tag for events mentioning a service of this kind.
     pub fn tag(self) -> Option<&'static str> {
         match self {
             k if k.is_crypto() => Some("crypto"),
-            Self::Payment => Some("payment"),
+            Self::Payment | Self::Bank => Some("payment"),
             Self::Mail => Some("mail"),
             Self::Social | Self::Im => Some("social"),
             Self::CloudStorage => Some("cloud"),
@@ -115,6 +144,24 @@ mod tests {
         assert!(ServiceKind::Payment.is_reportable() && !ServiceKind::Payment.is_crypto());
         assert!(!ServiceKind::Mail.is_reportable());
         assert_eq!(ServiceKind::Im.tag(), Some("social"));
-        assert_eq!(ServiceKind::ALL.len(), 19);
+        assert_eq!(ServiceKind::ALL.len(), 22);
+        assert!(ServiceKind::ALL.iter().all(|k| ServiceKind::from_label(k.label()) == Some(*k)));
+        assert!(!ServiceKind::Bank.is_crypto() && !ServiceKind::Game.is_crypto() && !ServiceKind::Shop.is_crypto());
+    }
+
+    #[test]
+    fn every_kind_has_a_section() {
+        assert_eq!(ServiceKind::Exchange.group(), ServiceGroup::Crypto);
+        assert_eq!(ServiceKind::Forum.group(), ServiceGroup::Crypto);
+        assert_eq!(ServiceKind::Bank.group(), ServiceGroup::Money);
+        assert_eq!(ServiceKind::Payment.group(), ServiceGroup::Money);
+        assert_eq!(ServiceKind::Im.group(), ServiceGroup::Social);
+        assert_eq!(ServiceKind::CloudStorage.group(), ServiceGroup::Cloud);
+        assert_eq!(ServiceKind::Game.group(), ServiceGroup::Games);
+        assert_eq!(ServiceKind::Shop.group(), ServiceGroup::Shopping);
+        assert_eq!(ServiceKind::Other.group(), ServiceGroup::Other);
+        for g in ServiceGroup::ALL {
+            assert_eq!(ServiceGroup::from_id(g.id()), Some(g));
+        }
     }
 }

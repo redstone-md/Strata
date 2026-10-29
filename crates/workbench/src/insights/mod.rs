@@ -25,8 +25,11 @@ impl<'a> Insights<'a> {
     }
 
     /// Resolve accounts, run the lead engine, store both. Returns `(accounts, leads)`.
+    /// Address sightings are re-aggregated first (only when findings changed), so each stored
+    /// account knows how often its address was found.
     pub fn rebuild(&self) -> Result<(usize, usize)> {
         let events = self.case.lead_events(MAX_EVENTS)?;
+        self.case.refresh_mentions()?;
         let accounts = AccountsBuilder::build(self.case, &events)?;
         let stored_accounts = self.case.replace_accounts(&accounts)?;
         let inputs = LeadInputs { keys: self.case.key_findings(MIN_KEY_CONFIDENCE)?, histories: self.case.histories()?, events, accounts };
@@ -59,9 +62,45 @@ impl<'a> Insights<'a> {
 }
 
 impl crate::Workbench {
-    /// Resolved accounts, fund-holding services first (rebuilt by [`Self::rebuild_insights`]).
+    /// Resolved accounts, used ones and fund-holding services first (rebuilt by
+    /// [`Self::rebuild_insights`]).
     pub fn accounts(&self) -> Result<Vec<strata_accounts::Account>> {
         self.case().accounts()
+    }
+
+    /// One resolved account with every trace.
+    pub fn account(&self, key: &str) -> Result<Option<strata_accounts::Account>> {
+        self.case().account(key)
+    }
+
+    /// Account summary rows (SQL-filtered: section, text, period, seen / bulk).
+    pub fn account_rows(&self, query: &strata_case::AccountQuery) -> Result<Vec<strata_case::AccountRow>> {
+        self.case().account_rows(query)
+    }
+
+    pub fn account_count(&self, query: &strata_case::AccountQuery) -> Result<u64> {
+        self.case().account_count(query)
+    }
+
+    /// Accounts were resolved by an older version and are not sorted by use yet.
+    pub fn accounts_need_rebuild(&self) -> Result<bool> {
+        self.case().accounts_need_rebuild()
+    }
+
+    /// How an address was sighted byte-level across the disks.
+    pub fn mention(&self, address: &str) -> Result<Option<strata_case::Mention>> {
+        self.case().mention(address)
+    }
+
+    /// Findings of a sighted address (first `limit`), for its evidence list.
+    pub fn mention_hits(&self, mention: &strata_case::Mention, limit: usize) -> Result<Vec<strata_case::StoredHit>> {
+        let query = strata_case::HitQuery {
+            categories: vec![strata_kernel::scan::HitCategory::Identity],
+            exact_value: Some(mention.found_as.clone()),
+            limit,
+            ..Default::default()
+        };
+        self.case().hits(&query)
     }
 
     /// Ranked leads, best first.

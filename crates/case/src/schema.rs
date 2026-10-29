@@ -167,16 +167,27 @@ pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
 /// "duplicate column" when the column is already there.
 /// `hits.repeats`: copies beyond the stored ones (see `repeats.rs`).
 /// `events.volume`, `facts.volume`: the volume an artefact was read from (NULL in older cases).
+/// `accounts.standing` … `accounts.mentions`: the account summary the Accounts screen lists
+/// without parsing JSON (NULL standing: resolved by an older version, rebuild to fill).
 const ADDED_COLUMNS: &[(&str, &str)] = &[
     ("files", "type_notes TEXT"),
     ("hits", "repeats INTEGER NOT NULL DEFAULT 0"),
     ("events", "volume INTEGER"),
     ("facts", "volume INTEGER"),
+    ("accounts", "standing INTEGER"),
+    ("accounts", "section TEXT"),
+    ("accounts", "strength REAL NOT NULL DEFAULT 0"),
+    ("accounts", "secret INTEGER NOT NULL DEFAULT 0"),
+    ("accounts", "reasons TEXT NOT NULL DEFAULT ''"),
+    ("accounts", "traces INTEGER NOT NULL DEFAULT 0"),
+    ("accounts", "disks TEXT NOT NULL DEFAULT ''"),
+    ("accounts", "mentions INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Indexes over added columns or added after cases already existed.
 const ADDED_INDEXES: &str = "CREATE INDEX IF NOT EXISTS events_kind ON events(evidence_id, kind, at);
-CREATE INDEX IF NOT EXISTS facts_key ON facts(evidence_id, key);";
+CREATE INDEX IF NOT EXISTS facts_key ON facts(evidence_id, key);
+CREATE INDEX IF NOT EXISTS accounts_standing ON accounts(standing, section);";
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     for (table, column) in ADDED_COLUMNS {
@@ -187,5 +198,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             }
         }
     }
-    conn.execute_batch(ADDED_INDEXES)
+    conn.execute_batch(ADDED_INDEXES)?;
+    // Partial: only the few thousand identity findings that are not plain e-mail sightings, so
+    // the accounts rebuild never walks millions of addresses.
+    conn.execute_batch(&format!("CREATE INDEX IF NOT EXISTS hits_account_traces ON hits(id) WHERE {}", crate::insights::ACCOUNT_TRACE_HITS))
 }

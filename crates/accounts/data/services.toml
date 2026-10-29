@@ -4,8 +4,8 @@
 #   id        stable identifier (lowercase, unique)
 #   name      display name
 #   kind      faucet | exchange | mining_pool | mining_software | web_wallet | wallet_software |
-#             explorer | info | forum | marketplace | payment | mixer | gambling | lending |
-#             mail | social | im | cloud_storage | other
+#             explorer | info | forum | marketplace | payment | bank | mixer | gambling | lending |
+#             mail | social | im | cloud_storage | game | shop | other
 #   domains   host names (subdomains match too) and historical domains; an entry with a `/`
 #             (`reddit.com/r/bitcoin`) matches that path prefix of a URL
 #   keywords  names as they appear in free text (program names, brand spellings); matched on
@@ -513,7 +513,7 @@ service = [
   { id = "ukash", name = "Ukash", kind = "payment", domains = ["ukash.com"], keywords = ["ukash"], years = "2005-2015" },
   { id = "paysafecard", name = "Paysafecard", kind = "payment", domains = ["paysafecard.com"], keywords = ["paysafecard"], years = "2000-" },
   { id = "liqpay", name = "LiqPay", kind = "payment", domains = ["liqpay.ua", "liqpay.com"], keywords = ["liqpay"], years = "2008-" },
-  { id = "privat24", name = "Privat24", kind = "payment", domains = ["privat24.ua", "privatbank.ua"], keywords = ["privat24", "приват24"], years = "2001-", notes = "Ukrainian bank" },
+  { id = "privat24", name = "Privat24", kind = "bank", domains = ["privat24.ua", "privatbank.ua"], keywords = ["privat24", "приват24"], years = "2001-", notes = "Ukrainian bank" },
   { id = "interkassa", name = "Interkassa", kind = "payment", domains = ["interkassa.com"], years = "2008-" },
   { id = "robokassa", name = "Robokassa", kind = "payment", domains = ["robokassa.ru", "robokassa.com"], years = "2002-" },
   { id = "easypay-by", name = "EasyPay (Belarus)", kind = "payment", domains = ["easypay.by"], years = "2002-" },
@@ -616,6 +616,68 @@ service = [
   { id = "evernote", name = "Evernote", kind = "cloud_storage", domains = ["evernote.com"], keywords = ["evernote"], years = "2008-", notes = "Notes often hold seeds and passwords" },
   { id = "lastpass", name = "LastPass", kind = "cloud_storage", domains = ["lastpass.com"], keywords = ["lastpass"], years = "2008-", notes = "Password vault" },
   { id = "keepass", name = "KeePass", kind = "cloud_storage", domains = ["keepass.info"], keywords = ["keepass", ".kdbx"], years = "2003-", notes = "Local password vault (.kdb/.kdbx)" },
+
+  # ---------------------------------------------------------------- banks (online banking)
+  { id = "sberbank", name = "Sberbank Online", kind = "bank", domains = ["sberbank.ru", "online.sberbank.ru", "sbrf.ru"], keywords = ["сбербанк онлайн", "sberbank online"], years = "2008-" },
+  { id = "alfabank", name = "Alfa-Bank (Alfa-Click)", kind = "bank", domains = ["alfabank.ru", "click.alfabank.ru", "alfabank.ua"], keywords = ["альфа-клик", "alfa-click"], years = "2008-" },
+  { id = "tinkoff", name = "Tinkoff Bank", kind = "bank", domains = ["tinkoff.ru", "tcsbank.ru"], years = "2006-" },
+  { id = "vtb", name = "VTB / VTB24", kind = "bank", domains = ["vtb.ru", "vtb24.ru"], keywords = ["телебанк втб24"], years = "2005-" },
+  { id = "raiffeisen", name = "Raiffeisen Bank", kind = "bank", domains = ["raiffeisen.ru", "raiffeisen.ua", "aval.ua"], years = "2005-" },
+  { id = "monobank", name = "Monobank", kind = "bank", domains = ["monobank.ua"], years = "2017-" },
+  { id = "oschadbank", name = "Oschadbank", kind = "bank", domains = ["oschadbank.ua", "oschadnybank.com"], years = "2008-" },
+  { id = "pumb", name = "PUMB", kind = "bank", domains = ["pumb.ua", "fuib.com"], years = "2008-" },
+  { id = "ukrsibbank", name = "UkrSibbank", kind = "bank", domains = ["ukrsibbank.com", "my.ukrsibbank.com"], years = "2008-" },
+  { id = "belarusbank", name = "Belarusbank", kind = "bank", domains = ["belarusbank.by"], years = "2008-" },
+  { id = "kaspi", name = "Kaspi Bank", kind = "bank", domains = ["kaspi.kz"], years = "2008-" },
+  { id = "halyk", name = "Halyk Bank", kind = "bank", domains = ["halykbank.kz"], years = "2008-" },
+  { id = "chase", name = "Chase", kind = "bank", domains = ["chase.com"], years = "2000-" },
+  { id = "bankofamerica", name = "Bank of America", kind = "bank", domains = ["bankofamerica.com"], years = "2000-" },
+  { id = "wellsfargo", name = "Wells Fargo", kind = "bank", domains = ["wellsfargo.com"], years = "2000-" },
+  { id = "citibank", name = "Citibank", kind = "bank", domains = ["citibank.com", "online.citibank.com", "citibank.ru"], years = "2000-" },
+  { id = "hsbc", name = "HSBC", kind = "bank", domains = ["hsbc.com", "hsbc.co.uk"], years = "2000-" },
+  { id = "barclays", name = "Barclays", kind = "bank", domains = ["barclays.co.uk", "barclays.com"], years = "2000-" },
+  { id = "revolut", name = "Revolut", kind = "bank", domains = ["revolut.com"], years = "2015-", notes = "Also sold crypto from 2017" },
+  { id = "n26", name = "N26", kind = "bank", domains = ["n26.com"], years = "2013-" },
+  { id = "wise", name = "Wise (TransferWise)", kind = "bank", domains = ["transferwise.com", "wise.com"], years = "2011-" },
+
+  # ---------------------------------------------------------------- games (in-game balances, tradable items)
+  { id = "steam", name = "Steam", kind = "game", domains = ["steampowered.com", "steamcommunity.com", "store.steampowered.com"], years = "2003-", notes = "Steam Wallet balance and tradable items" },
+  { id = "battlenet", name = "Battle.net (Blizzard)", kind = "game", domains = ["battle.net", "blizzard.com", "worldofwarcraft.com"], years = "2004-" },
+  { id = "ea-origin", name = "EA / Origin", kind = "game", domains = ["origin.com", "ea.com"], years = "2011-" },
+  { id = "wargaming", name = "Wargaming (World of Tanks)", kind = "game", domains = ["wargaming.net", "worldoftanks.ru", "worldoftanks.com", "worldoftanks.eu"], years = "2010-" },
+  { id = "ubisoft", name = "Ubisoft (Uplay)", kind = "game", domains = ["ubisoft.com", "uplay.com"], years = "2009-" },
+  { id = "gog", name = "GOG", kind = "game", domains = ["gog.com"], years = "2008-" },
+  { id = "epicgames", name = "Epic Games", kind = "game", domains = ["epicgames.com"], years = "2018-" },
+  { id = "riot", name = "Riot Games (League of Legends)", kind = "game", domains = ["riotgames.com", "leagueoflegends.com"], years = "2009-" },
+  { id = "mailru-games", name = "Mail.ru Games", kind = "game", domains = ["games.mail.ru"], years = "2008-" },
+  { id = "4game", name = "4game (Innova)", kind = "game", domains = ["4game.com", "4game.ru"], years = "2009-" },
+  { id = "neopets", name = "Neopets", kind = "game", domains = ["neopets.com"], years = "1999-" },
+  { id = "xbox", name = "Xbox Live", kind = "game", domains = ["xbox.com"], years = "2002-" },
+  { id = "playstation", name = "PlayStation Network", kind = "game", domains = ["playstation.com", "playstationnetwork.com"], years = "2006-" },
+  { id = "rockstar", name = "Rockstar Social Club", kind = "game", domains = ["rockstargames.com", "socialclub.rockstargames.com"], years = "2008-" },
+  { id = "minecraft", name = "Minecraft (Mojang)", kind = "game", domains = ["minecraft.net", "mojang.com"], years = "2009-" },
+  { id = "roblox", name = "Roblox", kind = "game", domains = ["roblox.com"], years = "2006-" },
+  { id = "runescape", name = "RuneScape (Jagex)", kind = "game", domains = ["runescape.com", "jagex.com"], years = "2001-" },
+  { id = "eveonline", name = "EVE Online", kind = "game", domains = ["eveonline.com"], years = "2003-" },
+
+  # ---------------------------------------------------------------- shopping
+  { id = "amazon", name = "Amazon", kind = "shop", domains = ["amazon.com", "amazon.co.uk", "amazon.de"], years = "1995-" },
+  { id = "ebay", name = "eBay", kind = "shop", domains = ["ebay.com", "ebay.co.uk", "ebay.de"], years = "1995-" },
+  { id = "aliexpress", name = "AliExpress", kind = "shop", domains = ["aliexpress.com", "aliexpress.ru", "alibaba.com"], years = "2010-" },
+  { id = "taobao", name = "Taobao", kind = "shop", domains = ["taobao.com"], years = "2003-" },
+  { id = "ozon", name = "Ozon", kind = "shop", domains = ["ozon.ru"], years = "1998-" },
+  { id = "wildberries", name = "Wildberries", kind = "shop", domains = ["wildberries.ru", "wildberries.ua"], years = "2004-" },
+  { id = "rozetka", name = "Rozetka", kind = "shop", domains = ["rozetka.com.ua"], years = "2005-" },
+  { id = "olx", name = "OLX (Slando)", kind = "shop", domains = ["olx.ua", "olx.com", "slando.ua", "slando.ru"], years = "2006-" },
+  { id = "avito", name = "Avito", kind = "shop", domains = ["avito.ru"], years = "2007-" },
+  { id = "yandex-market", name = "Yandex.Market", kind = "shop", domains = ["market.yandex.ru"], years = "2000-" },
+  { id = "prom-ua", name = "Prom.ua", kind = "shop", domains = ["prom.ua"], years = "2008-" },
+  { id = "allegro", name = "Allegro", kind = "shop", domains = ["allegro.pl"], years = "1999-" },
+  { id = "lamoda", name = "Lamoda", kind = "shop", domains = ["lamoda.ru", "lamoda.ua"], years = "2011-" },
+  { id = "etsy", name = "Etsy", kind = "shop", domains = ["etsy.com"], years = "2005-" },
+  { id = "newegg", name = "Newegg", kind = "shop", domains = ["newegg.com"], years = "2001-", notes = "Accepted bitcoin 2014-2018" },
+  { id = "dealextreme", name = "DealExtreme", kind = "shop", domains = ["dx.com", "dealextreme.com"], years = "2006-" },
+  { id = "bonprix", name = "bonprix", kind = "shop", domains = ["bonprix.de", "bonprix.ua", "bonprix.ru"], years = "2000-" },
 
   # ---------------------------------------------------------------- other
   { id = "tor", name = "Tor", kind = "other", domains = ["torproject.org"], keywords = ["tor browser", "torbrowser"], years = "2002-" },

@@ -50,7 +50,7 @@ fn account(service: &str, identifier: &str, hit: i64) -> Observation {
         service: Some(service.into()),
         identifier: identifier.into(),
         kind: IdentifierKind::Login,
-        source: AccountSource { evidence: disk(1), origin: SourceRef::Hit(hit), detail: "saved browser login".into(), at: at(5) },
+        source: AccountSource { evidence: disk(1), origin: SourceRef::Hit(hit), detail: "saved browser login".into(), at: at(5), trace: strata_accounts::TraceKind::SavedPassword },
         first_seen: at(5),
         last_seen: at(9),
         confidence: 0.9,

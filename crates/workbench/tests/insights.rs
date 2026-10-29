@@ -7,7 +7,7 @@ use strata_fs::EntryState;
 use strata_kernel::scan::{Hit, HitCategory};
 use strata_kernel::{Confidence, Timestamp};
 use strata_timeline::{CRYPTO_TAG, EventKind, EventSource, TimelineEvent};
-use strata_workbench::{LeadRule, ServiceKind, Workbench};
+use strata_workbench::{AccountQuery, LeadRule, ServiceGroup, ServiceKind, Standing, Workbench};
 
 const ADDR: &str = "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH";
 
@@ -36,7 +36,9 @@ fn rebuild_resolves_accounts_and_ranks_leads() {
         .confidence(Confidence::HIGH)
         .details(serde_json::json!({"service": "Mt. Gox", "service_id": "mtgox"}));
     let file = FileRef { path: wallet.into(), state: EntryState::Deleted, file_offset: 0 };
-    case.store_hits(disk, &[(key, Attribution { volume: Some(0), file: Some(file) }), (login, Attribution::default())]).unwrap();
+    let sighting = Hit::new("accounts.email", HitCategory::Identity, 9000, 20).label("e-mail").value("stranger@example.org");
+    case.store_hits(disk, &[(key, Attribution { volume: Some(0), file: Some(file) }), (login, Attribution::default()), (sighting, Attribution::default())])
+        .unwrap();
 
     let ev = |t, kind, title: &str| TimelineEvent::new(t, kind, title, EventSource::new("chrome.history", "/History")).with_tag(CRYPTO_TAG);
     case.store_events(
@@ -61,6 +63,15 @@ fn rebuild_resolves_accounts_and_ranks_leads() {
     let gox = accounts.iter().find(|a| a.service_id() == Some("mtgox")).expect("Mt. Gox account");
     assert_eq!(gox.service_kind(), Some(ServiceKind::Exchange));
     assert_eq!(gox.first_seen(), Some(at(2011, 11, 2)), "dated by the account event");
+    assert_eq!(gox.standing(), Standing::Used, "the account event shows use");
+    assert!(accounts.iter().all(|a| a.identifier() != "stranger@example.org"), "plain sightings never become accounts");
+
+    let used = wb.account_rows(&AccountQuery::default()).unwrap();
+    assert!(used.iter().any(|r| r.identifier == "gox_tester" && r.group == ServiceGroup::Crypto));
+    let seen = wb.account_rows(&AccountQuery { seen: true, ..Default::default() }).unwrap();
+    assert!(seen.iter().any(|r| r.mention_only && r.identifier == "stranger@example.org"));
+    let mention = wb.mention("Stranger@example.org").unwrap().unwrap();
+    assert_eq!(wb.mention_hits(&mention, 10).unwrap().len(), 1);
 
     let leads = wb.leads().unwrap();
     assert_eq!(leads[0].rule, LeadRule::OnChainActivity, "{:?}", leads.iter().map(|l| &l.title).collect::<Vec<_>>());

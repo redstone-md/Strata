@@ -37,11 +37,12 @@ pub use strata_machines::{
     UsageReport, UsbDevice, UserAccount, Values, first_source, utc_offset,
 };
 pub use strata_case::{EventQuery, HostFact, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
+pub use strata_case::{AccountQuery, AccountRow, Mention};
 pub use strata_kernel::scan::HitCategory;
 pub use strata_index::{BlockClass, CellContent, IndexStats, Ownership, TextKind};
 pub use strata_timeline::{EventKind, TimelineEvent};
 pub use strata_chain::{AddressBalance, AddressHistory};
-pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceKind, SourceRef, Years};
+pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceGroup, ServiceKind, SourceRef, Standing, TraceKind, Years};
 pub use strata_leads::{EventRecord, Lead, LeadRef, LeadRule};
 pub use strata_graph::{
     ChainState, EdgeKind, Evidence, Flags, Graph, GraphView, Layout, Link, Node, NodeDetail, NodeKey, NodeKind, ViewScope, ViewEdge, ViewNode,

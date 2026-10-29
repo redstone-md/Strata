@@ -1,5 +1,5 @@
 use crate::{Attribution, Case, FileRef};
-use strata_accounts::{AccountResolver, AccountSource, IdentifierKind, Observation, SourceRef};
+use strata_accounts::{AccountResolver, AccountSource, IdentifierKind, Observation, SourceRef, TraceKind};
 use strata_chain::{AddressBalance, AddressHistory, AddressTx};
 use strata_fs::EntryState;
 use strata_kernel::scan::{Hit, HitCategory};
@@ -9,7 +9,7 @@ use strata_timeline::{CRYPTO_TAG, EventKind, EventSource, TimelineEvent};
 
 const ADDR: &str = "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH";
 
-fn case_with_disk(dir: &std::path::Path) -> (Case, EvidenceId) {
+pub(super) fn case_with_disk(dir: &std::path::Path) -> (Case, EvidenceId) {
     let img = dir.join("zero.img");
     std::fs::write(&img, vec![0u8; 1 << 20]).unwrap();
     let case = Case::open(&dir.join("t.strata")).unwrap();
@@ -17,7 +17,7 @@ fn case_with_disk(dir: &std::path::Path) -> (Case, EvidenceId) {
     (case, id)
 }
 
-fn ts(s: i64) -> Timestamp {
+pub(super) fn ts(s: i64) -> Timestamp {
     Timestamp::from_unix_secs(s).unwrap()
 }
 
@@ -72,7 +72,7 @@ fn accounts_leads_and_lead_events_round_trip() {
         service: Some("mtgox.com".into()),
         identifier: "gox_tester".into(),
         kind: IdentifierKind::Login,
-        source: AccountSource { evidence: disk, origin: SourceRef::Hit(1), detail: "saved browser login".into(), at: Some(ts(1_310_000_000)) },
+        source: AccountSource { evidence: disk, origin: SourceRef::Hit(1), detail: "saved browser login".into(), at: Some(ts(1_310_000_000)), trace: TraceKind::SavedPassword },
         first_seen: None,
         last_seen: None,
         confidence: 0.8,
