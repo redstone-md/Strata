@@ -1,0 +1,9 @@
+[package]
+name = "strata"
+description = "Strata forensic workbench (GPUI desktop app)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gpui-component = "0.8.1"

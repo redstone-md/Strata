@@ -491,6 +491,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-workbench"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "strata-accounts",
+ "strata-case",
+ "strata-engine",
+ "strata-kernel",
+ "strata-source",
+ "tempfile",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
