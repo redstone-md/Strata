@@ -83,7 +83,11 @@ impl MemberAnalyzer {
                     report.kind().name(),
                     if report.encrypted() == Some(true) { " (encrypted)" } else { "" }
                 ))
-                .value(format!("{} keys, {} addresses", report.keys().len(), report.addresses().len()))
+                .value(if report.encrypted() == Some(true) && report.keys().is_empty() {
+                    "encrypted: keys need the password".to_string()
+                } else {
+                    format!("{} keys, {} addresses", report.keys().len(), report.addresses().len())
+                })
                 .confidence(if empty { Confidence::new(EMPTY_WALLET_CONFIDENCE) } else { Confidence::CERTAIN })
                 .details(report.to_json()),
         )
