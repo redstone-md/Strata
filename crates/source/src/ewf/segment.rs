@@ -9,6 +9,11 @@ const LVF1: &[u8; 8] = b"LVF\x09\x0d\x0a\xff\x00";
 const EVF2: &[u8; 4] = b"EVF2";
 const LEF2: &[u8; 4] = b"LEF2";
 
+/// Cheap sniff for `open_source`: any Expert Witness family signature, supported or not.
+pub(crate) fn looks_like_ewf(head: &[u8]) -> bool {
+    [&EVF1[..4], &LVF1[..4], EVF2, LEF2].iter().any(|m| head.starts_with(m))
+}
+
 /// Accept EWF v1 disk images; explain everything else in the family.
 pub(super) fn check_signature(head: &[u8]) -> Result<()> {
     if head.starts_with(EVF1) {
@@ -109,6 +114,7 @@ mod tests {
         assert!(err.contains("EWF2 (.Ex01/.Lx01) not supported yet"), "{err}");
         assert!(check_signature(LVF1).is_err());
         assert!(check_signature(b"").is_err());
+        assert!(looks_like_ewf(b"EVF\x09") && !looks_like_ewf(b"MZ"));
         assert_eq!(series_letter("E01"), Some('E'));
         assert_eq!(series_letter("e05"), Some('e'));
         assert_eq!(series_letter("E1"), None);

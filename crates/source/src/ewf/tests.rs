@@ -230,3 +230,15 @@ fn truncated_or_garbled_segments_never_panic() {
     garbage.extend((0..4096u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8));
     exercise(&[garbage]);
 }
+
+#[test]
+fn open_source_sniffs_ewf_and_rejects_ewf2() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write(dir.path(), &build().segments);
+    let src = crate::open_source(path.to_str().unwrap(), None).unwrap();
+    assert_eq!(src.info().kind, SourceKind::EwfImage);
+    let ex01 = dir.path().join("new.Ex01");
+    std::fs::write(&ex01, b"EVF2\r\n\x81\x00\x01\x00\x00\x00").unwrap();
+    let err = crate::open_source(ex01.to_str().unwrap(), None).err().unwrap().to_string();
+    assert!(err.contains("EWF2 (.Ex01/.Lx01) not supported yet"), "{err}");
+}

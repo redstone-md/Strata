@@ -20,6 +20,7 @@ mod table;
 mod tests;
 
 pub use metadata::StoredHashes;
+pub(crate) use segment::looks_like_ewf;
 
 use crate::file_io::read_full_at;
 use crate::{BlockSource, SourceInfo, SourceKind};
