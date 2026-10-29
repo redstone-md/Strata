@@ -117,9 +117,26 @@ CREATE TABLE IF NOT EXISTS balances (
 pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(SCHEMA)?;
+    migrate(conn)?;
     conn.execute(
         "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?1)",
         [VERSION.to_string()],
     )?;
+    Ok(())
+}
+
+/// Columns added after a case may already exist on disk. `ADD COLUMN` fails harmlessly with
+/// "duplicate column" when the column is already there.
+const ADDED_COLUMNS: &[(&str, &str)] = &[("files", "type_notes TEXT")];
+
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    for (table, column) in ADDED_COLUMNS {
+        match conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column}"), []) {
+            Err(rusqlite::Error::SqliteFailure(_, Some(msg))) if msg.contains("duplicate column") => {}
+            other => {
+                other?;
+            }
+        }
+    }
     Ok(())
 }
