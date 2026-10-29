@@ -57,6 +57,7 @@ impl CommandBar {
             .child(
                 div()
                     .id("case-name")
+                    .occlude()
                     .cursor_pointer()
                     .text_color(t.text)
                     .hover(|s| s.text_color(t.emphasis))
@@ -76,10 +77,11 @@ impl RenderOnce for CommandBar {
             .flex_1()
             .min_w_0()
             .h_full()
-            .px(t.gutter)
+            .pl(t.gutter)
+            .pr(px(16.))
             .gap(px(24.))
             .child(div().flex_1().min_w_0().child(self.case()))
-            .child(Field::new(&self.search).hint("Alt+F").width(px(SEARCH_WIDTH)))
+            .child(div().id("search").occlude().child(Field::new(&self.search).hint("Alt+F").width(px(SEARCH_WIDTH))))
             .child(div().flex_1().min_w_0().child(self.status()))
     }
 }

@@ -2,6 +2,7 @@
 
 mod command_bar;
 mod screens;
+mod window_controls;
 
 use crate::nav::{Navigate, Screen};
 use crate::session::Session;
@@ -10,11 +11,12 @@ use crate::widgets::{Sidebar, quiet};
 use command_bar::{CommandBar, progress_line};
 use gpui::{
     AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, actions, div, prelude::FluentBuilder as _, px,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, WindowControlArea, actions, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::{h_flex, v_flex};
 use screens::Screens;
+use window_controls::WindowControls;
 use std::rc::Rc;
 
 actions!(strata, [FocusSearch]);
@@ -86,9 +88,13 @@ impl Shell {
         let on_case = Rc::new(move |_: &_, _: &mut Window, cx: &mut gpui::App| {
             let _ = this.update(cx, |shell, cx| shell.navigate(Navigate::to(Screen::Overview), cx));
         });
+        // The whole bar is the window's caption: drag to move, double-click to maximize.
+        // Interactive parts occlude it so they keep their clicks.
         h_flex()
+            .id("command-bar")
             .h(t.command_bar_height)
             .flex_shrink_0()
+            .window_control_area(WindowControlArea::Drag)
             .child(
                 h_flex()
                     .w(t.sidebar_width)
@@ -102,6 +108,7 @@ impl Shell {
                     .child("Strata"),
             )
             .child(CommandBar::new(session.case_name(), session.snapshot().clone(), &self.search, on_case))
+            .child(WindowControls)
     }
 }
 

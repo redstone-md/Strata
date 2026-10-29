@@ -42,7 +42,7 @@ fn main() {
         let bounds = Bounds::centered(None, size(px(1480.), px(940.)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(TitlebarOptions { title: Some("Strata".into()), ..Default::default() }),
+            titlebar: Some(TitlebarOptions { title: Some("Strata".into()), appears_transparent: true, ..Default::default() }),
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {
