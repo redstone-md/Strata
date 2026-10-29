@@ -1,12 +1,13 @@
 [package]
 name = "strata-source"
-description = "Evidence byte sources: raw images, R-Studio .rdr, physical drives"
+description = "Evidence byte sources: raw images, R-Studio .rdr, EnCase .E01, physical drives"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 strata-kernel.workspace = true
+flate2 = "1.1"
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true

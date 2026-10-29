@@ -6110,6 +6110,7 @@ dependencies = [
 name = "strata-source"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "parking_lot",
  "serde",
  "serde_json",

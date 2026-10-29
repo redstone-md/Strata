@@ -108,6 +108,7 @@ impl BlockSource for CompositeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SourceKind;
 
     struct Mem(Vec<u8>, Vec<ByteRange>);
     impl BlockSource for Mem {

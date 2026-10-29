@@ -1,4 +1,4 @@
-use crate::{BlockSource, PhysicalDrive, RawImage, RdrImage};
+use crate::{BlockSource, EwfImage, PhysicalDrive, RawImage, RdrImage};
 use std::path::Path;
 use std::sync::Arc;
 use strata_kernel::Result;
@@ -6,7 +6,8 @@ use strata_kernel::Result;
 /// Open any supported evidence location by sniffing its content, not its extension.
 ///
 /// `\\.\PhysicalDriveN` opens the live drive; files starting with the R-Studio magic open as
-/// `.rdr`; everything else is treated as a raw image.
+/// `.rdr`, files with an Expert Witness signature (`EVF…`) as EnCase images; everything else
+/// is treated as a raw image.
 pub fn open_source(location: &str, cache_dir: Option<&Path>) -> Result<Arc<dyn BlockSource>> {
     if location.starts_with(r"\\.\") {
         return Ok(Arc::new(PhysicalDrive::open_path(location)?));
@@ -17,6 +18,9 @@ pub fn open_source(location: &str, cache_dir: Option<&Path>) -> Result<Arc<dyn B
     crate::file_io::read_full_at(&file, 0, &mut magic)?;
     if magic == [0x33, 0xDA, 0x54, 0xD7] {
         return Ok(Arc::new(RdrImage::open_with_cache(path, cache_dir)?));
+    }
+    if crate::ewf::looks_like_ewf(&magic) {
+        return Ok(Arc::new(EwfImage::open(path)?));
     }
     Ok(Arc::new(RawImage::open(path)?))
 }

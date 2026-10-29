@@ -5,6 +5,7 @@ use strata_kernel::{ByteRange, Result};
 pub enum SourceKind {
     RawImage,
     RStudioImage,
+    EwfImage,
     PhysicalDrive,
     Slice,
 }
