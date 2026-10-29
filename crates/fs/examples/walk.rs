@@ -1,8 +1,9 @@
-//! `cargo run -p strata-fs --example walk -- <image> [volume-index] [--carve] [--cat=<path>]`
+//! `cargo run -p strata-fs --example walk -- <image> [volume-index] [--carve] [--cat=<path>] [--find=<a,b>]`
 //!
 //! Walks the filesystem metadata of one volume (default: every volume) and prints entry counts,
 //! the first paths and a sample of deleted files. Reads metadata only, unless `--cat` asks for
-//! the first bytes of one file.
+//! the first bytes of one file. `--find` lists every path containing one of the
+//! comma-separated substrings (case-insensitive).
 
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -13,6 +14,8 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let carve = args.iter().any(|a| a == "--carve");
     let cat = args.iter().find_map(|a| a.strip_prefix("--cat="));
+    let find: Vec<String> =
+        args.iter().find_map(|a| a.strip_prefix("--find=")).map(|f| f.split(',').map(str::to_lowercase).collect()).unwrap_or_default();
     let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
     let Some(path) = positional.first() else {
         eprintln!("usage: walk <image> [volume-index] [--carve] [--cat=<path>]");
@@ -37,6 +40,7 @@ fn main() {
         match open_filesystem_with(vol.open(disk.clone()), vol.fs, options) {
             Ok(fs) => {
                 report(fs.as_ref(), started);
+                search(fs.as_ref(), &find);
                 if let Some(path) = cat {
                     dump(fs.as_ref(), path);
                 }
@@ -84,6 +88,18 @@ fn report(fs: &dyn FileSystem, started: Instant) {
         let when = e.times.modified.map(|t| t.to_string()).unwrap_or_else(|| "-".into());
         let note = e.damage.first().map(|d| format!("  [{}]", d.note())).unwrap_or_default();
         println!("   {:?} {:>12} {}  {}{}", e.state, e.size, when, e.path, note);
+    }
+}
+
+fn search(fs: &dyn FileSystem, needles: &[String]) {
+    if needles.is_empty() {
+        return;
+    }
+    let hits: Vec<_> = fs.entries().iter().filter(|e| needles.iter().any(|n| e.path.to_lowercase().contains(n.as_str()))).collect();
+    println!("   -- {} paths matching {needles:?}", hits.len());
+    for e in hits {
+        let note = e.damage.first().map(|d| format!("  [{}]", d.note())).unwrap_or_default();
+        println!("   {:?} {:>12} {}{}{note}", e.state, e.size, e.path, if e.is_dir { "/" } else { "" });
     }
 }
 
