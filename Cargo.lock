@@ -6138,6 +6138,7 @@ dependencies = [
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
+ "serde",
  "serde_json",
  "strata-workbench",
 ]

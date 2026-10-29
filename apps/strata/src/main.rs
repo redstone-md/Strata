@@ -13,12 +13,15 @@ mod picker;
 mod session;
 mod shell;
 mod theme;
+mod view_state;
 mod views;
 mod widgets;
 
 use gpui::{
     App, AppContext as _, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, px, size,
 };
+use std::time::Duration;
+use view_state::WindowPlacement;
 use gpui_component::Root;
 use session::Session;
 use shell::{FocusSearch, Shell};
@@ -39,15 +42,27 @@ fn main() {
         theme::install(cx);
         cx.bind_keys([KeyBinding::new("alt-f", FocusSearch, None)]);
         cx.on_window_closed(|cx, _| cx.quit()).detach();
-        let bounds = Bounds::centered(None, size(px(1480.), px(940.)), cx);
+        let bounds = WindowPlacement::load()
+            .and_then(|p| p.bounds(cx))
+            .unwrap_or_else(|| WindowBounds::Windowed(Bounds::centered(None, size(px(1480.), px(940.)), cx)));
         let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(bounds),
             titlebar: Some(TitlebarOptions { title: Some("Strata".into()), appears_transparent: true, ..Default::default() }),
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {
             let session = cx.new(|cx| Session::new(&case, cx));
-            let shell = cx.new(|cx| Shell::new(session, window, cx));
+            let shell = cx.new(|cx| Shell::new(session.clone(), window, cx));
+            shell.update(cx, |s, cx| s.restore(window, cx));
+            let closing = shell.clone();
+            // Closing keeps the work: view state is saved and running jobs stop at a
+            // checkpoint, to resume on the next start.
+            window.on_window_should_close(cx, move |window, cx| {
+                WindowPlacement::of(window).save();
+                closing.update(cx, |s, cx| s.save_view_state(cx));
+                session.read(cx).workbench().shutdown(Duration::from_secs(5));
+                true
+            });
             cx.new(|cx| Root::new(shell, window, cx))
         })
         .expect("open main window");

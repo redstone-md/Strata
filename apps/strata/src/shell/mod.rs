@@ -11,15 +11,21 @@ use crate::widgets::{Sidebar, quiet};
 use command_bar::{CommandBar, progress_line};
 use gpui::{
     AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, WindowControlArea, actions, div, prelude::FluentBuilder as _, px,
+    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, WindowControlArea, actions, div, prelude::FluentBuilder as _,
+    px,
 };
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::{h_flex, v_flex};
+use crate::view_state::ViewState;
 use screens::Screens;
-use window_controls::WindowControls;
 use std::rc::Rc;
+use std::time::Duration;
+use window_controls::WindowControls;
 
 actions!(strata, [FocusSearch]);
+
+/// Quiet time before a changed view state is written to the case.
+const SAVE_DELAY: Duration = Duration::from_millis(800);
 
 pub struct Shell {
     session: Entity<Session>,
@@ -27,6 +33,9 @@ pub struct Shell {
     search: Entity<InputState>,
     focus: FocusHandle,
     screens: Screens,
+    /// View state last written to the case.
+    saved: ViewState,
+    _save: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -34,7 +43,13 @@ impl Shell {
     pub fn new(session: Entity<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search keys, addresses, files, accounts"));
         let (screens, navigate) = Screens::new(&session, window, cx);
-        let subscriptions = vec![
+        let watch_views = [
+            cx.observe(&screens.wallets, |this, _, cx| this.schedule_save(cx)),
+            cx.observe(&screens.accounts, |this, _, cx| this.schedule_save(cx)),
+            cx.observe(&screens.timeline, |this, _, cx| this.schedule_save(cx)),
+            cx.observe(&screens.tasks, |this, _, cx| this.schedule_save(cx)),
+        ];
+        let mut subscriptions = vec![
             navigate,
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe_in(&search, window, |this, _, event: &InputEvent, _, cx| match event {
@@ -43,9 +58,63 @@ impl Shell {
                 _ => {}
             }),
         ];
+        subscriptions.extend(watch_views);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
-        Self { session, screen: Screen::Overview, search, focus, screens, _subscriptions: subscriptions }
+        Self { session, screen: Screen::Overview, search, focus, screens, saved: ViewState::default(), _save: None, _subscriptions: subscriptions }
+    }
+
+    /// What the user is looking at now.
+    fn view_state(&self, cx: &gpui::App) -> ViewState {
+        let browser = self.screens.browser(self.screen).map(|b| b.read(cx));
+        ViewState {
+            screen: Some(self.screen.name().to_string()),
+            search: self.search.read(cx).value().to_string(),
+            category: browser.and_then(|b| b.only()),
+            finding: browser.and_then(|b| b.selected_id()),
+            day: self.screens.timeline.read(cx).day(),
+            task: self.screens.tasks.read(cx).selected().map(|j| j.0),
+        }
+    }
+
+    /// Write the view state after [`SAVE_DELAY`] of no further changes.
+    fn schedule_save(&mut self, cx: &mut Context<Self>) {
+        if self.view_state(cx) == self.saved {
+            self._save = None;
+            return;
+        }
+        self._save = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SAVE_DELAY).await;
+            let _ = this.update(cx, |shell, cx| shell.save_view_state(cx));
+        }));
+    }
+
+    /// Write the view state now if it changed (also on close).
+    pub fn save_view_state(&mut self, cx: &mut Context<Self>) {
+        let state = self.view_state(cx);
+        if state != self.saved {
+            state.save(self.session.read(cx).workbench());
+            self.saved = state;
+        }
+    }
+
+    /// Bring back the screen, search, filters and selections of the last session.
+    pub fn restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let state = ViewState::load(self.session.read(cx).workbench());
+        if !state.search.is_empty() {
+            let text = state.search.clone();
+            self.search.update(cx, |s, cx| s.set_value(text, window, cx));
+        }
+        if let Some((from, to)) = state.day {
+            self.screens.timeline.update(cx, |t, cx| t.restore_day((from, to), cx));
+        }
+        let screen = state.screen.as_deref().and_then(Screen::from_name).unwrap_or(Screen::Overview);
+        self.navigate(Navigate { screen, category: state.category }, cx);
+        if let (Some(id), Some(browser)) = (state.finding, self.screens.browser(screen).cloned()) {
+            browser.update(cx, |b, cx| b.select_id(id, cx));
+        }
+        self.screens.tasks.update(cx, |t, _| t.restore(state.task.map(strata_workbench::JobId)));
+        self.saved = state;
     }
 
     fn apply_search(&mut self, cx: &mut Context<Self>) {
@@ -55,6 +124,7 @@ impl Shell {
         } else if self.screen == Screen::Timeline {
             self.screens.timeline.update(cx, |v, cx| v.set_search(&text, cx));
         }
+        self.schedule_save(cx);
     }
 
     pub fn navigate(&mut self, nav: Navigate, cx: &mut Context<Self>) {
@@ -69,6 +139,7 @@ impl Shell {
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }
+        self.schedule_save(cx);
         cx.notify();
     }
 

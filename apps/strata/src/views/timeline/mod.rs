@@ -59,6 +59,16 @@ impl TimelineView {
         self.reload(cx);
     }
 
+    /// The day filter as `[from, to)` days since the epoch.
+    pub fn day(&self) -> Option<(i64, i64)> {
+        self.day.map(|d| (d.from, d.to))
+    }
+
+    pub fn restore_day(&mut self, (from, to): (i64, i64), cx: &mut Context<Self>) {
+        self.day = None;
+        self.pick_day(Some(DayRange { from, to }), cx);
+    }
+
     fn pick_day(&mut self, day: Option<DayRange>, cx: &mut Context<Self>) {
         self.day = if self.day == day { None } else { day };
         let (from, to) = (self.day.and_then(DayRange::start), self.day.and_then(DayRange::end));

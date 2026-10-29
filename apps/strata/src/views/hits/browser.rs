@@ -102,6 +102,26 @@ impl HitBrowser {
         self.reload(cx);
     }
 
+    /// The one category shown instead of all, if any.
+    pub fn only(&self) -> Option<HitCategory> {
+        self.only
+    }
+
+    pub fn selected_id(&self) -> Option<i64> {
+        self.selected.as_ref().map(|h| h.id)
+    }
+
+    /// Select a finding again by id when it is among the loaded rows.
+    pub fn select_id(&mut self, id: i64, cx: &mut Context<Self>) {
+        let ix = {
+            let d = self.table.read(cx).delegate();
+            (0..d.len()).find(|i| d.row(*i).is_some_and(|h| h.id == id))
+        };
+        if let Some(ix) = ix {
+            self.table.update(cx, |t, cx| t.set_selected_row(ix, cx));
+        }
+    }
+
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         let snapshot = self.session.read(cx).snapshot();
         let disks: DiskLabels = snapshot.disks.iter().map(|d| (d.id(), d.record.info.label.clone())).collect();
