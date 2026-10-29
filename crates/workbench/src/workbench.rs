@@ -13,11 +13,12 @@ use strata_kernel::{EvidenceId, Result};
 pub struct Workbench {
     case: Arc<Case>,
     jobs: Mutex<Vec<Arc<Job>>>,
+    indexes: crate::disk_index::IndexCache,
 }
 
 impl Workbench {
     pub fn open(case_dir: &Path) -> Result<Arc<Self>> {
-        Ok(Arc::new(Self { case: Arc::new(Case::open(case_dir)?), jobs: Mutex::new(Vec::new()) }))
+        Ok(Arc::new(Self { case: Arc::new(Case::open(case_dir)?), jobs: Mutex::new(Vec::new()), indexes: Default::default() }))
     }
 
     pub fn case(&self) -> &Arc<Case> {
@@ -50,9 +51,26 @@ impl Workbench {
         self.case.facts(evidence)
     }
 
-    /// Disk overview grid with `cells` cells.
+    /// Disk overview grid with `cells` cells (with per-cell content once a disk index exists).
     pub fn sector_map(&self, id: EvidenceId, cells: usize) -> Result<crate::SectorMap> {
-        crate::SectorMap::build(&self.case, id, cells)
+        let map = crate::SectorMap::build(&self.case, id, cells)?;
+        Ok(map.with_index(self.index().load(id).as_deref()))
+    }
+
+    fn index(&self) -> crate::disk_index::IndexService<'_> {
+        crate::disk_index::IndexService::new(&self.case, &self.indexes)
+    }
+
+    /// Summary of the disk index and the dominant content class of `cells` equal slices of
+    /// the disk (`None` before any scan or import built one).
+    pub fn disk_index(&self, id: EvidenceId, cells: usize) -> Option<crate::DiskIndexView> {
+        self.index().view(id, cells)
+    }
+
+    /// Import the R-Studio scan file next to the evidence image, if there is one: verified
+    /// volumes join the case and the disk index is seeded. Also done by [`Self::add_evidence`].
+    pub fn import_scn(&self, id: EvidenceId) -> Result<Option<crate::ScnImport>> {
+        self.index().import_scn(id)
     }
 
     /// Bytes known to be unreadable or absent in one evidence item.
@@ -61,7 +79,12 @@ impl Workbench {
     }
 
     pub fn add_evidence(&self, location: &str) -> Result<EvidenceRecord> {
-        self.case.add_evidence(location)
+        let record = self.case.add_evidence(location)?;
+        // A broken scan file must not stop the evidence from being added; our scan covers it.
+        match self.import_scn(record.id) {
+            Ok(Some(_)) => self.case.record(record.id),
+            _ => Ok(record),
+        }
     }
 
     pub fn evidence(&self) -> Result<Vec<EvidenceRecord>> {
@@ -226,6 +249,7 @@ impl Workbench {
     /// Re-detect volumes, re-map stored hits to files, then re-run triage.
     pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
         self.case.refresh_volumes(evidence)?;
+        let _ = self.import_scn(evidence);
         let n = self.case.reattribute(evidence)?;
         Ok((n, self.triage(evidence)?))
     }
@@ -266,8 +290,12 @@ impl Workbench {
                 Ok(format!("{n} entries, {wallets} wallet files"))
             }),
             JobKind::Scan => {
-                let scanner = Scanner::new(DetectorCatalog::all()).with_workers(self.scan_threads());
-                self.case.scan(job.evidence, &scanner, &job.control).and_then(|s| {
+                let index = self.index();
+                index.prepare(job.evidence).and_then(|builder| {
+                    let scanner = Scanner::new(DetectorCatalog::all()).with_workers(self.scan_threads()).with_observer(builder.clone());
+                    index.run_scan(job.evidence, &builder, &job.control, || self.case.scan(job.evidence, &scanner, &job.control))
+                })
+                .and_then(|s| {
                     let downgraded = crate::triage::Triage::new(&self.case).run(job.evidence)?;
                     Ok(format!("{} hits in {:.0}s, {downgraded} inside system files", s.hits, s.elapsed_secs))
                 })
@@ -281,6 +309,7 @@ impl Workbench {
                 .map(|(e, i, f)| format!("{e} events, {i} identities, {f} host facts")),
             JobKind::Archives => crate::archives::ArchiveUnpacker::new(&self.case).run(job.evidence, &job.control).map(|s| s.describe()),
             JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
+                .with_index(self.index())
                 .run(job.evidence, &job.control)
                 .map(|(n, w)| format!("{n} files carved, {w} wallets")),
         };

@@ -6373,10 +6373,12 @@ dependencies = [
  "strata-engine",
  "strata-fs",
  "strata-identify",
+ "strata-index",
  "strata-kernel",
  "strata-report",
  "strata-source",
  "strata-timeline",
+ "strata-volume",
  "tempfile",
 ]
 

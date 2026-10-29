@@ -13,11 +13,30 @@ const MAX_PARSE_BYTES: usize = 256 << 20;
 
 pub struct UnallocatedCarver<'a> {
     case: &'a Case,
+    index: Option<crate::disk_index::IndexService<'a>>,
 }
 
 impl<'a> UnallocatedCarver<'a> {
     pub fn new(case: &'a Case) -> Self {
-        Self { case }
+        Self { case, index: None }
+    }
+
+    /// Take file starts from the disk index when it covers the free space (no second read).
+    pub(crate) fn with_index(mut self, index: crate::disk_index::IndexService<'a>) -> Self {
+        self.index = Some(index);
+        self
+    }
+
+    /// Signature hits inside `ranges`: from the disk index of a complete scan, else from a
+    /// signature pass over just those ranges.
+    fn signatures(&self, id: EvidenceId, source: &dyn strata_source::BlockSource, ranges: &[ByteRange], control: &ScanControl) -> Result<Vec<Hit>> {
+        if let Some(hits) = self.index.as_ref().and_then(|i| i.signatures_for(id, ranges)) {
+            return Ok(hits);
+        }
+        let scanner = Scanner::new(vec![Arc::new(SignatureDetector::new())]);
+        let mut signatures: Vec<Hit> = Vec::new();
+        scanner.run_ranges(source, ranges, control, |h| signatures.extend(h))?;
+        Ok(signatures)
     }
 
     /// Free space of every parsed filesystem plus disk space outside all parsed volumes.
@@ -44,9 +63,7 @@ impl<'a> UnallocatedCarver<'a> {
         let source = self.case.source(id)?;
         let layout = self.case.layout(id)?;
         let ranges = self.free_ranges(id, source.len())?;
-        let scanner = Scanner::new(vec![Arc::new(SignatureDetector::new())]);
-        let mut signatures: Vec<Hit> = Vec::new();
-        scanner.run_ranges(source.as_ref(), &ranges, control, |h| signatures.extend(h))?;
+        let mut signatures = self.signatures(id, source.as_ref(), &ranges, control)?;
         if control.is_cancelled() {
             return Ok((0, 0));
         }
