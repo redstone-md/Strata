@@ -5,7 +5,7 @@ use crate::monitor::Monitor;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
-use strata_chain::{AddressBalance, EsploraBackend};
+use strata_chain::{AddressBalance, BlockCypherBackend, BlockchainInfoBackend, ChainBackend, EsploraBackend, FallbackBackend};
 use strata_case::{Case, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
 use strata_kernel::Period;
 use strata_kernel::scan::HitCategory;
@@ -239,6 +239,18 @@ impl Workbench {
             .ok()
             .flatten()
             .unwrap_or_else(|| EsploraBackend::MEMPOOL_SPACE.to_string())
+    }
+
+    /// The backend balance checks and histories use. A public Esplora server (the default)
+    /// is backed by blockchain.info and BlockCypher for when it is overloaded; a server of the
+    /// user's own is used alone.
+    pub fn chain_backend(&self) -> Box<dyn ChainBackend> {
+        let endpoint = self.chain_endpoint();
+        let esplora = Box::new(EsploraBackend::new(&endpoint));
+        if ![EsploraBackend::MEMPOOL_SPACE, EsploraBackend::BLOCKSTREAM].contains(&endpoint.trim_end_matches('/')) {
+            return esplora;
+        }
+        Box::new(FallbackBackend::new(vec![esplora, Box::new(BlockchainInfoBackend::new()), Box::new(BlockCypherBackend::new())]))
     }
 
     pub fn set_chain_endpoint(&self, url: &str) -> Result<()> {

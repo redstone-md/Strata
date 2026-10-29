@@ -49,7 +49,7 @@ fn step(ctx: &StepContext<'_>, kind: JobKind, wb: &Workbench) -> Result<String> 
         JobKind::ClassifyFiles => classify::run(ctx),
         JobKind::Carve => carve::run(ctx, wb),
         JobKind::Archives => archives::run(ctx),
-        JobKind::CheckBalances => balances::run(ctx, &wb.chain_endpoint()),
+        JobKind::CheckBalances => balances::run(ctx, wb.chain_backend().as_ref()),
         JobKind::Search => search::run(ctx),
         JobKind::Recover => recover::run(ctx),
         JobKind::Recheck => recheck::run(ctx),

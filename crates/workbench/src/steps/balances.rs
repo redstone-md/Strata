@@ -6,7 +6,7 @@
 use crate::insights::Insights;
 use crate::jobs::context::{Cursor, StepContext};
 use serde::{Deserialize, Serialize};
-use strata_chain::{AddressBalance, ChainBackend, EsploraBackend};
+use strata_chain::{AddressBalance, ChainBackend};
 use strata_kernel::Result;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,15 +75,14 @@ fn lookups(ctx: &StepContext<'_>, backend: &dyn ChainBackend, cur: &mut Balances
     Ok(true)
 }
 
-pub(super) fn run(ctx: &StepContext<'_>, endpoint: &str) -> Result<String> {
-    let backend = EsploraBackend::new(endpoint);
+pub(super) fn run(ctx: &StepContext<'_>, backend: &dyn ChainBackend) -> Result<String> {
     let insights = Insights::new(ctx.case());
     let mut cur: BalancesCursor = ctx.cursor().unwrap_or_default();
-    if cur.phase == Phase::Balances && !lookups(ctx, &backend, &mut cur)? {
+    if cur.phase == Phase::Balances && !lookups(ctx, backend, &mut cur)? {
         return Ok(String::new());
     }
     if cur.phase == Phase::Histories {
-        let (fetched, failed) = insights.fetch_histories(&backend, ctx.control())?;
+        let (fetched, failed) = insights.fetch_histories(backend, ctx.control())?;
         if ctx.should_stop() {
             return Ok(String::new());
         }

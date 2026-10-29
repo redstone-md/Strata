@@ -139,8 +139,8 @@ impl crate::Workbench {
     /// Fetch missing on-chain histories of used addresses from the configured endpoint, then
     /// rebuild. Returns `(fetched, failed)`.
     pub fn fetch_histories(&self) -> Result<(usize, usize)> {
-        let backend = strata_chain::EsploraBackend::new(&self.chain_endpoint());
-        let fetched = Insights::new(self.case()).fetch_histories(&backend, &ScanControl::default())?;
+        let backend = self.chain_backend();
+        let fetched = Insights::new(self.case()).fetch_histories(backend.as_ref(), &ScanControl::default())?;
         self.rebuild_insights()?;
         Ok(fetched)
     }

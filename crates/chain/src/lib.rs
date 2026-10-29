@@ -2,18 +2,24 @@
 //! it used?
 //!
 //! Backends sit behind [`ChainBackend`]; [`EsploraBackend`] talks to any Esplora REST server
-//! (mempool.space, blockstream.info, or the user's own instance).
+//! (mempool.space, blockstream.info, or the user's own instance). [`FallbackBackend`] chains
+//! it with the public balance services ([`BlockchainInfoBackend`], [`BlockCypherBackend`]) for
+//! when it is overloaded.
 
 mod balance;
 mod esplora;
 mod extract;
+mod fallback;
 mod history;
+mod public;
 mod transport;
 
 pub use balance::AddressBalance;
 pub use esplora::EsploraBackend;
 pub use extract::addresses_in;
+pub use fallback::FallbackBackend;
 pub use history::{AddressHistory, AddressTx};
+pub use public::{BlockCypherBackend, BlockchainInfoBackend};
 pub use transport::{HttpTransport, UreqTransport};
 
 use strata_kernel::{Error, Result};
