@@ -9,7 +9,7 @@ use std::time::Duration;
 use strata_workbench::{Encoding, EventQuery, EvidenceId, HitCategory, HitQuery, JobKind, JobState, Pattern, Scope, SearchQuery, Workbench};
 
 #[derive(Parser)]
-#[command(name = "strata-cli", about = "Strata forensic workbench (headless)")]
+#[command(name = "strata-cli", version, about = "Strata forensic workbench (headless)")]
 struct Cli {
     /// Case folder (created if missing), e.g. D:\cases\samsung.strata
     #[arg(short, long)]
