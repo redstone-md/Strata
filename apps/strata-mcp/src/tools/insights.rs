@@ -9,15 +9,29 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use strata_workbench::{Account, AccountSource, Lead, SourceRef, Workbench};
+use strata_workbench::{Account, AccountQuery, AccountRow, AccountSource, Lead, Period, ServiceGroup, SourceRef, Workbench};
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AccountsParams {
     /// Part of the service name or the identifier (any case).
     pub text: Option<String>,
+    /// Only one section: crypto, money, mail, cloud, social, games, shopping, other.
+    pub section: Option<String>,
+    /// `used` (default): accounts some trace shows the owner used (saved password, mail client,
+    /// Windows user, cookie, form input...). `seen`: names only seen in data (mail headers,
+    /// pages, free space), most promising first.
+    pub standing: Option<String>,
+    /// With `standing = seen`: also addresses found only in dumps and mailing lists.
+    pub include_bulk: bool,
     /// Only accounts on services that hold funds (exchanges, web wallets, pools...).
     pub funds_only: bool,
+    /// Also return every trace (finding, event or file) behind each account. Default false.
+    pub traces: bool,
+    /// Period of interest, `2011`, `2011-06` or `2011-06-14`; accounts seen outside it are left
+    /// out (undated ones stay).
+    pub from: Option<String>,
+    pub to: Option<String>,
     /// Rows per page, default 50, at most 500.
     pub limit: Option<usize>,
     pub offset: usize,
@@ -34,30 +48,53 @@ pub struct LeadsParams {
 }
 
 #[derive(Serialize)]
-struct AccountRow {
+struct AccountOut {
     /// Stable key `service|identifier`; leads refer to accounts by it.
     key: String,
     service: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     service_kind: Option<String>,
+    /// crypto, money, mail, cloud, social, games, shopping, other.
+    section: String,
     identifier: String,
     /// `e-mail`, `login`, `user id`, `nickname`, `phone`.
     kind: String,
+    /// `used` by the owner, only `seen` in data, or `bulk` (only in dumps and lists).
+    standing: String,
+    /// 0..1 evidence that the owner used it; kinds of trace combine, repeats count once.
+    strength: f32,
+    /// Why it is listed, strongest first (`saved password`, `mail client account`...).
+    why: Vec<String>,
+    password_saved: bool,
     holds_funds: bool,
-    confidence: f32,
     first_seen: Option<String>,
     last_seen: Option<String>,
     disks: Vec<u32>,
-    /// Keys of accounts with the same identifier elsewhere.
+    /// Traces behind the account (for a bare sighting: times found).
+    traces_count: u64,
+    /// Times the address was also found byte-level on the disks.
+    #[serde(skip_serializing_if = "is_zero")]
+    sightings: u64,
+    /// A bare byte-level sighting, not an account resolved from artefacts.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    sighting_only: bool,
+    /// Keys of accounts with the same identifier elsewhere (with `traces`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     linked: Vec<String>,
-    /// The traces that name the account.
-    sources: Vec<Source>,
+    /// The traces that name the account (with `traces`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sources: Option<Vec<Source>>,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 #[derive(Serialize)]
 struct Source {
     disk: u32,
+    /// Kind of trace (`saved password`, `in mail headers`, `found in data`...).
+    trace: String,
     detail: String,
     at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,25 +112,32 @@ impl Source {
             SourceRef::Event(id) => (None, Some(*id), None),
             SourceRef::File(path) => (None, None, Some(path.clone())),
         };
-        Self { disk: s.evidence.get(), detail: s.detail.clone(), at: s.at.map(time), finding_id, event_id, file }
+        Self { disk: s.evidence.get(), trace: s.trace.label().to_string(), detail: s.detail.clone(), at: s.at.map(time), finding_id, event_id, file }
     }
 }
 
-impl AccountRow {
-    fn of(a: &Account) -> Self {
+impl AccountOut {
+    fn of(r: &AccountRow, account: Option<&Account>) -> Self {
         Self {
-            key: a.key().to_string(),
-            service: a.service().to_string(),
-            service_kind: a.service_kind().map(|k| format!("{k:?}")),
-            identifier: a.identifier().to_string(),
-            kind: a.kind().label().to_string(),
-            holds_funds: a.holds_funds(),
-            confidence: (a.confidence() * 100.0).round() / 100.0,
-            first_seen: a.first_seen().map(time),
-            last_seen: a.last_seen().map(time),
-            disks: a.disks().iter().map(|d| d.get()).collect(),
-            linked: a.linked().to_vec(),
-            sources: a.sources().iter().map(Source::of).collect(),
+            key: r.key.clone(),
+            service: r.service.clone(),
+            service_kind: r.service_kind.clone(),
+            section: r.group.id().to_string(),
+            identifier: r.identifier.clone(),
+            kind: r.kind.clone(),
+            standing: r.standing.label().to_string(),
+            strength: (r.strength * 100.0).round() / 100.0,
+            why: r.reasons.iter().map(|k| k.label().to_string()).collect(),
+            password_saved: r.secret,
+            holds_funds: r.holds_funds(),
+            first_seen: r.first_seen.map(time),
+            last_seen: r.last_seen.map(time),
+            disks: r.disks.iter().map(|d| d.get()).collect(),
+            traces_count: r.traces,
+            sightings: r.mentions,
+            sighting_only: r.mention_only,
+            linked: account.map(|a| a.linked().to_vec()).unwrap_or_default(),
+            sources: account.map(|a| a.sources().iter().map(Source::of).collect()),
         }
     }
 }
@@ -152,17 +196,38 @@ impl LeadRow {
     }
 }
 
-fn accounts(wb: &Workbench, p: AccountsParams) -> Reply<Page<AccountRow>> {
-    let needle = p.text.unwrap_or_default().to_lowercase();
-    let rows: Vec<AccountRow> = wb
-        .accounts()
-        .map_err(fail)?
-        .iter()
-        .filter(|a| !p.funds_only || a.holds_funds())
-        .filter(|a| needle.is_empty() || a.service().to_lowercase().contains(&needle) || a.identifier().to_lowercase().contains(&needle))
-        .map(AccountRow::of)
-        .collect();
-    Ok(Page::slice(rows, p.offset, Paging::LIST.limit(p.limit)))
+fn accounts(wb: &Workbench, p: AccountsParams) -> Reply<Page<AccountOut>> {
+    let seen = match p.standing.as_deref().map(str::trim) {
+        None | Some("") | Some("used") => false,
+        Some("seen") => true,
+        Some(other) => return Err(format!("standing must be used or seen, not {other:?}")),
+    };
+    let group = match p.section.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => Some(ServiceGroup::from_id(s).ok_or_else(|| format!("unknown section {s:?}; use crypto, money, mail, cloud, social, games, shopping or other"))?),
+        None => None,
+    };
+    let period = match (p.from.as_deref(), p.to.as_deref()) {
+        (None, None) => None,
+        (from, to) => Some(Period::parse(from.unwrap_or(""), to.unwrap_or("")).ok_or_else(|| "from / to must look like 2011, 2011-06 or 2011-06-14".to_string())?),
+    };
+    let limit = Paging::LIST.limit(p.limit);
+    let mut query = AccountQuery { seen, include_bulk: p.include_bulk, group, text: p.text, period, ..Default::default() };
+    if p.funds_only {
+        // Fund-holding services are a few catalogued kinds: filter, then page.
+        let rows: Vec<AccountRow> = wb.account_rows(&query).map_err(fail)?.into_iter().filter(AccountRow::holds_funds).collect();
+        return Page::slice(rows, p.offset, limit).try_map(|r| row_out(wb, &r, p.traces));
+    }
+    query.limit = limit + 1;
+    query.offset = p.offset;
+    let mut page = Page::probed(wb.account_rows(&query).map_err(fail)?, p.offset, limit);
+    query.limit = 0;
+    page.total = Some(wb.account_count(&query).map_err(fail)? as usize);
+    page.try_map(|r| row_out(wb, &r, p.traces))
+}
+
+fn row_out(wb: &Workbench, r: &AccountRow, traces: bool) -> Reply<AccountOut> {
+    let account = if traces && !r.mention_only { wb.account(&r.key).map_err(fail)? } else { None };
+    Ok(AccountOut::of(r, account.as_ref()))
 }
 
 fn leads(wb: &Workbench, p: LeadsParams) -> Reply<Page<LeadRow>> {
@@ -173,9 +238,14 @@ fn leads(wb: &Workbench, p: LeadsParams) -> Reply<Page<LeadRow>> {
 impl StrataServer {
     #[tool(
         annotations(read_only_hint = true, open_world_hint = false),
-        description = "Accounts on online services (exchanges, web wallets, faucets, mining pools, forums, mail...) merged \
-        from e-mails, logins in URLs and forms, saved browser logins, cookies, mail settings and miner configs, with first \
-        and last seen dates and the traces that name them. Fund-holding services first."
+        description = "Who the owner was and where they had accounts that may hold money or wallet backups. By default \
+        lists the accounts the owner used (some trace shows use: saved browser password, mail client account, Windows user, \
+        mailbox owner, sent mail, program settings, form input, login cookie...), strongest evidence first, one row per \
+        service and login merged across disks, with the reasons (`why`), whether a password is saved, first and last seen \
+        and disks. Sections: crypto, money (banks, e-money), mail, cloud (storage, notes, password vaults), social \
+        (messengers, social networks), games, shopping, other. `standing = seen` lists names only seen in data (mail headers, \
+        pages, free space); add `include_bulk` for addresses found only in dumps and lists. `traces = true` adds every \
+        finding, event or file behind each account."
     )]
     pub async fn accounts(&self, Parameters(p): Parameters<AccountsParams>) -> Reply<String> {
         self.query(move |wb| accounts(wb, p)).await

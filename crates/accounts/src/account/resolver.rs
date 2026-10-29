@@ -53,6 +53,19 @@ impl ResolvedService {
     }
 }
 
+/// Keep `source` unless the same place is already listed; when the list is full, a stronger
+/// trace takes the place of the weakest one (a saved password is never crowded out by sightings).
+fn add_source(sources: &mut Vec<AccountSource>, source: AccountSource) {
+    if sources.iter().any(|s| s.evidence == source.evidence && s.origin == source.origin) {
+        return;
+    }
+    if sources.len() < MAX_SOURCES {
+        sources.push(source);
+    } else if let Some(weakest) = sources.iter_mut().max_by_key(|s| s.trace).filter(|w| source.trace < w.trace) {
+        *weakest = source;
+    }
+}
+
 fn min_ts(a: Option<Timestamp>, b: Option<Timestamp>) -> Option<Timestamp> {
     match (a, b) {
         (Some(x), Some(y)) => Some(x.min(y)),
@@ -66,7 +79,7 @@ impl AccountResolver {
     }
 
     /// Add one trace. Blank identifiers are ignored. An e-mail used as a login elsewhere also
-    /// counts as a trace of the mailbox itself.
+    /// counts as a trace of the mailbox itself (its provider, or its domain when uncatalogued).
     pub fn observe(&mut self, obs: Observation) {
         let identifier = obs.identifier.trim().trim_matches(['"', '\'', '<', '>']).to_string();
         if identifier.len() < 2 {
@@ -74,13 +87,13 @@ impl AccountResolver {
         }
         let kind = if looks_like_email(&identifier) { IdentifierKind::Email } else { obs.kind };
         let service = ResolvedService::resolve(obs.service.as_deref(), &identifier, kind);
-        if kind == IdentifierKind::Email
-            && let Some(mailbox) = Service::classify_email(&identifier).filter(|m| Some(m.id) != service.id.as_deref())
-        {
+        let mailbox = (kind == IdentifierKind::Email).then(|| ResolvedService::resolve(None, &identifier, kind)).filter(|m| m.key != service.key);
+        if let Some(mailbox) = mailbox {
             let mut derived = obs.clone();
             derived.source.detail = format!("address used on {}", service.name);
+            derived.source.trace = obs.source.trace.for_mailbox();
             derived.confidence *= 0.8;
-            self.merge(ResolvedService::of(mailbox), &identifier, kind, derived);
+            self.merge(mailbox, &identifier, kind, derived);
         }
         self.merge(service, &identifier, kind, obs);
     }
@@ -118,9 +131,7 @@ impl AccountResolver {
             a.disks.push(obs.source.evidence);
             a.disks.sort();
         }
-        if a.sources.len() < MAX_SOURCES && !a.sources.iter().any(|s| s.evidence == obs.source.evidence && s.origin == obs.source.origin) {
-            a.sources.push(obs.source);
-        }
+        add_source(&mut a.sources, obs.source);
         // Independent traces raise confidence (noisy-or), never to certainty.
         a.confidence = (1.0 - (1.0 - a.confidence) * (1.0 - obs.confidence.clamp(0.0, 1.0))).min(0.99);
     }
@@ -144,9 +155,7 @@ impl AccountResolver {
             let a = &mut self.accounts[i];
             a.first_seen = min_ts(a.first_seen, Some(at));
             a.last_seen = a.last_seen.max(Some(at));
-            if a.sources.len() < MAX_SOURCES && !a.sources.iter().any(|s| s.origin == source.origin) {
-                a.sources.push(source.clone());
-            }
+            add_source(&mut a.sources, source.clone());
             if !a.disks.contains(&source.evidence) {
                 a.disks.push(source.evidence);
                 a.disks.sort();
@@ -155,7 +164,8 @@ impl AccountResolver {
     }
 
     /// Link accounts sharing an identifier (or an e-mail local part equal to a login), then
-    /// return them: fund-holding services first, then by service and identifier.
+    /// return them: used accounts first, fund-holding services first among them, then by
+    /// service and identifier.
     pub fn finish(mut self) -> Vec<Account> {
         let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
         for (i, a) in self.accounts.iter().enumerate() {
@@ -178,9 +188,8 @@ impl AccountResolver {
                 }
             }
         }
-        self.accounts.sort_by(|a, b| {
-            (!a.holds_funds(), a.service_kind, a.service.to_lowercase(), a.identifier.to_lowercase())
-                .cmp(&(!b.holds_funds(), b.service_kind, b.service.to_lowercase(), b.identifier.to_lowercase()))
+        self.accounts.sort_by_cached_key(|a| {
+            (std::cmp::Reverse(a.standing()), !a.holds_funds(), a.service_kind, a.service.to_lowercase(), a.identifier.to_lowercase())
         });
         self.accounts
     }
@@ -189,7 +198,8 @@ impl AccountResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::account::SourceRef;
+    use crate::account::{SourceRef, Standing, TraceKind};
+    use crate::catalogue::ServiceGroup;
     use strata_kernel::EvidenceId;
 
     fn ts(s: i64) -> Option<Timestamp> {
@@ -201,7 +211,7 @@ mod tests {
             service: service.map(str::to_string),
             identifier: id.to_string(),
             kind,
-            source: AccountSource { evidence: EvidenceId::new(disk), origin: SourceRef::Hit(hit), detail: "test".into(), at: ts(at) },
+            source: AccountSource { evidence: EvidenceId::new(disk), origin: SourceRef::Hit(hit), detail: "test".into(), at: ts(at), trace: TraceKind::Cookie },
             first_seen: None,
             last_seen: None,
             confidence: 0.5,
@@ -245,12 +255,54 @@ mod tests {
     fn mentions_widen_dates_of_known_accounts_only() {
         let mut r = AccountResolver::new();
         r.observe(obs(Some("Windows"), "Admin", IdentifierKind::Login, 1, 1, 1_300_000_000));
-        let src = AccountSource { evidence: EvidenceId::new(1), origin: SourceRef::Event(9), detail: "logon".into(), at: ts(1_400_000_000) };
+        let src = AccountSource { evidence: EvidenceId::new(1), origin: SourceRef::Event(9), detail: "logon".into(), at: ts(1_400_000_000), trace: TraceKind::AccountEvent };
         r.date_mention(&["admin".into(), "unrelated".into()], src);
         let accounts = r.finish();
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].service(), "Windows");
         assert_eq!(accounts[0].last_seen(), ts(1_400_000_000));
         assert_eq!(accounts[0].sources().len(), 2);
+    }
+
+    #[test]
+    fn standing_strength_and_section() {
+        let mut r = AccountResolver::new();
+        let mut saved = obs(Some("btc-e.com"), "olga.test1@example.com", IdentifierKind::Login, 1, 1, 1_350_000_000);
+        saved.source.trace = TraceKind::SavedPassword;
+        r.observe(saved);
+        let mut seen = obs(None, "stranger@example.org", IdentifierKind::Email, 1, 2, 1_350_000_000);
+        seen.source.trace = TraceKind::Correspondent;
+        r.observe(seen);
+        let accounts = r.finish();
+        let btce = accounts.iter().find(|a| a.service_id() == Some("btce")).unwrap();
+        assert_eq!(btce.standing(), Standing::Used);
+        assert!(btce.has_secret() && btce.strength() > 0.9);
+        assert_eq!(btce.group(), ServiceGroup::Crypto);
+        let mailbox = accounts.iter().find(|a| a.identifier() == "olga.test1@example.com" && a.service_id().is_none()).unwrap();
+        assert_eq!(mailbox.reasons(), [TraceKind::UsedElsewhere], "the password is for BTC-e, not the mailbox");
+        assert!(!mailbox.has_secret());
+        assert_eq!(mailbox.group(), ServiceGroup::Mail, "an uncatalogued domain is still a mailbox");
+        let stranger = accounts.iter().find(|a| a.identifier() == "stranger@example.org").unwrap();
+        assert_eq!(stranger.standing(), Standing::Seen);
+        assert!(stranger.strength() < 0.3);
+        assert_eq!(accounts.last().map(|a| a.standing()), Some(Standing::Seen), "used accounts sort first");
+    }
+
+    #[test]
+    fn strong_traces_are_never_crowded_out() {
+        let mut r = AccountResolver::new();
+        for i in 0..(MAX_SOURCES as i64 + 10) {
+            let mut o = obs(Some("Mt. Gox"), "gox_tester", IdentifierKind::Login, 1, i, 1_300_000_000);
+            o.source.trace = TraceKind::Mention;
+            r.observe(o);
+        }
+        let mut saved = obs(Some("Mt. Gox"), "gox_tester", IdentifierKind::Login, 1, 999, 1_300_000_000);
+        saved.source.trace = TraceKind::SavedPassword;
+        r.observe(saved);
+        let accounts = r.finish();
+        assert_eq!(accounts[0].sources().len(), MAX_SOURCES);
+        assert!(accounts[0].has_secret());
+        let mentions_counted_once = accounts[0].strength();
+        assert!((mentions_counted_once - (1.0 - 0.05 * 0.9)).abs() < 1e-4, "{mentions_counted_once}");
     }
 }

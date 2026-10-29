@@ -3,12 +3,19 @@
 //! are cached chain lookups. All tables are additive (`CREATE … IF NOT EXISTS`), so older case
 //! folders gain them on open.
 
+mod accounts;
 mod history;
 mod inputs;
+mod mailboxes;
+mod mentions;
+
+pub use accounts::{AccountQuery, AccountRow};
+pub(crate) use accounts::ACCOUNT_TRACE_HITS;
+pub use mailboxes::MailboxTrace;
+pub use mentions::Mention;
 
 use crate::Case;
 use rusqlite::params;
-use strata_accounts::Account;
 use strata_kernel::Result;
 use strata_leads::Lead;
 
@@ -37,6 +44,22 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE INDEX IF NOT EXISTS accounts_identifier ON accounts(identifier);
 
+-- Addresses found by the byte-level e-mail detector, one row per case-folded address:
+-- how often, in how many places, on which disks, and how crowded its least crowded place is
+-- (`density`: distinct addresses in that file or MiB of free space; see BULK_PLACE_ADDRESSES).
+CREATE TABLE IF NOT EXISTS account_mentions (
+    address TEXT PRIMARY KEY,
+    found_as TEXT NOT NULL,
+    hits INTEGER NOT NULL,
+    places INTEGER NOT NULL,
+    disks TEXT NOT NULL,
+    density INTEGER NOT NULL,
+    sample INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_mentions_density ON account_mentions(density, hits);
+-- The findings `account_mentions` was built from (max hit id and disk count).
+CREATE TABLE IF NOT EXISTS account_mentions_state (id INTEGER PRIMARY KEY CHECK (id = 1), fingerprint TEXT NOT NULL);
+
 CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     rule TEXT NOT NULL,
@@ -49,50 +72,11 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE INDEX IF NOT EXISTS leads_score ON leads(score);
 "#;
 
-fn json<T: serde::Serialize>(v: &T) -> String {
+pub(crate) fn json<T: serde::Serialize>(v: &T) -> String {
     serde_json::to_string(v).unwrap_or_default()
 }
 
 impl Case {
-    /// Replace every stored account with a fresh resolution.
-    pub fn replace_accounts(&self, accounts: &[Account]) -> Result<usize> {
-        self.with_conn_mut(|conn| {
-            let tx = conn.transaction()?;
-            tx.execute("DELETE FROM accounts", [])?;
-            {
-                let mut stmt = tx.prepare_cached(
-                    "INSERT OR REPLACE INTO accounts (key, service, service_id, service_kind, identifier, kind, first_seen, last_seen, confidence, data)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                )?;
-                for a in accounts {
-                    stmt.execute(params![
-                        a.key(),
-                        a.service(),
-                        a.service_id(),
-                        a.service_kind().map(|k| k.label()),
-                        a.identifier(),
-                        a.kind().label(),
-                        a.first_seen().map(|t| t.unix_secs()),
-                        a.last_seen().map(|t| t.unix_secs()),
-                        a.confidence(),
-                        json(a),
-                    ])?;
-                }
-            }
-            tx.commit()?;
-            Ok(accounts.len())
-        })
-    }
-
-    /// Stored accounts in resolver order (fund-holding services first).
-    pub fn accounts(&self) -> Result<Vec<Account>> {
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare("SELECT data FROM accounts ORDER BY rowid")?;
-            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-            Ok(rows.filter_map(|r| r.ok()).filter_map(|d| serde_json::from_str(&d).ok()).collect())
-        })
-    }
-
     /// Replace every stored lead.
     pub fn replace_leads(&self, leads: &[Lead]) -> Result<usize> {
         self.with_conn_mut(|conn| {
@@ -131,3 +115,5 @@ impl Case {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod account_tests;

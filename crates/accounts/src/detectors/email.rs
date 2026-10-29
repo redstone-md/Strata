@@ -38,9 +38,14 @@ impl EmailDetector {
     }
 }
 
+impl EmailDetector {
+    /// Detector id of byte-level e-mail findings (sightings, never proof of use).
+    pub const ID: &'static str = "accounts.email";
+}
+
 impl Detector for EmailDetector {
     fn id(&self) -> &'static str {
-        "accounts.email"
+        Self::ID
     }
 
     fn max_match(&self) -> usize {

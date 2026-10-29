@@ -134,14 +134,14 @@ impl ChromeWebData {
             db.each(&sql, |r| Self::field(rec, &r.text(0), &r.text(1), r.int(2), r.int(3), r.int(4)));
         }
         if db.has_table("autofill_profile_emails") {
-            db.each("SELECT email FROM autofill_profile_emails", |r| rec.identity(IdentityKind::Email, &r.text(0), None, None));
+            db.each("SELECT email FROM autofill_profile_emails", |r| rec.identity_noted(IdentityKind::Email, &r.text(0), None, None, "autofill profile"));
         }
         if db.has_table("autofill_profile_phones") {
-            db.each("SELECT number FROM autofill_profile_phones", |r| rec.identity(IdentityKind::Phone, &r.text(0), None, None));
+            db.each("SELECT number FROM autofill_profile_phones", |r| rec.identity_noted(IdentityKind::Phone, &r.text(0), None, None, "autofill profile"));
         }
         if db.has_table("autofill_profiles") && db.columns("autofill_profiles").iter().any(|c| c == "email") {
             db.each("SELECT email, date_modified FROM autofill_profiles", |r| {
-                rec.identity(IdentityKind::Email, &r.text(0), None, chrome_time(r.int(1)))
+                rec.identity_noted(IdentityKind::Email, &r.text(0), None, chrome_time(r.int(1)), "autofill profile")
             });
         }
     }

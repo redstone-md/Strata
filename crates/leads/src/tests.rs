@@ -70,7 +70,7 @@ fn inputs() -> LeadInputs {
             service: Some("mtgox.com".into()),
             identifier: "gox_tester".into(),
             kind: IdentifierKind::Login,
-            source: AccountSource { evidence: disk(), origin: SourceRef::Hit(hit), detail: "saved browser login".into(), at: Some(t) },
+            source: AccountSource { evidence: disk(), origin: SourceRef::Hit(hit), detail: "saved browser login".into(), at: Some(t), trace: strata_accounts::TraceKind::SavedPassword },
             first_seen: None,
             last_seen: None,
             confidence: 0.5,

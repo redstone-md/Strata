@@ -14,8 +14,8 @@ mod text;
 mod url;
 mod url_accounts;
 
-pub use account::{Account, AccountResolver, AccountSource, IdentifierKind, Observation, SourceRef};
-pub use catalogue::{Catalogue, ServiceEntry, ServiceKind, Years};
+pub use account::{Account, AccountResolver, AccountSource, BULK_PLACE_ADDRESSES, IdentifierKind, Observation, SourceRef, Standing, TraceKind};
+pub use catalogue::{Catalogue, ServiceEntry, ServiceGroup, ServiceKind, Years};
 pub use detectors::{EmailDetector, LoginDetector, UrlDetector, detectors};
 pub use service::Service;
 pub use url::{host_of, percent_decode};

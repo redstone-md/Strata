@@ -3,10 +3,14 @@
 //! events and disks. Built by [`AccountResolver`].
 
 mod resolver;
+mod standing;
+mod trace;
 
 pub use resolver::AccountResolver;
+pub use standing::{BULK_PLACE_ADDRESSES, Standing};
+pub use trace::TraceKind;
 
-use crate::catalogue::ServiceKind;
+use crate::catalogue::{ServiceGroup, ServiceKind};
 use serde::{Deserialize, Serialize};
 use strata_kernel::{EvidenceId, Timestamp};
 
@@ -78,6 +82,10 @@ pub struct AccountSource {
     /// How the trace names the account (`saved browser login`, `URL ?login=`, `mail to`).
     pub detail: String,
     pub at: Option<Timestamp>,
+    /// How strongly this trace says the account was used (older cases: [`TraceKind::Mention`]
+    /// until the accounts are rebuilt).
+    #[serde(default)]
+    pub trace: TraceKind,
 }
 
 /// One raw trace fed into the resolver.
@@ -167,6 +175,43 @@ impl Account {
     /// The account may hold funds (exchange, web wallet, faucet balance, pool, casino...).
     pub fn holds_funds(&self) -> bool {
         self.service_kind.is_some_and(ServiceKind::holds_funds)
+    }
+
+    /// Used by the owner (some trace shows use), or only seen in data.
+    pub fn standing(&self) -> Standing {
+        if self.sources.iter().any(|s| s.trace.is_use()) { Standing::Used } else { Standing::Seen }
+    }
+
+    /// 0..1 evidence that the owner used the account: independent kinds of trace combine
+    /// (noisy-or); repeats of one kind count once, so a thousand sightings stay weak.
+    pub fn strength(&self) -> f32 {
+        let miss: f32 = self.reasons().iter().map(|k| 1.0 - k.weight()).product();
+        (1.0 - miss).min(0.99)
+    }
+
+    /// The distinct kinds of trace behind the account, strongest first: why it is listed.
+    pub fn reasons(&self) -> Vec<TraceKind> {
+        let mut kinds: Vec<TraceKind> = self.sources.iter().map(|s| s.trace).collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        kinds
+    }
+
+    /// A saved password (or another secret) is available for the account.
+    pub fn has_secret(&self) -> bool {
+        self.sources.iter().any(|s| s.trace.has_secret())
+    }
+
+    /// The Accounts screen section: by the service kind; an address on an uncatalogued
+    /// domain is still a mailbox.
+    pub fn group(&self) -> ServiceGroup {
+        match self.service_kind {
+            Some(k) => k.group(),
+            None if self.kind == IdentifierKind::Email && self.identifier.rsplit_once('@').is_some_and(|(_, d)| d.eq_ignore_ascii_case(&self.service)) => {
+                ServiceGroup::Mail
+            }
+            None => ServiceGroup::Other,
+        }
     }
 
     /// The `(first, last)` seen window when both ends are known.

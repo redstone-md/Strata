@@ -156,31 +156,38 @@ pub(crate) fn query(conn: &Connection, q: &HitQuery) -> rusqlite::Result<Vec<Sto
         sql += &format!(" LIMIT {} OFFSET {}", q.limit, q.offset);
     }
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())), |r| {
-        let details: String = r.get(11)?;
-        let mut hit = Hit::new(&r.get::<_, String>(2)?, category_from(&r.get::<_, String>(3)?), r.get::<_, i64>(4)? as u64, r.get::<_, u32>(5)? as usize)
-            .confidence(strata_kernel::Confidence::new(r.get(6)?))
-            .label(r.get::<_, String>(9)?)
-            .value(r.get::<_, String>(10)?);
-        hit.details = serde_json::from_str(&details).unwrap_or_default();
-        let disks: String = r.get::<_, rusqlite::types::Value>(8).map(|v| match v {
-            rusqlite::types::Value::Integer(i) => i.to_string(),
-            rusqlite::types::Value::Text(t) => t,
-            _ => String::new(),
-        })?;
-        Ok(StoredHit {
-            id: r.get(0)?,
-            evidence: EvidenceId::new(r.get(1)?),
-            hit,
-            volume: r.get(12)?,
-            file_path: r.get(13)?,
-            file_state: r.get(14)?,
-            file_offset: r.get::<_, Option<i64>>(15)?.map(|v| v as u64),
-            occurrences: r.get::<_, i64>(7)? as u64,
-            disks: disks.split(',').filter_map(|d| d.parse().ok()).map(EvidenceId::new).collect(),
-        })
-    })?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())), stored_hit)?;
     rows.collect()
+}
+
+/// Columns [`stored_hit`] reads, one row per finding (not grouped).
+pub(crate) const HIT_COLUMNS: &str = "id, evidence_id, detector, category, offset, len, confidence, 1 + repeats, evidence_id, label, value, details,
+    volume_idx, file_path, file_state, file_offset";
+
+/// One finding from a row of [`HIT_COLUMNS`] (or the grouped variant of [`query`]).
+pub(crate) fn stored_hit(r: &rusqlite::Row) -> rusqlite::Result<StoredHit> {
+    let details: String = r.get(11)?;
+    let mut hit = Hit::new(&r.get::<_, String>(2)?, category_from(&r.get::<_, String>(3)?), r.get::<_, i64>(4)? as u64, r.get::<_, u32>(5)? as usize)
+        .confidence(strata_kernel::Confidence::new(r.get(6)?))
+        .label(r.get::<_, String>(9)?)
+        .value(r.get::<_, String>(10)?);
+    hit.details = serde_json::from_str(&details).unwrap_or_default();
+    let disks: String = r.get::<_, rusqlite::types::Value>(8).map(|v| match v {
+        rusqlite::types::Value::Integer(i) => i.to_string(),
+        rusqlite::types::Value::Text(t) => t,
+        _ => String::new(),
+    })?;
+    Ok(StoredHit {
+        id: r.get(0)?,
+        evidence: EvidenceId::new(r.get(1)?),
+        hit,
+        volume: r.get(12)?,
+        file_path: r.get(13)?,
+        file_state: r.get(14)?,
+        file_offset: r.get::<_, Option<i64>>(15)?.map(|v| v as u64),
+        occurrences: r.get::<_, i64>(7)? as u64,
+        disks: disks.split(',').filter_map(|d| d.parse().ok()).map(EvidenceId::new).collect(),
+    })
 }
 
 /// Distinct findings per category, counted the way the lists group them (one per value, or
