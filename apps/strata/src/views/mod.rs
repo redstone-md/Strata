@@ -6,6 +6,7 @@ pub mod correlation;
 mod disk_row;
 pub mod disks;
 pub mod hits;
+pub mod leads;
 pub mod overview;
 pub mod settings;
 pub mod timeline;

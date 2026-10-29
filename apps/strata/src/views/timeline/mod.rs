@@ -2,6 +2,8 @@
 //! default — they bury everything else.
 
 mod delegate;
+
+pub(crate) use delegate::kind_label;
 mod strip;
 
 use crate::format;
@@ -68,6 +70,13 @@ impl TimelineView {
             q.to = to;
         });
         self.reload(cx);
+    }
+
+    /// Narrow the list to the day of `at` (a lead's linked event).
+    pub fn show_day(&mut self, at: strata_workbench::Timestamp, cx: &mut Context<Self>) {
+        let day = at.unix_secs().div_euclid(86_400);
+        self.day = None;
+        self.pick_day(Some(DayRange { from: day, to: day + 1 }), cx);
     }
 
     fn toggle_filesystem(&mut self, cx: &mut Context<Self>) {

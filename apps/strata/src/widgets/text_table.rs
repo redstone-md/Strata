@@ -39,6 +39,12 @@ impl TextTable {
         self.rows.len()
     }
 
+    /// A row may carry one hidden cell after the visible columns: a key that identifies what
+    /// the row shows (it moves with the row when the table is sorted).
+    pub fn row_key(&self, row: usize) -> Option<SharedString> {
+        self.rows.get(row).and_then(|r| r.get(self.columns.len())).cloned()
+    }
+
     fn cell(&self, row: usize, col: usize) -> SharedString {
         self.rows.get(row).and_then(|r| r.get(col)).cloned().unwrap_or_default()
     }

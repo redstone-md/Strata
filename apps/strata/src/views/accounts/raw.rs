@@ -1,11 +1,11 @@
-//! Accounts: identities (e-mail, logins) and service URLs, grouped by service.
+//! Every identity trace and service URL as found (the "All traces" tab of Accounts).
 
-use super::hits::{BrowserConfig, HitColumn};
+use crate::views::hits::{BrowserConfig, HitColumn};
 use strata_workbench::HitCategory;
 
 pub fn config() -> BrowserConfig {
     BrowserConfig {
-        title: "Accounts",
+        title: "All traces",
         categories: vec![HitCategory::Identity, HitCategory::Url],
         columns: vec![
             HitColumn::Service,
