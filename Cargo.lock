@@ -6301,6 +6301,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-leads"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strata-accounts",
+ "strata-chain",
+ "strata-kernel",
+ "strata-timeline",
+]
+
+[[package]]
 name = "strata-report"
 version = "0.1.0"
 dependencies = [
