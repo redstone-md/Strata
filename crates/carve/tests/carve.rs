@@ -162,3 +162,14 @@ fn range_end_bounds_the_carve() {
     assert!(f.range.end() <= end);
     assert!(carver.carve(u64::MAX - 1, TypeId::Zip).is_err());
 }
+
+#[test]
+fn carving_any_type_from_garbage_never_panics() {
+    let carver = Carver::new(MemSource::shared(tk::random(300_000, 12), Vec::new()));
+    for id in TypeId::ALL {
+        for start in [0u64, 512, 299_000] {
+            let f = carver.carve(start, *id).unwrap();
+            assert!(f.range.end() <= 300_000);
+        }
+    }
+}
