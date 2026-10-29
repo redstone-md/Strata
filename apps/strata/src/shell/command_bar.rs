@@ -11,7 +11,6 @@ use gpui::{
 };
 use gpui_component::h_flex;
 use gpui_component::input::InputState;
-use strata_workbench::{JobKind, JobView};
 
 const SEARCH_WIDTH: f32 = 460.;
 
@@ -27,13 +26,6 @@ pub struct CommandBar {
 impl CommandBar {
     pub fn new(case_name: String, snapshot: Snapshot, search: &Entity<InputState>, on_case: ClickHandler, on_status: ClickHandler) -> Self {
         Self { case_name, snapshot, search: search.clone(), on_case, on_status }
-    }
-
-    fn job_title(&self, job: &JobView) -> String {
-        match job.kind {
-            JobKind::CheckBalances => format::job_name(job.kind).to_string(),
-            kind => format!("{} {}", format::job_name(kind), self.snapshot.disk_label(job.evidence)),
-        }
     }
 
     fn status(&self) -> impl IntoElement {
@@ -54,7 +46,7 @@ impl CommandBar {
             return line.child(if queued > 0 { format!("{} queued", format::count(queued, "job", "jobs")) } else { "Idle".into() });
         };
         let state = if job.is_paused() { "paused".to_string() } else { format::percent(job.fraction()) };
-        line.child(div().text_color(t.text).truncate().child(self.job_title(job)))
+        line.child(div().text_color(t.text).truncate().child(self.snapshot.job_title(job)))
             .child(div().text_color(t.emphasis).child(state))
             .children(format::job_rate(job))
     }

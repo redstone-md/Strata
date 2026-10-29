@@ -58,18 +58,19 @@ impl Render for TasksView {
         let t = tokens();
         let session = self.session.read(cx);
         let monitor = session.monitor().clone();
-        let jobs = session.snapshot().jobs.clone();
-        let focus = self.focus(&jobs).cloned();
+        let snapshot = session.snapshot().clone();
+        let jobs = &snapshot.jobs;
+        let focus = self.focus(jobs).cloned();
         let lines = focus.as_ref().map(|j| session.job_log(j.id)).unwrap_or_default();
         let active = jobs.iter().filter(|j| j.state.is_active()).count() as u64;
         let note = if active > 0 { crate::format::count(active, "active job", "active jobs") } else { "idle".to_string() };
-        let table = table::table(&jobs, &monitor, focus.as_ref().map(|j| j.id), &self.session, cx);
+        let table = table::table(&snapshot, &monitor, focus.as_ref().map(|j| j.id), &self.session, cx);
         v_flex()
             .w_full()
             .max_w(t.content_max_width)
             .gap(t.section_gap)
             .child(Section::new("Strata right now").note("this process").child(summary::row(&monitor)))
             .child(Section::new("Jobs").note(note).child(table))
-            .children(focus.map(|j| detail::section(&j, &monitor, &lines)))
+            .children(focus.map(|j| detail::section(&j, snapshot.job_title(&j), &monitor, &lines)))
     }
 }

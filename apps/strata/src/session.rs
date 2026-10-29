@@ -6,7 +6,9 @@ use gpui::{Context, Task};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use strata_workbench::{AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobState, JobView, LogLine, MonitorView, Workbench};
+use strata_workbench::{
+    AddressBalance, EvidenceId, EvidenceRecord, HitCategory, JobId, JobKind, JobState, JobView, LogLine, MonitorView, Workbench,
+};
 
 const POLL: Duration = Duration::from_millis(500);
 
@@ -41,6 +43,14 @@ pub struct Snapshot {
 impl Snapshot {
     pub fn count(&self, category: HitCategory) -> u64 {
         self.counts.iter().find(|(c, _)| *c == category).map_or(0, |(_, n)| *n)
+    }
+
+    /// What a job does and on which disk, by the disk's label.
+    pub fn job_title(&self, job: &JobView) -> String {
+        match job.kind {
+            JobKind::CheckBalances => crate::format::job_name(job.kind).to_string(),
+            kind => format!("{} {}", crate::format::job_name(kind), self.disk_label(job.evidence)),
+        }
     }
 
     pub fn disk_label(&self, id: EvidenceId) -> String {
@@ -188,7 +198,7 @@ impl Session {
             .into_iter()
             .map(|record| {
                 let running = jobs.iter().rev().find(|j| {
-                    j.evidence == record.id && j.kind == strata_workbench::JobKind::Scan && j.state == JobState::Running
+                    j.evidence == record.id && j.kind == JobKind::Scan && j.state == JobState::Running
                 });
                 let stored = wb.scan_progress(record.id).ok().flatten();
                 let (scanned, scan_complete) = match (running, stored) {

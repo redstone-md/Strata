@@ -3,7 +3,7 @@
 
 use super::TasksView;
 use crate::format;
-use crate::session::Session;
+use crate::session::{Session, Snapshot};
 use crate::theme::tokens;
 use crate::widgets::{TextButton, mono, quiet};
 use gpui::{
@@ -101,7 +101,7 @@ fn actions(job: &JobView, selected: bool, session: &Entity<Session>) -> AnyEleme
     row.into_any_element()
 }
 
-fn job_row(job: &JobView, monitor: &MonitorView, selected: bool, session: &Entity<Session>, cx: &mut Context<TasksView>) -> AnyElement {
+fn job_row(job: &JobView, title: String, monitor: &MonitorView, selected: bool, session: &Entity<Session>, cx: &mut Context<TasksView>) -> AnyElement {
     let t = tokens();
     let running = job.state == JobState::Running;
     let live = monitor.job_latest(job.id).filter(|_| running);
@@ -127,7 +127,7 @@ fn job_row(job: &JobView, monitor: &MonitorView, selected: bool, session: &Entit
         .when(selected, |el| el.bg(t.selection))
         .when(!selected, |el| el.hover(|s| s.bg(t.hover)))
         .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
-        .child(column(0).child(job.title.clone()))
+        .child(column(0).child(title))
         .child(column(1).text_color(state_color).child(format::job_state_long(job)))
         .child(column(2).child(progress))
         .child(column(3).child(mono().text_size(t.size_small).text_color(t.text_secondary).truncate().child(format::middle(&job.current, CURRENT_CHARS))))
@@ -140,8 +140,11 @@ fn job_row(job: &JobView, monitor: &MonitorView, selected: bool, session: &Entit
         .into_any_element()
 }
 
-pub fn table(jobs: &[JobView], monitor: &MonitorView, selected: Option<JobId>, session: &Entity<Session>, cx: &mut Context<TasksView>) -> AnyElement {
-    let rows: Vec<AnyElement> = ordered(jobs).into_iter().map(|j| job_row(j, monitor, Some(j.id) == selected, session, cx)).collect();
+pub fn table(snapshot: &Snapshot, monitor: &MonitorView, selected: Option<JobId>, session: &Entity<Session>, cx: &mut Context<TasksView>) -> AnyElement {
+    let rows: Vec<AnyElement> = ordered(&snapshot.jobs)
+        .into_iter()
+        .map(|j| job_row(j, snapshot.job_title(j), monitor, Some(j.id) == selected, session, cx))
+        .collect();
     if rows.is_empty() {
         return quiet().child("Nothing has run in this case yet. Analyse a disk to start the pipeline.").into_any_element();
     }

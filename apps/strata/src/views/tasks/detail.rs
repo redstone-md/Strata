@@ -101,8 +101,8 @@ fn log(lines: &[LogLine]) -> AnyElement {
         .into_any_element()
 }
 
-pub fn section(job: &JobView, monitor: &MonitorView, lines: &[LogLine]) -> AnyElement {
-    Section::new(job.title.clone())
+pub fn section(job: &JobView, title: String, monitor: &MonitorView, lines: &[LogLine]) -> AnyElement {
+    Section::new(title)
         .note(format::job_state_long(job))
         .child(h_flex().items_start().gap(px(48.)).child(facts(job)).child(cpu(job, monitor)).child(log(lines)))
         .into_any_element()

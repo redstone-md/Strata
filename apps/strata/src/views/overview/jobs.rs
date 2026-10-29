@@ -5,17 +5,10 @@ use crate::session::{Session, Snapshot};
 use crate::theme::tokens;
 use crate::widgets::{Badge, Section, TextButton, quiet};
 use gpui::{AnyElement, Entity, IntoElement, ParentElement, Styled, div, px};
-use strata_workbench::{JobKind, JobState, JobView};
+use strata_workbench::{JobState, JobView};
 use gpui_component::{h_flex, v_flex};
 
 const MAX_ROWS: usize = 10;
-
-fn title(job: &JobView, snapshot: &Snapshot) -> String {
-    match job.kind {
-        JobKind::CheckBalances => format::job_name(job.kind).to_string(),
-        kind => format!("{} {}", format::job_name(kind), snapshot.disk_label(job.evidence)),
-    }
-}
 
 /// State column: words, a summary or reason after it, an inverted badge for failures.
 fn state(job: &JobView) -> AnyElement {
@@ -53,7 +46,7 @@ pub fn section(snapshot: &Snapshot, session: &Entity<Session>) -> impl IntoEleme
                 .gap(px(16.))
                 .border_b_1()
                 .border_color(t.row_rule)
-                .child(div().w(px(240.)).flex_shrink_0().text_size(t.size_body).text_color(t.text).truncate().child(title(job, snapshot)))
+                .child(div().w(px(240.)).flex_shrink_0().text_size(t.size_body).text_color(t.text).truncate().child(snapshot.job_title(job)))
                 .child(div().flex_1().min_w_0().child(state(job)))
                 .children(cancel)
         })

@@ -81,7 +81,7 @@ impl WindowPlacement {
         let b: Bounds<Pixels> = Bounds::new(point(px(self.x), px(self.y)), size(px(self.width), px(self.height)));
         let title_bar = Bounds::new(b.origin, size(b.size.width, px(40.)));
         let visible = cx.displays().iter().any(|d| d.bounds().intersects(&title_bar));
-        visible.then(|| if self.maximized { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) })
+        visible.then_some(if self.maximized { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) })
     }
 }
 
