@@ -48,6 +48,8 @@ pub struct FileEntry {
     pub extents: Vec<Extent>,
     /// Small files stored inside metadata (NTFS resident $DATA).
     pub resident: Option<Vec<u8>>,
+    /// Volume offset of the resident bytes, so hits inside metadata map to the right file.
+    pub resident_offset: Option<u64>,
     /// Filesystem-native id (MFT record number, directory-entry byte offset).
     pub native_id: u64,
     /// Alternate data streams and similar named content (`name:stream`).
@@ -68,6 +70,7 @@ impl FileEntry {
             times: FileTimes::default(),
             extents: Vec::new(),
             resident: None,
+            resident_offset: None,
             native_id,
             streams: Vec::new(),
             damage: Vec::new(),

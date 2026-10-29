@@ -59,6 +59,8 @@ pub(super) struct Attribute {
     name: String,
     flags: u16,
     body: AttrBody,
+    /// Volume offset of a resident value (set by the record that owns the attribute).
+    value_at: Option<u64>,
 }
 
 impl Attribute {
@@ -71,7 +73,7 @@ impl Attribute {
         let name = if name_len == 0 { String::new() } else { utf16le(a.get(name_off..name_off + 2 * name_len)?) };
         let flags = u16_le(a, 0x0C)?;
         let body = if non_resident { AttrBody::NonResident(Self::parse_non_resident(a)?) } else { Self::resident(a)? };
-        Some(Self { type_code, name, flags, body })
+        Some(Self { type_code, name, flags, body, value_at: None })
     }
 
     fn resident(a: &[u8]) -> Option<AttrBody> {
@@ -115,6 +117,17 @@ impl Attribute {
 
     pub(super) fn is_encrypted(&self) -> bool {
         self.flags & FLAG_ENCRYPTED != 0
+    }
+
+    /// Locate the resident value on the volume, given where the attribute starts.
+    pub(super) fn locate(&mut self, attr_volume_offset: u64, raw_attr: &[u8]) {
+        if matches!(self.body, AttrBody::Resident(_)) {
+            self.value_at = u16_le(raw_attr, 0x14).map(|off| attr_volume_offset + u64::from(off));
+        }
+    }
+
+    pub(super) fn resident_at(&self) -> Option<u64> {
+        self.value_at
     }
 
     pub(super) fn resident_value(&self) -> Option<&[u8]> {

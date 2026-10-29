@@ -97,12 +97,14 @@ impl<'a> Assembler<'a> {
             let unit = stream.compression_unit();
             let label = format!("{}:{}", entry.name, stream.name());
             let unnamed = stream.name().is_empty();
+            let resident_at = stream.resident_at();
             let (extents, resident, damage) = stream.into_parts();
             entry.damage.extend(damage);
             if unnamed {
                 entry.size = size;
                 entry.extents = extents;
                 entry.resident = resident;
+                entry.resident_offset = resident_at;
                 // Extents then hold LZNT1 units; the filesystem decompresses on read.
                 compression_unit = unit;
             } else {

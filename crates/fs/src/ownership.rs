@@ -18,9 +18,14 @@ impl OwnershipIndex {
             .iter()
             .enumerate()
             .flat_map(|(i, e)| {
+                let resident = e
+                    .resident_offset
+                    .zip(e.resident.as_ref())
+                    .map(|(at, data)| (at, at + data.len() as u64, FileId::new(i), 0));
                 e.extents
                     .iter()
                     .filter_map(move |x| x.volume_offset.map(|v| (v, v + x.len, FileId::new(i), x.file_offset)))
+                    .chain(resident)
             })
             .collect();
         spans.sort_unstable_by_key(|s| s.0);
@@ -34,17 +39,19 @@ impl OwnershipIndex {
         Self { spans, reach }
     }
 
-    /// Files covering `volume_offset`, live entries first, with the offset inside each file.
+    /// Files covering `volume_offset` with the offset inside each file: live entries first,
+    /// then the narrowest span, so a resident file wins over the `$MFT` that contains it.
     pub fn owners(&self, volume_offset: u64, entries: &[FileEntry]) -> Vec<(FileId, u64)> {
-            let end = self.spans.partition_point(|s| s.0 <= volume_offset);
-        let mut out: Vec<(FileId, u64)> = (0..end)
+        let end = self.spans.partition_point(|s| s.0 <= volume_offset);
+        let mut found: Vec<(FileId, u64, u64)> = (0..end)
             .rev()
             .take_while(|&i| self.reach[i] > volume_offset)
             .map(|i| &self.spans[i])
             .filter(|s| volume_offset < s.1)
-            .map(|s| (s.2, s.3 + (volume_offset - s.0)))
+            .map(|s| (s.2, s.3 + (volume_offset - s.0), s.1 - s.0))
             .collect();
-        out.sort_by_key(|(id, _)| entries.get(id.index()).is_none_or(|e| e.is_deleted()));
+        found.sort_by_key(|(id, _, len)| (entries.get(id.index()).is_none_or(|e| e.is_deleted()), *len));
+        let mut out: Vec<(FileId, u64)> = found.into_iter().map(|(id, off, _)| (id, off)).collect();
         out.dedup_by_key(|(id, _)| *id);
         out
     }

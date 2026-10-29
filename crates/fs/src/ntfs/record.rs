@@ -118,7 +118,8 @@ impl MftRecord {
                 self.damage.push(Damage::corrupt(at, format!("attribute at +{off:#x} has bad length {len}")));
                 return;
             };
-            if let Some(attr) = Attribute::parse(&raw[off..end]).filter(Attribute::is_interesting) {
+            if let Some(mut attr) = Attribute::parse(&raw[off..end]).filter(Attribute::is_interesting) {
+                attr.locate(at.start() + off as u64, &raw[off..end]);
                 self.attrs.push(attr);
             }
             off = end;

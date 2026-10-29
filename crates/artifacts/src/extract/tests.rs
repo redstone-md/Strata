@@ -65,6 +65,7 @@ fn file(path: &str, data: Vec<u8>, state: EntryState) -> FileEntry {
         times: FileTimes { created: t, modified: Timestamp::from_unix_secs(UNIX + 3600), accessed: t, changed: t },
         extents: Vec::new(),
         resident: Some(data),
+        resident_offset: None,
         native_id: 0,
         streams: Vec::new(),
         damage: Vec::new(),

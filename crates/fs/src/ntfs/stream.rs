@@ -16,6 +16,7 @@ pub(super) struct Stream {
     size: u64,
     extents: Vec<Extent>,
     resident: Option<Vec<u8>>,
+    resident_at: Option<u64>,
     /// Bytes per compression unit for LZNT1-compressed streams.
     compression_unit: Option<u64>,
     damage: Vec<Damage>,
@@ -51,10 +52,13 @@ impl Stream {
             size: 0,
             extents: Vec::new(),
             resident: None,
+            resident_at: None,
             compression_unit: None,
             damage: Vec::new(),
         };
-        if let Some(value) = group.iter().find_map(|a| a.resident_value()) {
+        if let Some(attr) = group.iter().find(|a| a.resident_value().is_some()) {
+            let value = attr.resident_value().unwrap_or_default();
+            stream.resident_at = attr.resident_at();
             stream.size = value.len() as u64;
             stream.resident = Some(value.to_vec());
             return stream;
@@ -103,6 +107,10 @@ impl Stream {
         self.compression_unit
     }
 
+    pub(super) fn resident_at(&self) -> Option<u64> {
+        self.resident_at
+    }
+
     pub(super) fn into_parts(self) -> (Vec<Extent>, Option<Vec<u8>>, Vec<Damage>) {
         (self.extents, self.resident, self.damage)
     }
@@ -113,6 +121,7 @@ impl Stream {
         entry.size = self.size;
         entry.extents = self.extents.clone();
         entry.resident = self.resident.clone();
+        entry.resident_offset = self.resident_at;
         ExtentReader::new(source, &entry).read_all(limit).unwrap_or_default()
     }
 }
