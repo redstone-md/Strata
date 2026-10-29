@@ -1,8 +1,33 @@
-use crate::tree::FsTree;
-use std::sync::Arc;
-use strata_kernel::Result;
-use strata_source::BlockSource;
+//! FAT12/16/32: BPB, both FAT copies, directory walk with long names and deleted entries.
 
-pub(crate) fn open(_source: Arc<dyn BlockSource>) -> Result<FsTree> {
-    Err(strata_kernel::Error::format("todo"))
+mod bpb;
+mod dir;
+mod dirent;
+mod table;
+mod walk;
+
+#[cfg(test)]
+mod testimg;
+#[cfg(test)]
+mod tests;
+
+use crate::tree::FsTree;
+use bpb::Bpb;
+use std::sync::Arc;
+use strata_kernel::{Error, Result};
+use strata_source::BlockSource;
+use table::FatTable;
+use walk::Walker;
+
+/// Parse a FAT volume (the variant is taken from its own BPB).
+pub(crate) fn open(source: Arc<dyn BlockSource>) -> Result<FsTree> {
+    let src = source.as_ref();
+    let (bpb, mut damage) = Bpb::locate(src);
+    let bpb = bpb.ok_or_else(|| Error::format("no valid FAT boot sector"))?;
+    let (fat, fat_damage) = FatTable::load(src, &bpb);
+    damage.extend(fat_damage);
+    let (entries, used, walk_damage) = Walker::new(src, &bpb, &fat).walk();
+    damage.extend(walk_damage);
+    let unallocated = used.free_ranges(bpb.data_start(), bpb.cluster_size());
+    Ok(FsTree::new(bpb.kind(), source, entries, unallocated, damage))
 }
