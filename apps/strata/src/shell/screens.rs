@@ -1,7 +1,7 @@
 //! The screen views, created once and kept alive so switching screens keeps their state.
 
 use super::Shell;
-use crate::nav::{Navigate, Screen};
+use crate::nav::{Jump, Navigate, Screen};
 use crate::session::Session;
 use crate::views::correlation::CorrelationView;
 use crate::views::disks::DisksView;
@@ -11,7 +11,9 @@ use crate::views::overview::Overview;
 use crate::views::search::SearchView;
 use crate::views::settings::SettingsView;
 use crate::views::timeline::TimelineView;
-use crate::views::{accounts, wallets};
+use crate::views::accounts::AccountsView;
+use crate::views::leads::LeadsView;
+use crate::views::wallets;
 use crate::widgets::DiskMaps;
 use gpui::{AnyView, AppContext as _, Context, Entity, Subscription, Window};
 
@@ -21,7 +23,8 @@ pub struct Screens {
     pub files: Entity<FilesView>,
     pub search: Entity<SearchView>,
     pub wallets: Entity<HitBrowser>,
-    pub accounts: Entity<HitBrowser>,
+    pub accounts: Entity<AccountsView>,
+    pub leads: Entity<LeadsView>,
     pub timeline: Entity<TimelineView>,
     pub correlation: Entity<CorrelationView>,
     pub settings: Entity<SettingsView>,
@@ -42,12 +45,18 @@ impl Screens {
             files: cx.new(|cx| FilesView::new(session.clone(), window, cx)),
             search: cx.new(|cx| SearchView::new(session.clone(), window, cx)),
             wallets: cx.new(|cx| HitBrowser::new(session.clone(), wallets::config(), window, cx)),
-            accounts: cx.new(|cx| HitBrowser::new(session.clone(), accounts::config(), window, cx)),
+            accounts: cx.new(|cx| AccountsView::new(session.clone(), window, cx)),
+            leads: cx.new(|cx| LeadsView::new(session.clone(), window, cx)),
             timeline: cx.new(|cx| TimelineView::new(session.clone(), window, cx)),
             correlation: cx.new(|cx| CorrelationView::new(session.clone(), window, cx)),
             settings: cx.new(|cx| SettingsView::new(session.clone(), window, cx)),
         };
-        (screens, navigate)
+        let mut subscriptions = navigate;
+        subscriptions.extend([
+            cx.subscribe_in(&screens.leads, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
+            cx.subscribe_in(&screens.accounts, window, |shell, _, jump: &Jump, window, cx| shell.jump(jump, window, cx)),
+        ]);
+        (screens, subscriptions)
     }
 
     pub fn view(&self, screen: Screen) -> AnyView {
@@ -58,17 +67,28 @@ impl Screens {
             Screen::Search => self.search.clone().into(),
             Screen::Wallets => self.wallets.clone().into(),
             Screen::Accounts => self.accounts.clone().into(),
+            Screen::Leads => self.leads.clone().into(),
             Screen::Timeline => self.timeline.clone().into(),
             Screen::Correlation => self.correlation.clone().into(),
             Screen::Settings => self.settings.clone().into(),
         }
     }
 
-    pub fn browser(&self, screen: Screen) -> Option<&Entity<HitBrowser>> {
+    pub fn browser<'a>(&'a self, screen: Screen, cx: &'a gpui::App) -> Option<&'a Entity<HitBrowser>> {
         match screen {
             Screen::Wallets => Some(&self.wallets),
-            Screen::Accounts => Some(&self.accounts),
+            Screen::Accounts => Some(self.accounts.read(cx).raw()),
             _ => None,
+        }
+    }
+
+    /// Apply the command-bar search to a screen's own list (besides its raw-finding browser).
+    pub fn search(&self, screen: Screen, text: &str, cx: &mut Context<Shell>) {
+        match screen {
+            Screen::Accounts => self.accounts.update(cx, |v, cx| v.set_search(text, cx)),
+            Screen::Leads => self.leads.update(cx, |v, cx| v.set_search(text, cx)),
+            Screen::Timeline => self.timeline.update(cx, |v, cx| v.set_search(text, cx)),
+            _ => {}
         }
     }
 }

@@ -10,6 +10,7 @@ mod balances;
 mod case;
 mod correlation;
 mod file_rows;
+mod insights;
 mod layout_ranges;
 mod recovered;
 mod schema;

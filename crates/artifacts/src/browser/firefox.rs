@@ -1,7 +1,7 @@
 //! Firefox / Mozilla: `places.sqlite`, `downloads.sqlite`, `formhistory.sqlite`,
 //! `cookies.sqlite`, `signons.sqlite`, `logins.json`.
 
-use crate::results::{IdentityKind, Recorder};
+use crate::results::Recorder;
 use crate::sqlite::{RowExt, SqliteDb};
 use crate::text::host_of;
 use strata_kernel::{Damage, DamageKind, Timestamp};
@@ -64,10 +64,10 @@ impl FirefoxForms {
             if last.is_some() && last != first {
                 rec.emit(last, EventKind::FormInput, title, "form history last used");
             }
-            if crate::text::is_email(&value) {
-                rec.identity(IdentityKind::Email, &value, None, first);
-            } else if name.eq_ignore_ascii_case("searchbar-history") {
+            if name.eq_ignore_ascii_case("searchbar-history") {
                 rec.emit(first, EventKind::Search, value, "Firefox search bar");
+            } else {
+                super::form_identity(rec, &name, &value, first, "form history");
             }
         });
     }
@@ -77,8 +77,9 @@ pub(crate) struct FirefoxCookies;
 
 impl FirefoxCookies {
     pub fn parse(db: &mut SqliteDb, rec: &mut Recorder) {
-        db.each("SELECT host, name, creationTime, lastAccessed FROM moz_cookies", |r| {
+        db.each("SELECT host, name, creationTime, lastAccessed, value FROM moz_cookies", |r| {
             let (created, accessed) = (prtime(r.int(2)), prtime(r.int(3)));
+            super::cookie_identity(rec, &r.text(0), &r.text(1), &r.text(4), created);
             rec.emit(created, EventKind::Cookie, r.text(0), format!("cookie {} set", r.text(1)));
             if accessed.is_some() && accessed != created {
                 rec.push_low(accessed, EventKind::Cookie, r.text(0), format!("cookie {} last access", r.text(1)));

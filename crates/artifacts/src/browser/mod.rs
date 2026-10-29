@@ -10,7 +10,8 @@ pub(crate) use firefox::FirefoxLogins;
 pub(crate) use index_dat::IndexDat;
 pub(crate) use opera::{OperaGlobalHistory, OperaTypedHistory};
 
-use crate::results::{ArtifactResults, Recorder};
+use crate::results::{ArtifactResults, IdentityKind, Recorder};
+use strata_accounts::UrlAccounts;
 use crate::sqlite::{RawUrlScanner, SqliteDb, SqlitePages, TimeEncoding};
 use chrome::{ChromeCookies, ChromeHistory, ChromeLogins, ChromeWebData};
 use firefox::{FirefoxCookies, FirefoxForms, FirefoxPlaces};
@@ -171,6 +172,27 @@ fn recover_deleted(kind: BrowserDb, data: &[u8], out: &mut ArtifactResults) {
         }
     }
     out.merge(rec.finish());
+}
+
+/// A form / autofill value: an e-mail anywhere, or a login when the field is named like one.
+pub(crate) fn form_identity(rec: &mut Recorder, field: &str, value: &str, at: Option<strata_kernel::Timestamp>, what: &str) {
+    let note = format!("{what} field {field}");
+    if crate::text::is_email(value) {
+        rec.identity_noted(IdentityKind::Email, value, None, at, &note);
+    } else if let Some(kind) = UrlAccounts::form_field_kind(field)
+        && let Some(v) = UrlAccounts::clean_value(value, kind)
+    {
+        rec.identity_noted(IdentityKind::of(kind), &v, None, at, &note);
+    }
+}
+
+/// A cookie whose name says it holds the user name (`username`, `login`, `remember_email`).
+pub(crate) fn cookie_identity(rec: &mut Recorder, host: &str, name: &str, value: &str, at: Option<strata_kernel::Timestamp>) {
+    let Some(kind) = UrlAccounts::form_field_kind(name) else { return };
+    if let Some(v) = UrlAccounts::clean_value(value, kind) {
+        let site = host.trim_start_matches('.');
+        rec.identity_noted(IdentityKind::of(kind), &v, Some(site), at, &format!("cookie {name}"));
+    }
 }
 
 #[cfg(test)]

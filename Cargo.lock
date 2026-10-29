@@ -6136,10 +6136,12 @@ dependencies = [
 name = "strata-accounts"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "memchr",
  "serde",
  "serde_json",
  "strata-kernel",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -6207,6 +6209,7 @@ dependencies = [
  "strata-engine",
  "strata-fs",
  "strata-kernel",
+ "strata-leads",
  "strata-source",
  "strata-timeline",
  "strata-volume",
@@ -6315,6 +6318,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-leads"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strata-accounts",
+ "strata-chain",
+ "strata-kernel",
+ "strata-timeline",
+]
+
+[[package]]
 name = "strata-report"
 version = "0.1.0"
 dependencies = [
@@ -6373,6 +6388,7 @@ name = "strata-workbench"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6388,6 +6404,7 @@ dependencies = [
  "strata-identify",
  "strata-index",
  "strata-kernel",
+ "strata-leads",
  "strata-report",
  "strata-search",
  "strata-source",

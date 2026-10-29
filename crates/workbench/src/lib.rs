@@ -7,6 +7,7 @@ mod catalog;
 mod disk_index;
 pub mod explore;
 mod file_types;
+mod insights;
 mod jobs;
 mod sector_map;
 mod triage;
@@ -30,5 +31,7 @@ pub use strata_case::{EventQuery, HostFact, CorrelationService, EvidenceRecord, 
 pub use strata_kernel::scan::HitCategory;
 pub use strata_index::{BlockClass, CellContent, IndexStats, Ownership, TextKind};
 pub use strata_timeline::{EventKind, TimelineEvent};
-pub use strata_chain::AddressBalance;
+pub use strata_chain::{AddressBalance, AddressHistory};
+pub use strata_accounts::{Account, AccountSource, Catalogue, IdentifierKind, ServiceEntry, ServiceKind, SourceRef, Years};
+pub use strata_leads::{EventRecord, Lead, LeadRef, LeadRule};
 pub use strata_kernel::{EvidenceId, Timestamp};

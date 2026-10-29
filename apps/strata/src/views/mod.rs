@@ -7,6 +7,7 @@ mod disk_row;
 pub mod disks;
 pub mod files;
 pub mod hits;
+pub mod leads;
 pub mod overview;
 pub mod search;
 pub mod settings;

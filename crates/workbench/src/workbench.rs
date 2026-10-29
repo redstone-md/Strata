@@ -242,7 +242,13 @@ impl Workbench {
             }
             control.item_done();
         }
-        Ok(format!("{} addresses, {used} used on chain, {failed} lookups failed", addresses.len()))
+        let insights = crate::insights::Insights::new(&self.case);
+        let (histories, _) = insights.fetch_histories(&backend, control)?;
+        let (accounts, leads) = insights.rebuild()?;
+        Ok(format!(
+            "{} addresses, {used} used on chain, {failed} lookups failed; {histories} histories; {accounts} accounts, {leads} leads",
+            addresses.len()
+        ))
     }
 
     /// Run one pipeline step in the foreground (CLI, re-running a step after an upgrade).

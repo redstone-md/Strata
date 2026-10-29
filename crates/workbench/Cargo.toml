@@ -20,6 +20,7 @@ strata-index = { path = "../index" }
 strata-archive.workspace = true
 strata-artifacts = { path = "../artifacts" }
 strata-timeline = { path = "../timeline" }
+strata-leads = { path = "../leads" }
 strata-report = { path = "../report" }
 strata-search.workspace = true
 strata-volume.workspace = true
@@ -31,4 +32,5 @@ serde_json.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 strata-fs = { workspace = true, features = ["testkit"] }
+rusqlite.workspace = true
 strata-identify = { path = "../identify" }

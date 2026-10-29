@@ -13,6 +13,8 @@ strata-fs.workspace = true
 strata-engine.workspace = true
 strata-chain = { path = "../chain" }
 strata-timeline = { path = "../timeline" }
+strata-accounts = { path = "../accounts" }
+strata-leads = { path = "../leads" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -20,4 +22,3 @@ parking_lot.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-strata-accounts = { path = "../accounts" }

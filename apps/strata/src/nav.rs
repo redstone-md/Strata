@@ -11,6 +11,7 @@ pub enum Screen {
     Search,
     Wallets,
     Accounts,
+    Leads,
     Timeline,
     Correlation,
     Settings,
@@ -35,14 +36,24 @@ impl Navigate {
     }
 }
 
+/// Emitted by a view that links to something on another screen.
+#[derive(Debug, Clone)]
+pub enum Jump {
+    /// The timeline, narrowed to the day of this time.
+    Day(strata_workbench::Timestamp),
+    /// Another screen with the command-bar search set to `text`.
+    Search { screen: Screen, text: String },
+}
+
 impl Screen {
-    const ALL: [Screen; 9] = [
+    const ALL: [Screen; 10] = [
         Self::Overview,
         Self::Disks,
         Self::Files,
         Self::Search,
         Self::Wallets,
         Self::Accounts,
+        Self::Leads,
         Self::Timeline,
         Self::Correlation,
         Self::Settings,
@@ -56,6 +67,7 @@ impl Screen {
             Self::Search => "Search",
             Self::Wallets => "Keys & wallets",
             Self::Accounts => "Accounts",
+            Self::Leads => "Leads",
             Self::Timeline => "Timeline",
             Self::Correlation => "Across disks",
             Self::Settings => "Settings",
@@ -70,6 +82,7 @@ impl Screen {
             Self::Search => Glyph::Search,
             Self::Wallets => Glyph::KeyRound,
             Self::Accounts => Glyph::Users,
+            Self::Leads => Glyph::Lightbulb,
             Self::Timeline => Glyph::Clock,
             Self::Correlation => Glyph::GitCompare,
             Self::Settings => Glyph::Settings,
@@ -91,7 +104,7 @@ impl Screen {
 
     /// Screens whose list the command-bar search filters.
     pub fn searchable(self) -> bool {
-        matches!(self, Self::Wallets | Self::Accounts | Self::Timeline)
+        matches!(self, Self::Wallets | Self::Accounts | Self::Leads | Self::Timeline)
     }
 
     pub fn nav_item(self) -> NavItem {

@@ -1,5 +1,7 @@
 //! Headless front-end for long unattended runs and scripting.
 
+mod insights;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -111,6 +113,34 @@ enum Command {
     Balances {
         #[arg(long)]
         endpoint: Option<String>,
+    },
+    /// Ranked leads: what may fit where (on-chain activity, accounts, wallet file times).
+    Leads {
+        /// Re-run the lead engine first (no network).
+        #[arg(long)]
+        rebuild: bool,
+        /// Fetch missing on-chain histories of used addresses first (network), then rebuild.
+        #[arg(long)]
+        fetch: bool,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Accounts per service, merged across findings, artefacts and disks.
+    Accounts {
+        #[arg(long)]
+        rebuild: bool,
+        /// Only services that hold funds (exchanges, web wallets, faucets, pools, dice...).
+        #[arg(long)]
+        funds: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The service catalogue: counts per kind, or every entry with --all.
+    Services {
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -237,6 +267,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{} v{} {:<9} {:>12}  {}", f.evidence, f.volume, f.state, f.size, f.path);
             }
         }
+        Command::Leads { rebuild, fetch, limit, json } => insights::leads(&wb, rebuild, fetch, limit, json)?,
+        Command::Accounts { rebuild, funds, json } => insights::accounts(&wb, rebuild, funds, json)?,
+        Command::Services { all } => insights::services(all),
         Command::Correlate => {
             for s in wb.shared_findings()? {
                 let disks: Vec<String> = s.evidence.iter().map(|e| e.to_string()).collect();

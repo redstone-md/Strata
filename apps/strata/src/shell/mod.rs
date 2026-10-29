@@ -1,6 +1,7 @@
 //! App shell: command bar across the top, sidebar on the left, the active screen beside it.
 
 mod command_bar;
+mod jump;
 mod screens;
 mod window_controls;
 
@@ -33,16 +34,16 @@ pub struct Shell {
 impl Shell {
     pub fn new(session: Entity<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search keys, addresses, files, accounts"));
-        let (screens, navigate) = Screens::new(&session, window, cx);
-        let mut subscriptions = navigate;
-        subscriptions.extend([
+        let (screens, screen_subscriptions) = Screens::new(&session, window, cx);
+        let mut subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe_in(&search, window, |this, _, event: &InputEvent, window, cx| match event {
                 InputEvent::Change => this.apply_search(cx),
                 InputEvent::PressEnter { .. } => this.on_enter(window, cx),
                 _ => {}
             }),
-        ]);
+        ];
+        subscriptions.extend(screen_subscriptions);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         Self { session, screen: Screen::Overview, search, focus, screens, _subscriptions: subscriptions }
@@ -50,11 +51,10 @@ impl Shell {
 
     fn apply_search(&mut self, cx: &mut Context<Self>) {
         let text = self.search.read(cx).value().to_string();
-        if let Some(browser) = self.screens.browser(self.screen) {
+        if let Some(browser) = self.screens.browser(self.screen, cx).cloned() {
             browser.update(cx, |b, cx| b.set_search(&text, cx));
-        } else if self.screen == Screen::Timeline {
-            self.screens.timeline.update(cx, |v, cx| v.set_search(&text, cx));
         }
+        self.screens.search(self.screen, &text, cx);
     }
 
     /// Enter in the command bar: show the findings that match; when none do, offer the disk
@@ -64,7 +64,7 @@ impl Shell {
         if !self.screen.searchable() {
             self.navigate(Navigate::to(Screen::Wallets), cx);
         }
-        let matches = self.screens.browser(self.screen).map(|b| b.read(cx).result_count(cx));
+        let matches = self.screens.browser(self.screen, cx).map(|b| b.read(cx).result_count(cx));
         if !text.is_empty() && matches == Some(0) {
             self.screens.search.update(cx, |s, cx| s.prefill(&text, window, cx));
             self.navigate(Navigate::to(Screen::Search), cx);
@@ -76,11 +76,14 @@ impl Shell {
         if let (Screen::Files, Some((evidence, volume))) = (nav.screen, nav.volume) {
             self.screens.files.update(cx, |f, cx| f.open_volume(evidence, volume, cx));
         }
-        if let Some(browser) = self.screens.browser(nav.screen).cloned() {
+        if let Some(browser) = self.screens.browser(nav.screen, cx).cloned() {
             browser.update(cx, |b, cx| b.show_category(nav.category, cx));
         }
+        if nav.screen == Screen::Accounts && nav.category.is_some() {
+            self.screens.accounts.update(cx, |v, cx| v.show_traces(cx));
+        }
         match nav.screen {
-            Screen::Wallets | Screen::Accounts | Screen::Timeline => self.apply_search(cx),
+            Screen::Wallets | Screen::Accounts | Screen::Leads | Screen::Timeline => self.apply_search(cx),
             Screen::Correlation => self.screens.correlation.update(cx, |c, cx| c.reload(cx)),
             _ => {}
         }
