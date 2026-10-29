@@ -41,10 +41,6 @@ impl HitDetails<'_> {
             .join(" · ")
     }
 
-    pub fn pretty(&self) -> String {
-        serde_json::to_string_pretty(self.0).unwrap_or_default()
-    }
-
     fn scalar(v: &Value) -> Option<String> {
         match v {
             Value::String(s) => Some(s.clone()),

@@ -4,6 +4,7 @@
 use super::columns::{DiskLabels, HitColumn};
 use super::delegate::HitTableDelegate;
 use super::detail::HitDetailPanel;
+use super::detail_tree::{self, Chain, DetailTree, TreeState};
 use crate::categories;
 use crate::format;
 use crate::session::Session;
@@ -15,6 +16,7 @@ use gpui::{
 };
 use gpui_component::{h_flex, v_flex};
 use gpui_component::table::{TableEvent, TableState};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 use strata_workbench::{HitCategory, HitQuery, StoredHit};
 
@@ -33,6 +35,10 @@ pub struct HitBrowser {
     config: BrowserConfig,
     table: Entity<TableState<HitTableDelegate>>,
     selected: Option<StoredHit>,
+    /// Groups the user opened or closed in the selected finding's tree.
+    tree_state: TreeState,
+    /// Chain lookups by address, refreshed with the table.
+    chain: Rc<Chain>,
     /// One category picked from the overview, instead of all of the screen's categories.
     only: Option<HitCategory>,
     loaded_total: u64,
@@ -54,6 +60,7 @@ impl HitBrowser {
             cx.subscribe_in(&table, window, |this, table, event: &TableEvent, _, cx| {
                 if let TableEvent::SelectRow(ix) = event {
                     this.selected = table.read(cx).delegate().row(*ix).cloned();
+                    this.tree_state.clear();
                     cx.notify();
                 }
             }),
@@ -65,6 +72,8 @@ impl HitBrowser {
             config,
             table,
             selected: None,
+            tree_state: TreeState::new(),
+            chain: Rc::new(Chain::default()),
             only: None,
             loaded_total: 0,
             generation,
@@ -93,6 +102,7 @@ impl HitBrowser {
         let snapshot = self.session.read(cx).snapshot();
         let disks: DiskLabels = snapshot.disks.iter().map(|d| (d.id(), d.record.info.label.clone())).collect();
         self.loaded_total = snapshot.total_hits;
+        self.chain = Rc::new(Chain::new(snapshot.checked.iter().cloned()));
         self.last_load = Instant::now();
         self.table.update(cx, |t, cx| {
             t.delegate_mut().reload(disks);
@@ -113,6 +123,7 @@ impl HitBrowser {
         } else if session.snapshot().total_hits != self.loaded_total && self.last_load.elapsed() >= LIVE_RELOAD {
             self.reload(cx);
         }
+        cx.notify();
     }
 
     fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -140,10 +151,19 @@ impl HitBrowser {
 impl Render for HitBrowser {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = tokens();
+        let show_raw = self.session.read(cx).show_raw();
         let detail = self.selected.clone().map(|hit| {
             let disk = self.table.read(cx).delegate().disk_label(&hit);
+            let nodes = detail_tree::build(&hit, &disk, &self.chain, show_raw);
             let this = cx.entity().downgrade();
-            HitDetailPanel::new(hit, disk, move |_, _, cx| {
+            let tree = DetailTree::new(nodes, self.tree_state.clone(), move |path, open, _, cx| {
+                let _ = this.update(cx, |b, cx| {
+                    b.tree_state.insert(path, open);
+                    cx.notify();
+                });
+            });
+            let this = cx.entity().downgrade();
+            HitDetailPanel::new(hit, tree, move |_, _, cx| {
                 let _ = this.update(cx, |b, cx| {
                     b.selected = None;
                     cx.notify();

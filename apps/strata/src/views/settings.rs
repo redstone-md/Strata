@@ -3,7 +3,7 @@
 use crate::picker::{PickKind, pick_path};
 use crate::session::Session;
 use crate::theme::tokens;
-use crate::widgets::{Field, Section, TextButton, mono};
+use crate::widgets::{Check, Field, Section, TextButton, mono};
 use gpui::{
     AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window,
     div, px,
@@ -126,6 +126,7 @@ impl Render for SettingsView {
         let t = tokens();
         self.sync_endpoint(window, cx);
         let current = self.session.read(cx).case_root().display().to_string();
+        let show_raw = self.session.read(cx).show_raw();
         let exports = REPORT_FORMATS.map(|(format, label)| {
             TextButton::new(SharedString::from(format!("export-{format}")), label)
                 .on_click(cx.listener(move |this, _, _, cx| this.export(format, cx)))
@@ -162,6 +163,13 @@ impl Render for SettingsView {
                             .child(TextButton::new("endpoint-save", "Save").strong().on_click(cx.listener(|this, _, _, cx| this.save_endpoint(cx)))),
                     )
                     .children(self.message(Topic::Chain)),
+            )
+            .child(
+                Section::new("Findings")
+                    .note("Raw data is the detector output behind each finding, for checking a mapping.")
+                    .child(Check::new("show-raw", "Show raw data under each finding", show_raw, cx.listener(|this, _, _, cx| {
+                        this.session.update(cx, |s, cx| s.set_show_raw(!s.show_raw(), cx));
+                    }))),
             )
             .child(
                 Section::new("Report")

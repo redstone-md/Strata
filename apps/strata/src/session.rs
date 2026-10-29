@@ -33,6 +33,8 @@ pub struct Snapshot {
     pub total_hits: u64,
     /// Addresses seen on chain at least once, richest first.
     pub balances: Vec<AddressBalance>,
+    /// Every address the chain lookup has checked, used or not.
+    pub checked: Arc<Vec<AddressBalance>>,
 }
 
 impl Snapshot {
@@ -58,6 +60,8 @@ pub struct Session {
     workbench: Arc<Workbench>,
     snapshot: Snapshot,
     error: Option<String>,
+    /// Show the raw details JSON under each finding (Settings, off by default).
+    show_raw: bool,
     /// Bumped whenever the case is switched, so views can rebuild their state.
     generation: u64,
     was_active: bool,
@@ -78,7 +82,7 @@ impl Session {
                 }
             }
         });
-        let mut session = Self { workbench, snapshot: Snapshot::default(), error, generation: 0, was_active: false, _poll: poll };
+        let mut session = Self { workbench, snapshot: Snapshot::default(), error, show_raw: false, generation: 0, was_active: false, _poll: poll };
         session.reload();
         session
     }
@@ -107,6 +111,15 @@ impl Session {
 
     pub fn case_root(&self) -> PathBuf {
         self.workbench.root().to_path_buf()
+    }
+
+    pub fn show_raw(&self) -> bool {
+        self.show_raw
+    }
+
+    pub fn set_show_raw(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.show_raw = show;
+        cx.notify();
     }
 
     pub fn error(&self) -> Option<&str> {
@@ -151,9 +164,10 @@ impl Session {
             .collect();
         let counts = wb.hit_counts(None).unwrap_or_default();
         let total_hits = counts.iter().map(|(_, n)| n).sum();
-        let mut balances: Vec<_> = wb.balances().unwrap_or_default().into_iter().filter(|b| b.ever_used()).collect();
+        let checked = wb.balances().unwrap_or_default();
+        let mut balances: Vec<_> = checked.iter().filter(|b| b.ever_used()).cloned().collect();
         balances.sort_by(|a, b| b.balance_sat().cmp(&a.balance_sat()).then(b.tx_count.cmp(&a.tx_count)));
-        self.snapshot = Snapshot { disks, counts, jobs, total_hits, balances };
+        self.snapshot = Snapshot { disks, counts, jobs, total_hits, balances, checked: Arc::new(checked) };
     }
 
     pub fn add_evidence(&mut self, location: &str, cx: &mut Context<Self>) -> Result<(), String> {

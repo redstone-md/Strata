@@ -1,6 +1,7 @@
 //! Reusable presentation widgets. Every colour, size and radius comes from [`crate::theme`].
 
 mod badge;
+mod check;
 mod field;
 mod section;
 mod sector_map;
@@ -9,6 +10,7 @@ mod text_button;
 mod text_table;
 
 pub use badge::Badge;
+pub use check::Check;
 pub use field::Field;
 pub use section::{Section, rule};
 pub use sector_map::{DiskMaps, SectorMapView, legend};

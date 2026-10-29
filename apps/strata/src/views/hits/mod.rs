@@ -4,6 +4,7 @@ mod browser;
 mod columns;
 mod delegate;
 mod detail;
+mod detail_tree;
 mod details;
 
 pub use browser::{BrowserConfig, HitBrowser};
