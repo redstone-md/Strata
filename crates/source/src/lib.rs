@@ -5,6 +5,7 @@
 
 mod block;
 mod composite;
+mod ewf;
 mod file_io;
 mod open;
 mod physical;
@@ -14,6 +15,7 @@ mod slice;
 
 pub use block::{BlockSource, SourceInfo, SourceKind};
 pub use composite::CompositeSource;
+pub use ewf::{EwfImage, StoredHashes};
 pub use open::open_source;
 pub use physical::PhysicalDrive;
 pub use raw::RawImage;
