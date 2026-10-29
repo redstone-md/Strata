@@ -176,3 +176,39 @@ fn profile_names() {
     assert_eq!(profile_of("Users/Admin"), None);
     assert_eq!(profile_of("WINDOWS/system32/config/SAM"), None);
 }
+
+#[test]
+fn random_bytes_behind_every_signature_never_panic() {
+    let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+    let mut noise = |n: usize| -> Vec<u8> {
+        (0..n)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                (seed >> 24) as u8
+            })
+            .collect()
+    };
+    let prefixes: Vec<Vec<u8>> = vec![
+        crate::sqlite::MAGIC.to_vec(),
+        b"regf".to_vec(),
+        b"Client UrlCache MMF Ver 5.2\0".to_vec(),
+        crate::windows::build_lnk("C:\\a", FT, 1, "", "m")[..0x4C].to_vec(),
+        [17u32.to_le_bytes().as_slice(), b"SCCA"].concat(),
+        [0x30u32.to_le_bytes().as_slice(), b"LfLe"].concat(),
+        vec![0xCF, 0xAD, 0x12, 0xFE],
+        b"From x\nFrom: a@b.cd\nSubject: s\n".to_vec(),
+        b"<typed_history_item content=\"".to_vec(),
+    ];
+    for round in 0..40 {
+        for (i, p) in prefixes.iter().enumerate() {
+            let mut data = p.clone();
+            data.extend(noise(64 + round * 397 + i * 31));
+            let _ = parse_bytes("carved", &data);
+        }
+        for hint in ["INFO2", "$IXYZ.txt", "logins.json", "global_history.dat", "History"] {
+            let _ = parse_bytes(hint, &noise(round * 211));
+        }
+    }
+}
