@@ -19,7 +19,7 @@ pub mod wallet;
 pub mod zip;
 
 pub use rar::{walk4 as rar4_walk, walk5 as rar5_walk};
-pub use tar::walk as tar_walk;
+pub use tar::{TarMember, members as tar_members, walk as tar_walk};
 
 use strata_kernel::Damage;
 

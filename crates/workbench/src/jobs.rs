@@ -15,6 +15,8 @@ pub enum JobKind {
     Artifacts,
     /// Identify every file by content; flag renamed extensions.
     ClassifyFiles,
+    /// Unpack archives (live, deleted, renamed, carved) recursively and analyse their members.
+    Archives,
     /// Carve files from unallocated space and parse wallets found there.
     Carve,
     /// Single-pass detector scan of the whole evidence.

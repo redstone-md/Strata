@@ -41,7 +41,12 @@ impl Timestamp {
         let hour = i64::from(time >> 11);
         let min = i64::from((time >> 5) & 0x3f);
         let sec = i64::from(time & 0x1f) * 2;
-        if !(1..=12).contains(&month) || day == 0 || hour > 23 || min > 59 || sec > 59 {
+        Self::from_civil(year, month, day, hour, min, sec)
+    }
+
+    /// Calendar date and time of day, UTC. `None` for out-of-range fields.
+    pub fn from_civil(year: i64, month: i64, day: i64, hour: i64, min: i64, sec: i64) -> Option<Self> {
+        if !(1..=12).contains(&month) || !(1..=31).contains(&day) || !(0..24).contains(&hour) || !(0..60).contains(&min) || !(0..60).contains(&sec) {
             return None;
         }
         let days = days_from_civil(year, month, day);

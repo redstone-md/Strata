@@ -27,6 +27,16 @@ impl Extracted {
     pub fn is_intact(&self) -> bool {
         self.complete && self.crc_ok == Some(true) && self.damage.is_empty()
     }
+
+    /// Decode one member's raw data (method 0 stored or 8 deflate) into at most `limit` bytes.
+    /// `None` for other methods. The CRC is not checked here.
+    pub fn decode(method: u16, input: &[u8], limit: usize) -> Option<Self> {
+        match method {
+            0 => Some(stored(input, limit)),
+            8 => Some(inflate(input, limit)),
+            _ => None,
+        }
+    }
 }
 
 impl ZipArchive {
@@ -42,10 +52,9 @@ impl ZipArchive {
         let declared = usize::try_from(entry.compressed_size).unwrap_or(usize::MAX);
         let available = data.len().saturating_sub(start);
         let input = data.get(start..start + declared.min(available)).unwrap_or_default();
-        let mut out = match entry.method {
-            0 => stored(input, limit),
-            8 => inflate(input, limit),
-            _ => {
+        let mut out = match Extracted::decode(entry.method, input, limit) {
+            Some(out) => out,
+            None => {
                 return Extracted::failed(Damage::new(
                     DamageKind::Missing,
                     None,
