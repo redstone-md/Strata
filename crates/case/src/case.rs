@@ -295,6 +295,39 @@ impl Case {
         self.conn.lock().execute(&sql, params![id.get(), factor]).map_err(db)
     }
 
+    /// Recompute volume/file attribution of stored raw-scan hits (after parser upgrades),
+    /// without rescanning. File-level hits (wallet files, artefacts) keep theirs.
+    pub fn reattribute(&self, id: EvidenceId) -> Result<usize> {
+        let layout = self.layout(id)?;
+        let mut conn = self.conn.lock();
+        let rows: Vec<(i64, i64)> = {
+            let mut stmt = conn
+                .prepare("SELECT id, offset FROM hits WHERE evidence_id = ?1 AND detector NOT LIKE 'wallet.%' AND detector NOT LIKE 'artifacts.%' AND detector <> 'identify.mismatch'")
+                .map_err(db)?;
+            let rows = stmt.query_map([id.get()], |r| Ok((r.get(0)?, r.get(1)?))).map_err(db)?;
+            rows.collect::<rusqlite::Result<_>>().map_err(db)?
+        };
+        let tx = conn.transaction().map_err(db)?;
+        {
+            let mut stmt = tx
+                .prepare("UPDATE hits SET volume_idx = ?2, file_path = ?3, file_state = ?4, file_offset = ?5 WHERE id = ?1")
+                .map_err(db)?;
+            for (hit, offset) in &rows {
+                let a = layout.attribute(*offset as u64);
+                stmt.execute(params![
+                    hit,
+                    a.volume,
+                    a.file.as_ref().map(|f| f.path.clone()),
+                    a.file.as_ref().map(|f| format!("{:?}", f.state)),
+                    a.file.as_ref().map(|f| f.file_offset as i64),
+                ])
+                .map_err(db)?;
+            }
+        }
+        tx.commit().map_err(db)?;
+        Ok(rows.len())
+    }
+
     /// Store hits produced outside the raw scan (file-level parsers, carving).
     pub fn store_hits(&self, id: EvidenceId, hits: &[(strata_kernel::scan::Hit, crate::Attribution)]) -> Result<usize> {
         store::insert(&mut self.conn.lock(), id, hits).map_err(db)

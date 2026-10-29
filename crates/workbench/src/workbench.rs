@@ -196,6 +196,12 @@ impl Workbench {
         job.view()
     }
 
+    /// Re-map stored hits to files, then re-run triage.
+    pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
+        let n = self.case.reattribute(evidence)?;
+        Ok((n, self.triage(evidence)?))
+    }
+
     /// Re-apply false-positive triage (also part of the deep scan step).
     pub fn triage(&self, evidence: EvidenceId) -> Result<usize> {
         crate::triage::Triage::new(&self.case).run(evidence)

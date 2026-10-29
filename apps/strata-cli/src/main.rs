@@ -90,6 +90,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let id = EvidenceId::new(id);
             if kind.eq_ignore_ascii_case("triage") {
                 println!("{} findings downgraded", wb.triage(id)?);
+            } else if kind.eq_ignore_ascii_case("reattribute") {
+                let (n, t) = wb.reattribute(id)?;
+                println!("{n} findings re-mapped, {t} downgraded");
             } else {
                 let kind: JobKind = serde_json::from_value(serde_json::Value::String(kind))?;
                 let view = wb.run_step(kind, id);
