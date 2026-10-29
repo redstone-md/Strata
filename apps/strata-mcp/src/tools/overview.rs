@@ -8,7 +8,7 @@ use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use strata_workbench::{EvidenceRecord, JobState, JobView, Workbench};
+use strata_workbench::{AccountQuery, EvidenceRecord, JobState, JobView, Workbench};
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -33,6 +33,7 @@ struct Overview {
     findings: Findings,
     jobs: JobsSummary,
     balances: BalanceSummary,
+    /// Accounts the owner used (see `accounts`; names only seen in data are not counted).
     accounts: usize,
     leads: usize,
 }
@@ -219,7 +220,7 @@ fn overview(wb: &Workbench, include_damage: bool) -> Reply<Overview> {
             total_balance_sat: total,
             total_balance_btc: btc(total),
         },
-        accounts: wb.accounts().map_err(fail)?.len(),
+        accounts: wb.account_count(&AccountQuery::default()).map_err(fail)? as usize,
         leads: wb.leads().map_err(fail)?.len(),
     })
 }
