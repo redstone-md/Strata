@@ -114,8 +114,10 @@ impl ArtifactExtractor {
         let mut out = match fs.read(id, 0, &mut buf) {
             Ok(n) => {
                 buf.truncate(n);
-                // Wallet folders are recognised by their path; other parsers want the bare name.
-                let hint = if kind == ArtifactKind::WalletDir { &entry.path } else { &entry.name };
+                // Wallet folders and system files are recognised by their path; other parsers
+                // want the bare name.
+                let by_path = matches!(kind, ArtifactKind::WalletDir | ArtifactKind::LinuxSystem);
+                let hint = if by_path { &entry.path } else { &entry.name };
                 kind.parse(hint, &buf)
             }
             Err(e) => {
