@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS balances (
 pub fn apply(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(SCHEMA)?;
+    conn.execute_batch(crate::insights::SCHEMA)?;
     migrate(conn)?;
     conn.execute(
         "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?1)",

@@ -9,6 +9,7 @@ mod attribution;
 mod balances;
 mod case;
 mod correlation;
+mod insights;
 mod schema;
 mod store;
 mod timeline;
