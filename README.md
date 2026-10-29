@@ -125,6 +125,7 @@ Requirements: Rust 1.90 or newer. Windows 10/11 is the main target; the GUI uses
 ```sh
 cargo build --release -p strata        # desktop app
 cargo build --release -p strata-cli    # headless
+cargo build --release -p strata-mcp    # MCP server for AI assistants
 ```
 
 Open the app with a case folder (created if missing), add a disk image or drive on the
@@ -148,6 +149,39 @@ strata-cli -c D:\cases\laptop.strata report html
 `strata-cli -c <case> jobs` shows every job and where it will resume; `strata-cli -c <case> top`
 shows what the process is doing and what it costs. `strata-cli --help` lists every command, including single pipeline steps (`step Carve 1`),
 the Esplora endpoint (`balances --endpoint`) and the scan thread count (`analyse --threads`).
+
+## MCP server
+
+`strata-mcp` lets an AI assistant such as Claude Code or Claude Desktop look into a case and
+help with the analysis. It can list findings with their derived addresses, read balances and
+address histories, walk the timeline, and go through accounts, leads, files, stored searches
+and jobs. Start a conversation with something like "what in this case points to a wallet that
+still holds coins?".
+
+The server is read-only. It opens the case without resuming jobs, cannot start an analysis or a
+search, and changes neither findings nor evidence, so it can run next to the app on the same
+case.
+
+Register it with Claude Code:
+
+```sh
+claude mcp add strata -- strata-mcp --case D:\cases\laptop.strata
+```
+
+or in Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "strata": {
+      "command": "C:\\tools\\strata-mcp.exe",
+      "args": ["--case", "D:\\cases\\laptop.strata"]
+    }
+  }
+}
+```
+
+One server serves one case; add a second entry for another case.
 
 ## How it is built
 
@@ -184,6 +218,8 @@ partial result with notes instead of an error.
   folder.
 - Keys, seed phrases and wallet hashes are shown in clear, in the app and in reports.
   Treat case folders and exports as secrets.
+- The MCP server gives keys and seed phrases to the AI assistant in clear. Connect it only to
+  an assistant you would show the case to.
 - Balance lookups send addresses to the configured Esplora server. Point it at your own node
   if that matters for the case.
 
