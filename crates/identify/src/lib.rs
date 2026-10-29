@@ -26,6 +26,7 @@ pub use detector::SignatureDetector;
 pub use extension::extension_of;
 pub use formats::deflate::{DeflateRun, measure_deflate};
 pub use formats::measure::{MeasureMethod, Measured, measure};
+pub use formats::{TarMember, tar_members};
 pub use formats::zip::{EntrySource, Extracted, ZipArchive, ZipEntry};
 pub use identifier::Identifier;
 pub use probe::Probe;

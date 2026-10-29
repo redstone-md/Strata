@@ -30,9 +30,27 @@ fn cstr(field: &[u8]) -> String {
     String::from_utf8_lossy(&field[..end]).into_owned()
 }
 
+/// One member found by [`members`]: where its data starts inside the archive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TarMember {
+    pub name: String,
+    pub size: u64,
+    /// Offset of the member data from the start of the archive.
+    pub data_offset: u64,
+    /// Modification time, Unix seconds.
+    pub mtime: Option<i64>,
+    pub is_dir: bool,
+}
+
 /// Walk tar headers from offset 0.
 pub fn walk(view: &dyn ByteView) -> Walk {
+    members(view).1
+}
+
+/// Walk tar headers from offset 0 and keep each member's data position.
+pub fn members(view: &dyn ByteView) -> (Vec<TarMember>, Walk) {
     let mut w = Walk::default();
+    let mut out = Vec::new();
     let mut pos = 0u64;
     let mut long_name: Option<String> = None;
     while w.items.len() < MAX_MEMBERS {
@@ -62,14 +80,18 @@ pub fn walk(view: &dyn ByteView) -> Walk {
             if !prefix.is_empty() {
                 name = format!("{prefix}/{name}");
             }
-            w.items.push((long_name.take().unwrap_or(name), size));
+            let name = long_name.take().unwrap_or(name);
+            let mtime = octal(&h[136..148]).and_then(|t| i64::try_from(t).ok());
+            w.items.push((name.clone(), size));
+            out.push(TarMember { is_dir: kind == b'5' || name.ends_with('/'), name, size, data_offset: data_pos, mtime });
         }
-        pos = data_pos + size.div_ceil(512) * 512;
+        let Some(next) = size.div_ceil(512).checked_mul(512).and_then(|n| data_pos.checked_add(n)) else { break };
+        pos = next;
     }
     if w.end.is_none() && w.ok > 0 && pos >= view.view_len() {
         w.end = Some(pos.min(view.view_len()));
     }
-    w
+    (out, w)
 }
 
 pub fn tar(data: &[u8]) -> Option<Probe> {
