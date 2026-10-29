@@ -341,6 +341,20 @@ impl Case {
         self.with_write(|conn| conn.execute(&sql, params![id.get(), factor, min_copies]))
     }
 
+    /// Lower the confidence of e-mails and links inside files that hold at least `min_distinct`
+    /// different addresses: database dumps, customer tables, mailing lists. They bury the
+    /// owner's own accounts. Tagged `address list`; idempotent.
+    pub fn downgrade_address_lists(&self, id: EvidenceId, min_distinct: u32, factor: f32) -> Result<usize> {
+        let details = "CASE WHEN json_valid(details) AND details <> 'null' THEN details ELSE '{}' END";
+        let sql = format!(
+            "UPDATE hits SET confidence = confidence * ?2, details = json_set({details}, '$.triage', 'address list')
+             WHERE evidence_id = ?1 AND category IN ('Identity', 'Url') AND json_extract({details}, '$.triage') IS NULL
+               AND file_path IN (SELECT file_path FROM hits WHERE evidence_id = ?1 AND category = 'Identity' AND file_path IS NOT NULL
+                                 GROUP BY file_path HAVING COUNT(DISTINCT value) >= ?3)"
+        );
+        self.with_write(|conn| conn.execute(&sql, params![id.get(), factor, min_distinct]))
+    }
+
     /// Recompute volume/file attribution of stored raw-scan hits (after parser upgrades),
     /// without rescanning. File-level hits (wallet files, artefacts, archive members) keep theirs.
     pub fn reattribute(&self, id: EvidenceId) -> Result<usize> {
