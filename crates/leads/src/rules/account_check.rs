@@ -55,7 +55,12 @@ pub(crate) fn run(ctx: &Context<'_>) -> Vec<Lead> {
                 explanation.push(format!("{}.", e.notes().trim_end_matches('.')));
             }
         }
-        let linked: Vec<&str> = a.linked().iter().filter_map(|k| k.split_once('|').map(|(s, _)| s)).collect();
+        let mut linked: Vec<String> = a
+            .linked()
+            .iter()
+            .map(|k| ctx.inputs.accounts.iter().find(|o| o.key() == k).map_or_else(|| k.replace('|', " "), |o| format!("{} ({})", o.service(), o.identifier())))
+            .collect();
+        linked.dedup();
         if !linked.is_empty() {
             explanation.push(format!("The same name appears on: {}.", linked.join(", ")));
         }

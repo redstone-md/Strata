@@ -36,7 +36,9 @@ pub(crate) fn run(ctx: &Context<'_>) -> Vec<Lead> {
             true
         });
         let Some(&(strength, at, what, w)) = matches.first() else { continue };
-        out.push(lead(ctx, key, strength, at, what, w, &matches[1..matches.len().min(3)]));
+        // Other services only when they match the same file time.
+        let others: Vec<_> = matches[1..].iter().filter(|m| m.1 == at).take(2).copied().collect();
+        out.push(lead(ctx, key, strength, at, what, w, &others));
     }
     out
 }
@@ -64,7 +66,7 @@ fn lead(ctx: &Context<'_>, key: &KeyFinding, strength: f32, at: Timestamp, what:
         ),
     ];
     for (_, _, _, o) in others {
-        explanation.push(format!("Also active then: the {} {} ({}).", o.service.kind.label(), o.service.name, span(o.first, o.last)));
+        explanation.push(format!("Also in use around then: the {} {} ({}).", o.service.kind.label(), o.service.name, span(o.first, o.last)));
     }
     explanation.push(format!(
         "Coins may have moved between this wallet and {}: compare its deposit and withdrawal history with the wallet's addresses.",

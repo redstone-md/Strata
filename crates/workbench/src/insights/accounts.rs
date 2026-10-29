@@ -87,13 +87,14 @@ fn observations(hit: &StoredHit) -> Vec<Observation> {
             let d = &h.details;
             let note = str_field(d, "detail").map(str::to_string).unwrap_or_else(|| format!("{}{place}", h.label));
             let weak = d.get("weak").and_then(|v| v.as_bool()).unwrap_or(false);
+            let (first, last) = (ts_field(d, "first_seen"), ts_field(d, "last_seen"));
             vec![Observation {
                 service: str_field(d, "service").map(str::to_string),
                 identifier: str_field(d, "value").unwrap_or(&h.value).to_string(),
                 kind: IdentifierKind::from_label(str_field(d, "kind").unwrap_or(&h.label)),
-                source: source(note, None),
-                first_seen: ts_field(d, "first_seen"),
-                last_seen: ts_field(d, "last_seen"),
+                source: source(note, first.or(last)),
+                first_seen: first,
+                last_seen: last,
                 confidence: if weak { 0.4 } else { h.confidence.get() },
             }]
         }
