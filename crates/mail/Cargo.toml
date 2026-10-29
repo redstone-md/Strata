@@ -1,0 +1,12 @@
+[package]
+name = "strata-mail"
+description = "E-mail messages: MIME parsing, mailbox containers (mbox, .eml, Outlook Express .dbx) and carving from free space"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+strata-kernel.workspace = true
+mail-parser = "1"
+memchr.workspace = true
+serde.workspace = true
