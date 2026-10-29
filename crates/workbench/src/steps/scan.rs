@@ -23,8 +23,16 @@ impl Cursor for ScanCursor {
 pub(super) fn run(ctx: &StepContext<'_>) -> Result<String> {
     let id = ctx.evidence();
     let scanner = Scanner::new(DetectorCatalog::all());
+    let len = ctx.case().source(id)?.len().max(1);
+    let mut logged = None;
     let summary = ctx.case().scan_with(id, &scanner, ctx.control(), ctx.policy().every, &mut |w, watermark| {
-        ctx.checkpoint_in(w, &ScanCursor { watermark })
+        ctx.checkpoint_in(w, &ScanCursor { watermark })?;
+        let tenth = watermark * 10 / len;
+        if logged.is_some_and(|t| tenth > t) {
+            ctx.log(format!("{}% scanned, up to 0x{watermark:X}, {} hits so far", tenth * 10, ctx.control().snapshot().hits));
+        }
+        logged = Some(tenth);
+        Ok(())
     })?;
     if !summary.completed {
         return Ok(String::new());

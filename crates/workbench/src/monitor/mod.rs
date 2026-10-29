@@ -229,32 +229,42 @@ impl Sampler {
     fn sample(&mut self, queue: &JobQueue) {
         let now = Instant::now();
         let dt = self.last.replace(now).map(|t| now.duration_since(t).as_secs_f64());
-        let Some((sample, system)) = self.watch.sample() else { return };
+        let Some((mut sample, system)) = self.watch.sample() else { return };
         let at = sample.at;
         let running: Vec<_> =
             queue.all().into_iter().filter(|j| j.foreign.is_none() && *j.state.lock() == JobState::Running).collect();
         let mut s = self.shared.state.lock();
         let cores = s.cores.max(1) as f64;
-        s.process.push(sample);
-        s.system = Some(system);
+        let mut evidence_read = 0.0;
         let share = if running.is_empty() { 0.0 } else { sample.cpu / running.len() as f32 };
         for job in &running {
             let snap = job.control.snapshot();
             let cpu = job.threads.cpu_time();
-            let track = s.jobs.entry(job.id).or_insert_with(|| JobTrack { samples: Ring::new(HISTORY), cpu, read: snap.read_bytes, units: snap.scanned });
+            let Some(track) = s.jobs.get_mut(&job.id) else {
+                // First sight of the job: only a baseline, no rate yet.
+                s.jobs.insert(job.id, JobTrack { samples: Ring::new(HISTORY), cpu, read: snap.read_bytes, units: snap.scanned });
+                continue;
+            };
             let rate = |now: f64| dt.filter(|d| *d > 0.0).map_or(0.0, |d| now / d);
             let job_cpu = match (cpu, track.cpu) {
                 (Some(c), Some(prev)) => rate(c.saturating_sub(prev).as_secs_f64()) / cores * 100.0,
                 _ => f64::from(share),
             };
+            let read_per_sec = rate(snap.read_bytes.saturating_sub(track.read) as f64);
+            evidence_read += read_per_sec;
             track.samples.push(JobSample {
                 at,
                 cpu: job_cpu.clamp(0.0, 100.0) as f32,
-                read_per_sec: rate(snap.read_bytes.saturating_sub(track.read) as f64),
+                read_per_sec,
                 units_per_sec: rate(snap.scanned.saturating_sub(track.units) as f64),
             });
             (track.cpu, track.read, track.units) = (cpu, snap.read_bytes, snap.scanned);
         }
+        // Reads served from the file cache skip the OS I/O counters; evidence reads the jobs
+        // counted themselves are a floor for what the process read.
+        sample.read_per_sec = sample.read_per_sec.max(evidence_read);
+        s.process.push(sample);
+        s.system = Some(system);
     }
 }
 
@@ -280,5 +290,35 @@ mod tests {
         assert!(p.working_set > 0 && s.total_ram > 0);
         assert!(p.write_per_sec > 0.0, "the write shows: {p:?}");
         assert!(p.read_per_sec > 0.0, "the read shows: {p:?}");
+    }
+
+    #[test]
+    fn job_samples_rate_cpu_and_evidence_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let case = strata_case::Case::open(&dir.path().join("m.strata")).unwrap();
+        let queue = JobQueue::default();
+        let job = queue.enqueue(&case, strata_kernel::EvidenceId::new(1), &[crate::JobKind::Scan]).unwrap().remove(0);
+        *job.state.lock() = JobState::Running;
+        job.control.begin_at(0, 1000);
+        job.control.enter_thread();
+        let monitor = Monitor::start(std::sync::Weak::new());
+        let mut sampler = Sampler::new(monitor.shared.clone());
+        sampler.sample(&queue);
+        sampler.sample(&queue);
+        assert!(monitor.view().jobs.get(&job.id).is_none_or(|s| s.is_empty()), "first sight is only a baseline");
+        let start = Instant::now();
+        let mut x = 0u64;
+        while start.elapsed() < Duration::from_millis(300) {
+            x = std::hint::black_box(x.wrapping_mul(31).wrapping_add(1));
+        }
+        job.control.add_read(64 << 20);
+        job.control.items_done(500);
+        sampler.sample(&queue);
+        let view = monitor.view();
+        let s = view.job_latest(job.id).copied().expect("a job sample");
+        assert!(s.cpu > 0.0, "{s:?}");
+        assert!(s.read_per_sec > 1e6 && s.units_per_sec > 100.0, "{s:?}");
+        let p = view.latest().copied().unwrap();
+        assert!(p.read_per_sec >= s.read_per_sec, "evidence reads are a floor for the process: {p:?}");
     }
 }
