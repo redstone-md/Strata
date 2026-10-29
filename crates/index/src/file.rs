@@ -20,6 +20,7 @@ use crate::record::BlockRecord;
 use crate::side::{BootRecord, EntrySource, SignatureHit};
 use std::io::Write;
 use std::path::Path;
+use strata_identify::TypeId;
 use strata_kernel::bytes::{u16_le, u32_le, u64_le, u8_at};
 use strata_kernel::{Damage, Error, Result};
 
@@ -133,7 +134,7 @@ fn section(data: &[u8], pos: usize) -> Option<(u32, u32, &[u8])> {
 }
 
 fn encode_signatures(hits: &[SignatureHit]) -> Vec<u8> {
-    let mut types: Vec<&str> = hits.iter().map(|h| h.type_key.as_str()).collect();
+    let mut types: Vec<&str> = hits.iter().map(|h| h.type_id.key()).collect();
     types.sort_unstable();
     types.dedup();
     let mut out = (types.len() as u32).to_le_bytes().to_vec();
@@ -144,7 +145,7 @@ fn encode_signatures(hits: &[SignatureHit]) -> Vec<u8> {
     }
     out.extend_from_slice(&(hits.len() as u32).to_le_bytes());
     for h in hits {
-        let ty = types.binary_search(&h.type_key.as_str()).unwrap_or(0) as u16;
+        let ty = types.binary_search(&h.type_id.key()).unwrap_or(0) as u16;
         out.extend_from_slice(&h.offset.to_le_bytes());
         out.extend_from_slice(&h.declared_len.unwrap_or(NO_LEN).to_le_bytes());
         out.extend_from_slice(&h.confidence.to_le_bytes());
@@ -162,7 +163,8 @@ fn decode_signatures(p: &[u8], damage: &mut Vec<Damage>) -> Vec<SignatureHit> {
     for _ in 0..u32_le(p, 0).unwrap_or(0) {
         let Some(len) = u8_at(p, pos) else { break };
         let Some(key) = p.get(pos + 1..pos + 1 + usize::from(len)) else { break };
-        types.push(String::from_utf8_lossy(key).into_owned());
+        // A type this build does not know (newer file) cannot be carved; its hits are dropped.
+        types.push(std::str::from_utf8(key).ok().and_then(TypeId::from_key));
         pos += 1 + usize::from(len);
     }
     let count = u32_le(p, pos).unwrap_or(0) as usize;
@@ -182,7 +184,7 @@ fn decode_signatures(p: &[u8], damage: &mut Vec<Damage>) -> Vec<SignatureHit> {
                 offset: u64_le(r, 0)?,
                 declared_len: (declared != NO_LEN).then_some(declared),
                 confidence: f32::from_bits(u32_le(r, 16)?),
-                type_key: types.get(usize::from(u16_le(r, 20)?))?.clone(),
+                type_id: (*types.get(usize::from(u16_le(r, 20)?))?)?,
                 match_len: u16_le(r, 22)?,
                 validated: flags & 1 != 0,
                 source: EntrySource::from_bits(flags >> 1),
@@ -240,7 +242,7 @@ mod tests {
         idx.add_signatures([SignatureHit {
             offset: 70_000,
             match_len: 8,
-            type_key: "png".into(),
+            type_id: TypeId::Png,
             declared_len: None,
             confidence: 0.85,
             validated: true,
@@ -249,7 +251,7 @@ mod tests {
         idx.add_signatures([SignatureHit {
             offset: 5,
             match_len: 0,
-            type_key: "rstudio:XYZ".into(),
+            type_id: TypeId::Jpeg,
             declared_len: Some(1234),
             confidence: 0.5,
             validated: false,
@@ -268,7 +270,7 @@ mod tests {
         let (back, damage) = IndexFile::decode(&bytes).unwrap();
         assert!(damage.is_empty());
         assert_eq!(back, idx);
-        assert_eq!(bytes.len(), HEADER_LEN + 4 * 16 + 11 * 2 + (4 + 1 + 3 + 1 + 11 + 4 + 2 * SIG_RECORD) + (4 + BOOT_RECORD) + {
+        assert_eq!(bytes.len(), HEADER_LEN + 4 * 16 + 11 * 2 + (4 + 1 + 4 + 1 + 3 + 4 + 2 * SIG_RECORD) + (4 + BOOT_RECORD) + {
             serde_json::to_vec(idx.provenance()).unwrap().len()
         });
     }

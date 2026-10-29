@@ -30,14 +30,13 @@ impl EntrySource {
     }
 }
 
-/// A file start. `type_key` is a `strata_identify` type key, or `rstudio:<TAG>` for an
-/// R-Studio file type Strata has no equivalent for.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A file start of a type Strata knows (the registry's [`TypeId`]).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SignatureHit {
     pub offset: u64,
     /// Bytes the magic spans (the detector hit's `len`).
     pub match_len: u16,
-    pub type_key: String,
+    pub type_id: TypeId,
     pub declared_len: Option<u64>,
     pub confidence: f32,
     pub validated: bool,
@@ -50,11 +49,11 @@ impl SignatureHit {
         if hit.category != HitCategory::FileSignature {
             return None;
         }
-        let type_key = hit.details.get("type_id")?.as_str()?.to_string();
+        let type_id = TypeId::from_key(hit.details.get("type_id")?.as_str()?)?;
         Some(Self {
             offset: hit.offset,
             match_len: u16::try_from(hit.len).unwrap_or(u16::MAX),
-            type_key,
+            type_id,
             declared_len: hit.details.get("declared_len").and_then(|v| v.as_u64()),
             confidence: hit.confidence.get(),
             validated: hit.details.get("validated").and_then(|v| v.as_bool()).unwrap_or(false),
@@ -64,21 +63,18 @@ impl SignatureHit {
 
     /// Rebuild the detector hit (same id, label, value and details as `SignatureDetector`
     /// emits), so consumers such as the carver cannot tell where it came from.
-    pub fn to_detector_hit(&self) -> Option<Hit> {
-        let id = TypeId::from_key(&self.type_key)?;
-        let spec = id.spec();
-        Some(
-            Hit::new(SignatureDetector::ID, HitCategory::FileSignature, self.offset, usize::from(self.match_len))
-                .confidence(Confidence::new(self.confidence))
-                .label(spec.name)
-                .value(format!("{}@{:#x}", spec.key, self.offset))
-                .details(json!({
-                    "type_id": spec.key,
-                    "category": spec.category,
-                    "declared_len": self.declared_len,
-                    "validated": self.validated,
-                })),
-        )
+    pub fn to_detector_hit(&self) -> Hit {
+        let spec = self.type_id.spec();
+        Hit::new(SignatureDetector::ID, HitCategory::FileSignature, self.offset, usize::from(self.match_len))
+            .confidence(Confidence::new(self.confidence))
+            .label(spec.name)
+            .value(format!("{}@{:#x}", spec.key, self.offset))
+            .details(json!({
+                "type_id": spec.key,
+                "category": spec.category,
+                "declared_len": self.declared_len,
+                "validated": self.validated,
+            }))
     }
 }
 
@@ -136,7 +132,7 @@ mod tests {
         SignatureDetector::new().scan(&data, 1 << 20, &mut hits);
         let hit = hits.first().expect("png signature");
         let compact = SignatureHit::from_detector_hit(hit).unwrap();
-        let back = compact.to_detector_hit().unwrap();
+        let back = compact.to_detector_hit();
         assert_eq!((back.offset, back.len, &back.label, &back.value), (hit.offset, hit.len, &hit.label, &hit.value));
         assert_eq!(back.details, hit.details);
         assert_eq!(back.confidence.get(), hit.confidence.get());

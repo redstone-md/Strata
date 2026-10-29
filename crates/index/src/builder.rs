@@ -57,7 +57,7 @@ impl IndexBuilder {
         for (dst, src) in idx.records_mut().iter_mut().zip(&self.records) {
             *dst = BlockRecord::from_bits(src.load(Ordering::Relaxed));
         }
-        idx.add_signatures(self.signatures.lock().iter().cloned());
+        idx.add_signatures(self.signatures.lock().iter().copied());
         idx.add_boot_records(self.boots.lock().iter().copied());
         idx.set_scanned_to(scanned_to.max(idx.scanned_to()));
         idx
@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(r[40].class(), BlockClass::Zero, "short last block");
         assert!(r[20].has_signature() && !r[19].has_signature());
         assert_eq!(idx.signatures().len(), 1);
-        assert_eq!(idx.signatures()[0].type_key, "png");
+        assert_eq!(idx.signatures()[0].type_id.key(), "png");
         assert!(r[30].has_boot_record());
         let boot = idx.boot_records()[0];
         assert_eq!((boot.volume_start, boot.fs, boot.declared_len), ((30 * B) as u64, FsKind::Ntfs, 2048 * 512));

@@ -149,8 +149,8 @@ impl DiskIndex {
                 self.signatures.push(h);
             }
         }
-        self.signatures.sort_by(|a, b| a.offset.cmp(&b.offset).then(a.type_key.cmp(&b.type_key)));
-        self.signatures.dedup_by(|a, b| a.offset == b.offset && a.type_key == b.type_key && a.source == b.source);
+        self.signatures.sort_by_key(|h| (h.offset, h.type_id.key(), h.source.to_bits()));
+        self.signatures.dedup_by_key(|h| (h.offset, h.type_id, h.source));
     }
 
     /// Add boot records (deduplicated) and flag the blocks they were found in.
@@ -176,7 +176,7 @@ impl DiskIndex {
             *mine = merge_record(*mine, *theirs);
         }
         self.scanned_to = self.scanned_to.max(other.scanned_to);
-        self.add_signatures(other.signatures.iter().cloned());
+        self.add_signatures(other.signatures.iter().copied());
         self.add_boot_records(other.boot_records.iter().copied());
         for s in &other.provenance.seeded_from {
             if !self.provenance.seeded_from.contains(s) {
