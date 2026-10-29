@@ -12,17 +12,20 @@ pub const MAX_CARVED: usize = 8 << 20;
 const ZERO_END: usize = 4096;
 
 /// Line starts in `data` where a carvable header block begins, in order and not overlapping.
+/// A line starts after a line break or after zero bytes (a file's first cluster follows the
+/// zeroed slack of the one before).
 pub fn message_starts(data: &[u8]) -> Vec<usize> {
     let mut out = Vec::new();
     let mut at = 0;
     while at < data.len() {
         let (line, next) = line_at(data, at);
-        let first = line.first().copied().unwrap_or(0);
-        if first.is_ascii_alphabetic() && header_name(line).is_some() {
-            let block = HeaderBlock::at(data, at);
+        let start = memchr::memrchr(0, line).map_or(at, |z| at + z + 1);
+        let (line, _) = line_at(data, start);
+        if line.first().is_some_and(u8::is_ascii_alphabetic) && header_name(line).is_some() {
+            let block = HeaderBlock::at(data, start);
             if block.is_carvable() {
-                out.push(at);
-                at += block.len.max(1);
+                out.push(start);
+                at = start + block.len.max(1);
                 continue;
             }
         }
@@ -106,6 +109,9 @@ mod tests {
         assert!(ended && data[starts[1]..starts[1] + len].ends_with(b"second body"));
         let (len, ended) = message_len(B);
         assert!(!ended && len == B.len() - 2, "ran out of bytes without an end");
+        let mut slack = b"end of the previous file\r\n\0\0\0".to_vec();
+        slack.extend_from_slice(B);
+        assert_eq!(message_starts(&slack), vec![29], "a message right after zeroed slack");
     }
 
     #[test]

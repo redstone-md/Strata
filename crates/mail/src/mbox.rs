@@ -70,10 +70,10 @@ pub struct MboxReader<R> {
     window: usize,
 }
 
-impl<R: FnMut(u64, &mut [u8]) -> Result<usize>> MboxReader<R> {
-    /// Default window: messages up to this size are read whole.
-    pub const WINDOW: usize = 32 << 20;
+/// Default window of [`MboxReader`]: messages up to this size are read whole.
+pub const WINDOW: usize = 32 << 20;
 
+impl<R: FnMut(u64, &mut [u8]) -> Result<usize>> MboxReader<R> {
     /// Start at `pos` (0, or a position an earlier [`Self::position`] returned).
     pub fn new(read: R, len: u64, pos: u64, window: usize) -> Self {
         Self { read, len, pos, window: window.max(4096) }

@@ -24,5 +24,5 @@ mod tests;
 pub use container::Container;
 pub use dbx::Dbx;
 pub use envelope::{Envelope, Party, join};
-pub use mbox::{MboxMessage, MboxReader, Span, split as split_mbox};
+pub use mbox::{MboxMessage, MboxReader, Span, WINDOW as MBOX_WINDOW, split as split_mbox};
 pub use message::{Attachment, BODY_LIMIT, Message};
