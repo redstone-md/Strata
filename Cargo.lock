@@ -6006,6 +6006,7 @@ dependencies = [
  "strata-fs",
  "strata-kernel",
  "strata-source",
+ "strata-timeline",
  "strata-volume",
  "tempfile",
 ]
@@ -6143,6 +6144,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strata-accounts",
+ "strata-artifacts",
  "strata-carve",
  "strata-case",
  "strata-chain",
@@ -6153,6 +6155,7 @@ dependencies = [
  "strata-kernel",
  "strata-report",
  "strata-source",
+ "strata-timeline",
  "tempfile",
 ]
 
