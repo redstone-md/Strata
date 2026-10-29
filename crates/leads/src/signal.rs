@@ -3,6 +3,7 @@
 
 use crate::inputs::EventRecord;
 use strata_accounts::{Service, ServiceKind};
+use strata_crypto::WalletFileName;
 use strata_kernel::{EvidenceId, Timestamp};
 use strata_timeline::EventKind;
 
@@ -37,16 +38,12 @@ pub struct Signal {
     pub subject: String,
 }
 
-/// Words in a title that mean the event touches a wallet file.
-const WALLET_FILE_WORDS: &[&str] = &["wallet.dat", ".wallet", "wallet.aes.json", "default_wallet", "multibit.key", "electrum.dat", ".kwm"];
-
 impl Signal {
     /// `None` when the event says nothing crypto-relevant.
     pub fn of(record: &EventRecord) -> Option<Signal> {
         let e = &record.event;
         let service = Service::classify(e.title()).or_else(|| Service::classify(e.detail()));
-        let lower = e.title().to_lowercase();
-        let wallet_file = WALLET_FILE_WORDS.iter().any(|w| lower.contains(w));
+        let wallet_file = WalletFileName::mentioned_in(e.title());
         let kind = service.map(|s| s.kind);
         let software = matches!(kind, Some(ServiceKind::WalletSoftware | ServiceKind::MiningSoftware));
         let class = match e.kind() {

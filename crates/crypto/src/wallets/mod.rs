@@ -8,10 +8,12 @@ pub mod blockchain_info;
 mod cursor;
 pub mod electrum;
 pub mod multibit;
+mod names;
 pub mod records;
 mod report;
 
 pub use bitcoin_core::MasterKey;
+pub use names::{WalletFileName, WalletNameKind};
 pub use report::{CrackHash, RecoveredKey, WalletKind, WalletReport};
 
 /// Sniff the format of a wallet file and parse it. `None` when nothing wallet-like is found.
