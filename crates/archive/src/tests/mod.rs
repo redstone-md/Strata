@@ -251,3 +251,20 @@ fn truncated_zip_keeps_what_survives() {
     let (seen, _) = unpack("cut.zip", cut);
     assert!(has_wif(find(&seen, "cut.zip!/a.txt")));
 }
+
+#[test]
+fn big_cab_streams_through_external_7zip_when_present() {
+    let Some(tool) = crate::SevenZipTool::detect() else { return };
+    let blobs: Vec<(String, Vec<u8>)> = (0..80).map(|i| (format!("f{i:02}.txt"), format!("file {i} ").repeat(i + 1).into_bytes())).collect();
+    let mut members: Vec<(&str, &[u8])> = blobs.iter().map(|(n, b)| (n.as_str(), b.as_slice())).collect();
+    let note = secret_note();
+    members.push(("z/keys.txt", &note));
+    let bytes = cab(&members);
+    let options = OpenOptions { external: Some(tool), ..OpenOptions::default() };
+    let (seen, report) = unpack_with(&Unpacker::new(UnpackLimits::default(), options), "big.cab", &bytes);
+    assert_eq!(report.members, 81);
+    for (name, data) in &blobs {
+        assert_eq!(&find(&seen, &format!("big.cab!/{name}")).bytes, data);
+    }
+    assert!(has_wif(find(&seen, "big.cab!/z/keys.txt")));
+}

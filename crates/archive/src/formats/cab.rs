@@ -2,10 +2,27 @@
 
 use crate::codec::{guarded, read_limited};
 use crate::entry::{ArchiveEntry, ArchiveFormat};
-use crate::reader::{ArchiveReader, MemberData};
+use crate::external::{ExternalReader, TempCopy};
+use crate::reader::{ArchiveReader, MemberData, OpenOptions};
 use std::cell::RefCell;
 use std::io::Cursor;
 use strata_kernel::{Error, Result, Timestamp};
+
+/// The `cab` crate decodes a folder from its start for every file it reads, which is
+/// quadratic for installer cabinets holding thousands of files in one LZX folder. Above this
+/// many files, external 7-Zip streams the whole cabinet in one pass when available.
+const NATIVE_MAX_FILES: usize = 64;
+
+pub(crate) fn open<'a>(bytes: &'a [u8], options: &OpenOptions) -> Option<Box<dyn ArchiveReader + 'a>> {
+    let native = CabReader::open(bytes)?;
+    if native.entries.len() > NATIVE_MAX_FILES
+        && let Some(tool) = options.external.clone()
+        && let Some(r) = TempCopy::write(&options.scratch_dir(), bytes, "cab").ok().and_then(|c| ExternalReader::open(ArchiveFormat::Cab, tool, c))
+    {
+        return Some(Box::new(r));
+    }
+    Some(Box::new(native))
+}
 
 pub(crate) struct CabReader<'a> {
     cab: RefCell<cab::Cabinet<Cursor<&'a [u8]>>>,

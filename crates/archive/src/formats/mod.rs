@@ -18,6 +18,6 @@ pub(crate) fn open<'a>(format: ArchiveFormat, bytes: &'a [u8], options: &OpenOpt
         ArchiveFormat::Tar => tar::TarReader::open(bytes).map(|r| Box::new(r) as _),
         ArchiveFormat::SevenZip => Some(Box::new(sevenz::SevenZipReader::open(bytes))),
         ArchiveFormat::Rar => rar::open(bytes, options),
-        ArchiveFormat::Cab => cab::CabReader::open(bytes).map(|r| Box::new(r) as _),
+        ArchiveFormat::Cab => cab::open(bytes, options),
     }
 }

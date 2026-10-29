@@ -4,7 +4,8 @@
 use crate::codec::read_limited;
 use crate::entry::{ArchiveEntry, ArchiveFormat};
 use crate::reader::{ArchiveReader, MemberData};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -105,6 +106,47 @@ impl SevenZipTool {
         }
         Ok((out.data, damage))
     }
+
+    /// `7z x -so` without a member name writes every file, in listing order, to stdout: one
+    /// decode pass for solid archives and big CAB folders. `files` must carry their sizes.
+    pub(crate) fn stream_all(
+        &self,
+        archive: &Path,
+        files: &[&ArchiveEntry],
+        limit: &dyn Fn(&ArchiveEntry) -> usize,
+        each: &mut dyn FnMut(&ArchiveEntry, Result<MemberData>) -> ControlFlow<()>,
+    ) -> Result<()> {
+        let mut child = self.command(&["x", "-so"], archive).stdout(Stdio::piped()).spawn()?;
+        let mut stdout = child.stdout.take().ok_or_else(|| Error::Other("7z: no stdout".into()))?;
+        let mut lost: Option<String> = None;
+        for e in files {
+            if let Some(why) = &lost {
+                if each(e, Err(Error::Other(why.clone()))).is_break() {
+                    break;
+                }
+                continue;
+            }
+            let size = e.size.unwrap_or(0);
+            let keep = (limit(e) as u64).min(size);
+            let out = read_limited((&mut stdout).take(keep), keep as usize, &e.path);
+            let skipped = std::io::copy(&mut (&mut stdout).take(size - keep), &mut std::io::sink()).unwrap_or(0);
+            let got = out.data.len() as u64 + skipped;
+            let mut damage = out.damage;
+            if got < size {
+                damage.push(Damage::truncated(format!("{}: 7-Zip produced {got} of {size} bytes", e.path)));
+                lost = Some("7-Zip output ended early".to_string());
+            } else if keep < size {
+                damage.push(Damage::new(DamageKind::Missing, None, format!("{}: output capped at {keep} bytes", e.path)));
+            }
+            let data = if out.data.is_empty() && got < size { Err(Error::Other(format!("{}: no data from 7-Zip", e.path))) } else { Ok((out.data, damage)) };
+            if each(e, data).is_break() {
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        Ok(())
+    }
 }
 
 /// `2015-08-07 17:21:08.0000000`
@@ -144,6 +186,22 @@ impl ArchiveReader for ExternalReader {
             return Err(Error::Other("encrypted".into()));
         }
         self.tool.extract(self.copy.path(), &entry.path, limit)
+    }
+
+    /// One `7z x -so` pass when every file has a known size and none is encrypted; one
+    /// process per member otherwise.
+    fn read_all(&self, limit: &dyn Fn(&ArchiveEntry) -> usize, each: &mut dyn FnMut(&ArchiveEntry, Result<MemberData>) -> ControlFlow<()>) {
+        let files: Vec<&ArchiveEntry> = self.entries.iter().filter(|e| !e.is_dir).collect();
+        let streamable = files.iter().all(|e| e.size.is_some() && !e.encrypted);
+        if streamable && self.tool.stream_all(self.copy.path(), &files, limit, each).is_ok() {
+            return;
+        }
+        for e in files {
+            let data = if e.encrypted { Err(Error::Other("encrypted".into())) } else { self.read(e, limit(e)) };
+            if each(e, data).is_break() {
+                return;
+            }
+        }
     }
 }
 
