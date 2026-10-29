@@ -41,9 +41,9 @@ impl Utf16Runs {
         let mut runs = Vec::new();
         for align in 0..2 {
             let mut current: Option<Run> = None;
-            let units = data.get(align..).unwrap_or_default().chunks_exact(2).enumerate();
+            let units = data.get(align..).unwrap_or_default().as_chunks::<2>().0.iter().enumerate();
             for (i, pair) in units {
-                let unit = if encoding == Encoding::Utf16Be { u16::from_be_bytes([pair[0], pair[1]]) } else { u16::from_le_bytes([pair[0], pair[1]]) };
+                let unit = if encoding == Encoding::Utf16Be { u16::from_be_bytes(*pair) } else { u16::from_le_bytes(*pair) };
                 match (texty(unit), char::from_u32(u32::from(unit))) {
                     (true, Some(c)) => {
                         let run = current.get_or_insert_with(|| Run { start: align + i * 2, text: String::new(), char_at: Vec::new() });

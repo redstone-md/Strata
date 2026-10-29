@@ -98,7 +98,7 @@ impl Encoding {
                 bytes.iter().map(|b| if *b < 0x80 { shown(*b as char) } else { table.get(usize::from(*b - 0x80)).copied().map_or(PLACEHOLDER, shown) }).collect()
             }
             Self::Utf16Le | Self::Utf16Be => {
-                let units = bytes.chunks_exact(2).map(|c| if self == Self::Utf16Le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) });
+                let units = bytes.as_chunks::<2>().0.iter().map(|c| if self == Self::Utf16Le { u16::from_le_bytes(*c) } else { u16::from_be_bytes(*c) });
                 char::decode_utf16(units).map(|r| r.map_or(PLACEHOLDER, shown)).collect()
             }
         }

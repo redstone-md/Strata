@@ -20,7 +20,7 @@ impl Pattern {
     /// Parse hex input: pairs of digits, spaces and `0x` prefixes ignored.
     pub fn hex(input: &str) -> Result<Self, String> {
         let digits: String = input.split_whitespace().map(|w| w.trim_start_matches("0x")).collect();
-        if digits.is_empty() || digits.len() % 2 != 0 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        if digits.is_empty() || !digits.len().is_multiple_of(2) || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err("Hex needs pairs of digits, like 4D 5A 90 00.".into());
         }
         let bytes = (0..digits.len()).step_by(2).filter_map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok()).collect();
