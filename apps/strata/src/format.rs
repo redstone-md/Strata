@@ -80,6 +80,7 @@ pub fn job_state(job: &JobView) -> String {
         JobState::Done(_) => "done".into(),
         JobState::Failed(_) => "failed".into(),
         JobState::Cancelled => "cancelled".into(),
+        JobState::Interrupted => "interrupted — will resume".into(),
     }
 }
 

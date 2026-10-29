@@ -103,7 +103,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{n} findings re-mapped, {t} downgraded");
             } else {
                 let kind: JobKind = serde_json::from_value(serde_json::Value::String(kind))?;
-                let view = wb.run_step(kind, id);
+                let view = wb.run_step(kind, id)?;
                 println!("{}: {:?}", view.title, view.state);
             }
         }
@@ -210,7 +210,7 @@ fn analyse(wb: &std::sync::Arc<Workbench>, id: Option<u32>) -> Result<(), Box<dy
         None => wb.evidence()?.into_iter().map(|e| e.id).collect(),
     };
     for id in ids {
-        wb.analyse(id);
+        wb.analyse(id)?;
         while wb.has_active_jobs() {
             std::thread::sleep(Duration::from_secs(2));
             for j in wb.jobs().iter().filter(|j| j.state == JobState::Running) {

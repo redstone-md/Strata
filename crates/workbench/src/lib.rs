@@ -1,19 +1,18 @@
 //! Application layer. GUI and CLI talk to Strata only through [`Workbench`].
 
-mod archives;
-mod artifacts_job;
-mod carving;
 mod catalog;
-mod file_types;
 mod jobs;
+mod monitor;
 mod sector_map;
+mod steps;
 mod triage;
-mod wallet_files;
 mod workbench;
 
-pub use archives::ArchiveSummary;
 pub use catalog::DetectorCatalog;
-pub use jobs::{Job, JobId, JobKind, JobState, JobView};
+pub use jobs::context::CheckpointPolicy;
+pub use jobs::{CheckpointInfo, Job, JobId, JobKind, JobState, JobView, LogLine, ProgressUnit, eta};
+pub use monitor::{JobSample, Monitor, MonitorView, ResourceSample, SystemSample};
+pub use steps::ArchiveSummary;
 pub use sector_map::{SectorCell, SectorMap};
 pub use workbench::Workbench;
 

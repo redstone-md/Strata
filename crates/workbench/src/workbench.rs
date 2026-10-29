@@ -1,23 +1,67 @@
-use crate::catalog::DetectorCatalog;
-use crate::jobs::{Job, JobId, JobKind, JobState, JobView};
+use crate::jobs::context::CheckpointPolicy;
+use crate::jobs::queue::JobQueue;
+use crate::jobs::{JobId, JobView, LogLine};
+use crate::monitor::Monitor;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
-use strata_chain::{AddressBalance, ChainBackend, EsploraBackend};
+use strata_chain::{AddressBalance, EsploraBackend};
 use strata_case::{Case, CorrelationService, EvidenceRecord, FileComplement, HitQuery, SharedFinding, StoredHit};
-use strata_engine::{ScanControl, Scanner};
 use strata_kernel::scan::HitCategory;
 use strata_kernel::{EvidenceId, Result};
 
 /// Facade over one open case plus its background jobs.
 pub struct Workbench {
-    case: Arc<Case>,
-    jobs: Mutex<Vec<Arc<Job>>>,
+    pub(crate) case: Arc<Case>,
+    pub(crate) queue: Arc<JobQueue>,
+    pub(crate) policy: Mutex<CheckpointPolicy>,
+    monitor: Monitor,
 }
 
 impl Workbench {
+    /// Case setting: resume interrupted jobs when the case opens (on unless set to `0`).
+    pub const AUTO_RESUME_KEY: &'static str = "auto_resume_jobs";
+    /// Case setting: the app's last screen, filters and selection (JSON chosen by the app).
+    pub const UI_STATE_KEY: &'static str = "ui_state";
+
+    /// Open (or create) a case and, if the case setting allows, resume jobs a crash or the
+    /// last exit interrupted.
     pub fn open(case_dir: &Path) -> Result<Arc<Self>> {
-        Ok(Arc::new(Self { case: Arc::new(Case::open(case_dir)?), jobs: Mutex::new(Vec::new()) }))
+        let wb = Self::open_idle(case_dir)?;
+        if wb.auto_resume() {
+            wb.resume_interrupted();
+        }
+        Ok(wb)
+    }
+
+    /// Open without resuming anything (listing jobs, scripted single steps).
+    pub fn open_idle(case_dir: &Path) -> Result<Arc<Self>> {
+        let case = Arc::new(Case::open(case_dir)?);
+        let queue = Arc::new(JobQueue::load(&case)?);
+        let monitor = Monitor::start(Arc::downgrade(&queue));
+        Ok(Arc::new(Self { case, queue, policy: Mutex::new(CheckpointPolicy::default()), monitor }))
+    }
+
+    pub fn auto_resume(&self) -> bool {
+        self.case.setting(Self::AUTO_RESUME_KEY).ok().flatten().is_none_or(|v| v != "0")
+    }
+
+    pub fn set_auto_resume(&self, on: bool) -> Result<()> {
+        self.case.set_setting(Self::AUTO_RESUME_KEY, if on { "1" } else { "0" })
+    }
+
+    /// The app's saved view state, if any.
+    pub fn ui_state(&self) -> Option<String> {
+        self.case.setting(Self::UI_STATE_KEY).ok().flatten()
+    }
+
+    pub fn set_ui_state(&self, json: &str) -> Result<()> {
+        self.case.set_setting(Self::UI_STATE_KEY, json)
+    }
+
+    /// Resource monitor of this process and its jobs.
+    pub fn monitor(&self) -> &Monitor {
+        &self.monitor
     }
 
     pub fn case(&self) -> &Arc<Case> {
@@ -92,60 +136,28 @@ impl Workbench {
         CorrelationService::new(&self.case).file_complements()
     }
 
+    /// Every job of the case (recent history included), oldest first.
     pub fn jobs(&self) -> Vec<JobView> {
-        self.jobs.lock().iter().map(|j| j.view()).collect()
+        self.queue.all().iter().map(|j| j.view()).collect()
     }
 
-    pub fn cancel_job(&self, id: JobId) {
-        if let Some(j) = self.jobs.lock().iter().find(|j| j.id == id) {
-            j.cancel();
-        }
+    /// Recent log lines of one job, oldest first.
+    pub fn job_log(&self, id: JobId) -> Vec<LogLine> {
+        self.queue.get(id).map(|j| j.log_lines()).unwrap_or_default()
     }
 
     pub fn has_active_jobs(&self) -> bool {
-        self.jobs.lock().iter().any(|j| j.is_active())
-    }
-
-    /// Index files, then scan — the standard "analyse this disk" pipeline, on a background
-    /// thread. Returns immediately.
-    pub fn analyse(self: &Arc<Self>, evidence: EvidenceId) -> JobId {
-        let index = self.enqueue(JobKind::IndexFiles, evidence);
-        let scan = self.enqueue(JobKind::Scan, evidence);
-        let this = self.clone();
-        let scan_id = scan.id;
-        std::thread::Builder::new()
-            .name(format!("analyse-{evidence}"))
-            .spawn(move || {
-                this.run_job(&index);
-                if index.control.is_cancelled() {
-                    *scan.state.lock() = JobState::Cancelled;
-                    return;
-                }
-                this.run_job(&scan);
-                if !matches!(*scan.state.lock(), JobState::Done(_)) {
-                    return;
-                }
-                // Follow-ups: each one is optional and runs only while nothing was cancelled.
-                for kind in [JobKind::Artifacts, JobKind::ClassifyFiles, JobKind::Carve, JobKind::Archives, JobKind::CheckBalances] {
-                    let job = this.enqueue(kind, evidence);
-                    this.run_job(&job);
-                    if job.control.is_cancelled() {
-                        break;
-                    }
-                }
-            })
-            .expect("spawn analysis thread");
-        scan_id
+        self.queue.has_active()
     }
 
     /// Passwords of the user's own archives, tried on encrypted ZIP members by the
     /// unpack step. Nothing is generated or brute-forced.
     pub fn set_archive_passwords(&self, passwords: &[String]) -> Result<()> {
-        self.case.set_setting(crate::archives::PASSWORDS_KEY, &passwords.join("\n"))
+        self.case.set_setting(crate::steps::PASSWORDS_KEY, &passwords.join("\n"))
     }
 
     pub fn archive_passwords(&self) -> Vec<String> {
-        let stored = self.case.setting(crate::archives::PASSWORDS_KEY).ok().flatten().unwrap_or_default();
+        let stored = self.case.setting(crate::steps::PASSWORDS_KEY).ok().flatten().unwrap_or_default();
         stored.lines().filter(|l| !l.is_empty()).map(str::to_string).collect()
     }
 
@@ -179,34 +191,6 @@ impl Workbench {
         self.case.balances()
     }
 
-    fn check_balances(&self, control: &ScanControl) -> Result<String> {
-        let addresses = self.case.unchecked_addresses()?;
-        let backend = EsploraBackend::new(&self.chain_endpoint());
-        control.begin_items(addresses.len() as u64);
-        let (mut used, mut failed) = (0, 0);
-        for a in &addresses {
-            if control.is_cancelled() {
-                break;
-            }
-            match backend.balance(a) {
-                Ok(b) => {
-                    used += u32::from(b.ever_used());
-                    self.case.store_balance(&b)?;
-                }
-                Err(_) => failed += 1,
-            }
-            control.item_done();
-        }
-        Ok(format!("{} addresses, {used} used on chain, {failed} lookups failed", addresses.len()))
-    }
-
-    /// Run one pipeline step in the foreground (CLI, re-running a step after an upgrade).
-    pub fn run_step(&self, kind: JobKind, evidence: EvidenceId) -> JobView {
-        let job = self.enqueue(kind, evidence);
-        self.run_job(&job);
-        job.view()
-    }
-
     /// Re-detect volumes, re-map stored hits to files, then re-run triage.
     pub fn reattribute(&self, evidence: EvidenceId) -> Result<(usize, usize)> {
         self.case.refresh_volumes(evidence)?;
@@ -217,61 +201,5 @@ impl Workbench {
     /// Re-apply false-positive triage (also part of the deep scan step).
     pub fn triage(&self, evidence: EvidenceId) -> Result<usize> {
         crate::triage::Triage::new(&self.case).run(evidence)
-    }
-
-    fn enqueue(&self, kind: JobKind, evidence: EvidenceId) -> Arc<Job> {
-        let mut jobs = self.jobs.lock();
-        let title = match kind {
-            JobKind::IndexFiles => format!("Index files {evidence}"),
-            JobKind::Scan => format!("Deep scan {evidence}"),
-            JobKind::ClassifyFiles => format!("Classify files {evidence}"),
-            JobKind::Archives => format!("Unpack archives {evidence}"),
-            JobKind::Carve => format!("Carve free space {evidence}"),
-            JobKind::Artifacts => format!("Artefacts and timeline {evidence}"),
-            JobKind::CheckBalances => "Check balances".to_string(),
-        };
-        let job = Arc::new(Job {
-            id: JobId(jobs.len() as u32 + 1),
-            kind,
-            evidence,
-            title,
-            control: Arc::new(ScanControl::default()),
-            state: Mutex::new(JobState::Queued),
-        });
-        jobs.push(job.clone());
-        job
-    }
-
-    fn run_job(&self, job: &Job) {
-        *job.state.lock() = JobState::Running;
-        let result = match job.kind {
-            JobKind::IndexFiles => self.case.index_files(job.evidence).and_then(|n| {
-                let wallets = crate::wallet_files::WalletFileAnalyzer::new(&self.case).run(job.evidence)?;
-                Ok(format!("{n} entries, {wallets} wallet files"))
-            }),
-            JobKind::Scan => {
-                let scanner = Scanner::new(DetectorCatalog::all());
-                self.case.scan(job.evidence, &scanner, &job.control).and_then(|s| {
-                    let downgraded = crate::triage::Triage::new(&self.case).run(job.evidence)?;
-                    Ok(format!("{} hits in {:.0}s, {downgraded} inside system files", s.hits, s.elapsed_secs))
-                })
-            }
-            JobKind::CheckBalances => self.check_balances(&job.control),
-            JobKind::ClassifyFiles => crate::file_types::FileClassifier::new(&self.case)
-                .run(job.evidence, &job.control)
-                .map(|(n, s)| format!("{n} files, {s} suspicious renames")),
-            JobKind::Artifacts => crate::artifacts_job::ArtifactsJob::new(&self.case)
-                .run(job.evidence)
-                .map(|(e, i, f)| format!("{e} events, {i} identities, {f} host facts")),
-            JobKind::Archives => crate::archives::ArchiveUnpacker::new(&self.case).run(job.evidence, &job.control).map(|s| s.describe()),
-            JobKind::Carve => crate::carving::UnallocatedCarver::new(&self.case)
-                .run(job.evidence, &job.control)
-                .map(|(n, w)| format!("{n} files carved, {w} wallets")),
-        };
-        *job.state.lock() = match result {
-            _ if job.control.is_cancelled() => JobState::Cancelled,
-            Ok(msg) => JobState::Done(msg),
-            Err(e) => JobState::Failed(e.to_string()),
-        };
     }
 }

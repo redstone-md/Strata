@@ -21,9 +21,9 @@ fn carved_nested_archive_yields_the_key_with_its_member_path() {
 
     let wb = Workbench::open(&dir.path().join("t.strata")).unwrap();
     let id = wb.add_evidence(&img.display().to_string()).unwrap().id;
-    let carve = wb.run_step(JobKind::Carve, id);
+    let carve = wb.run_step(JobKind::Carve, id).unwrap();
     assert!(matches!(carve.state, JobState::Done(_)), "{:?}", carve.state);
-    let step = wb.run_step(JobKind::Archives, id);
+    let step = wb.run_step(JobKind::Archives, id).unwrap();
     let JobState::Done(summary) = &step.state else { panic!("{:?}", step.state) };
     assert!(summary.starts_with("1 archives (2 nested)"), "{summary}");
 
@@ -40,6 +40,6 @@ fn carved_nested_archive_yields_the_key_with_its_member_path() {
     let members = wb.case().archive_members(id).unwrap();
     assert_eq!(members.len(), 4);
     // Re-running the step changes nothing.
-    wb.run_step(JobKind::Archives, id);
+    wb.run_step(JobKind::Archives, id).unwrap();
     assert_eq!(wb.hits(&HitQuery { categories: vec![HitCategory::PrivateKey], ..HitQuery::default() }).unwrap().len(), hits.len());
 }

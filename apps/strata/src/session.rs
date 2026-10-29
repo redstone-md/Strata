@@ -181,7 +181,9 @@ impl Session {
     }
 
     pub fn analyse(&mut self, id: EvidenceId, cx: &mut Context<Self>) {
-        self.workbench.analyse(id);
+        if let Err(e) = self.workbench.analyse(id) {
+            self.error = Some(format!("Cannot start the analysis: {e}"));
+        }
         self.was_active = true;
         self.refresh(cx);
     }

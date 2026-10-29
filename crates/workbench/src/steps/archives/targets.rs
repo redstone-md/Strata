@@ -2,6 +2,7 @@
 //! orphaned, renamed) and archives carved from free space.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use strata_archive::ArchiveFormat;
 use strata_carve::{CarvedFile, Carver};
 use strata_case::{Case, HitQuery};
@@ -9,6 +10,7 @@ use strata_fs::{EntryState, ExtentReader, FileEntry};
 use strata_identify::{Category, Identifier, Registry, TypeId};
 use strata_kernel::scan::HitCategory;
 use strata_kernel::{EvidenceId, Result};
+use strata_source::BlockSource;
 
 /// Archives larger than this are not read into memory (counted as skipped).
 pub(crate) const MAX_ARCHIVE_BYTES: u64 = 1 << 30;
@@ -48,11 +50,13 @@ fn type_by_name(name: &str) -> Option<TypeId> {
 
 pub(crate) struct TargetFinder<'a> {
     case: &'a Case,
+    /// The evidence, read through the job's byte counter.
+    source: Arc<dyn BlockSource>,
 }
 
 impl<'a> TargetFinder<'a> {
-    pub fn new(case: &'a Case) -> Self {
-        Self { case }
+    pub fn new(case: &'a Case, source: Arc<dyn BlockSource>) -> Self {
+        Self { case, source }
     }
 
     pub fn find(&self, id: EvidenceId) -> Result<Vec<Target>> {
@@ -65,7 +69,7 @@ impl<'a> TargetFinder<'a> {
         let layout = self.case.layout(id)?;
         let types = archive_types();
         let listed = self.case.files_of_types(id, &types)?;
-        let source = self.case.source(id)?;
+        let source = self.source.clone();
         let identifier = Identifier::new();
         let mut out = Vec::new();
         for (vol, fs) in layout.filesystems() {
@@ -140,10 +144,10 @@ impl<'a> TargetFinder<'a> {
     pub fn read(&self, id: EvidenceId, t: &Target) -> Result<Vec<u8>> {
         let limit = MAX_ARCHIVE_BYTES as usize;
         match &t.origin {
-            Origin::Carved(file) => Carver::new(self.case.source(id)?).read(file, limit),
+            Origin::Carved(file) => Carver::new(self.source.clone()).read(file, limit),
             Origin::File { volume, file_idx } => {
                 let layout = self.case.layout(id)?;
-                let source = self.case.source(id)?;
+                let source = self.source.clone();
                 let (vol, fs) = layout
                     .filesystems()
                     .find(|(v, _)| v.index == *volume)

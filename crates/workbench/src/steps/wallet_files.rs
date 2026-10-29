@@ -2,21 +2,22 @@
 //! including deleted and orphaned ones, so keys come with labels, encryption state and a
 //! crack hash instead of loose byte hits.
 
-use strata_case::{Attribution, Case, FileRef};
+use crate::jobs::context::StepContext;
+use strata_case::{Attribution, FileRef};
 use strata_fs::{ExtentReader, FileEntry};
 use strata_kernel::scan::{Hit, HitCategory};
-use strata_kernel::{Confidence, EvidenceId, Result};
+use strata_kernel::{Confidence, Result};
 
 /// Wallet files are small; anything bigger is not a wallet worth parsing whole.
 const MAX_WALLET_BYTES: u64 = 256 << 20;
 
-pub struct WalletFileAnalyzer<'a> {
-    case: &'a Case,
+pub(super) struct WalletFileAnalyzer<'a, 'c> {
+    ctx: &'a StepContext<'c>,
 }
 
-impl<'a> WalletFileAnalyzer<'a> {
-    pub fn new(case: &'a Case) -> Self {
-        Self { case }
+impl<'a, 'c> WalletFileAnalyzer<'a, 'c> {
+    pub fn new(ctx: &'a StepContext<'c>) -> Self {
+        Self { ctx }
     }
 
     /// Name-based preselection; content is then confirmed by the parser itself.
@@ -34,13 +35,18 @@ impl<'a> WalletFileAnalyzer<'a> {
             || path.contains("armory")
     }
 
-    pub fn run(&self, id: EvidenceId) -> Result<usize> {
-        let source = self.case.source(id)?;
-        let layout = self.case.layout(id)?;
+    /// Wallet files of the evidence, parsed whole, as findings to store.
+    pub fn find(&self) -> Result<Vec<(Hit, Attribution)>> {
+        let source = self.ctx.source()?;
+        let layout = self.ctx.case().layout(self.ctx.evidence())?;
         let mut found = Vec::new();
         for (vol, fs) in layout.filesystems() {
             let vol_source = vol.open(source.clone());
             for e in fs.entries().iter().filter(|e| Self::is_candidate(e)) {
+                if self.ctx.should_stop() {
+                    break;
+                }
+                self.ctx.current(&e.path);
                 let Ok(bytes) = ExtentReader::new(vol_source.as_ref(), e).read_all(MAX_WALLET_BYTES as usize) else {
                     continue;
                 };
@@ -62,7 +68,6 @@ impl<'a> WalletFileAnalyzer<'a> {
                 found.push((hit, attribution));
             }
         }
-        self.case.store_hits(id, &found)?;
-        Ok(found.len())
+        Ok(found)
     }
 }
