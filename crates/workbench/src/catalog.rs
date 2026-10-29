@@ -7,6 +7,7 @@ pub struct DetectorCatalog;
 impl DetectorCatalog {
     pub fn all() -> Vec<Arc<dyn Detector>> {
         let mut out = Vec::new();
+        out.extend(strata_crypto::detectors().into_iter().map(Arc::from));
         out.extend(strata_accounts::detectors());
         out
     }
