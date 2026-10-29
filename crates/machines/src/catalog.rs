@@ -173,7 +173,8 @@ impl DiskMachines {
         });
         let biases: Vec<i32> = machines.iter().filter_map(|m| m.profile.time_zone.bias_minutes.value().copied()).collect();
         let disk_bias = biases.first().copied().filter(|b| biases.iter().all(|x| x == b));
-        let usage = UsageAnalyzer::new(window, disk_bias).analyze(&inputs.activity);
+        let anchors = machines.iter().flat_map(|m| [m.usage.first_day, m.usage.last_day]).flatten();
+        let usage = UsageAnalyzer::new(window, disk_bias).with_anchors(anchors).analyze(&inputs.activity);
         DiskMachines { usage, machines }
     }
 }

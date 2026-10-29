@@ -6,11 +6,12 @@ mod builder;
 mod users;
 
 pub(crate) use builder::ProfileBuilder;
+pub use builder::PROFILE_KEYS;
 pub use users::UserAccount;
 
 use crate::location::{InstallKey, InstallKind, OsFamily};
 use crate::software::CryptoSoftware;
-use crate::values::{SameValue, SourceRef, Sourced, Values, When};
+use crate::values::{SameValue, Provenance, Sourced, Values, When};
 use serde::Serialize;
 use strata_artifacts::host::{NetworkInterfaceRecord, stamp};
 use strata_kernel::Timestamp;
@@ -90,7 +91,7 @@ pub struct NetworkProfile {
     pub dns_suffix: Option<String>,
     pub bssid: Option<String>,
     pub mac: Option<String>,
-    pub sources: Vec<SourceRef>,
+    pub sources: Vec<Provenance>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -126,7 +127,7 @@ pub struct UsbDevice {
     #[serde(serialize_with = "stamp::serialize")]
     pub last_connected: Option<Timestamp>,
     pub approximate: bool,
-    pub sources: Vec<SourceRef>,
+    pub sources: Vec<Provenance>,
 }
 
 /// One operating-system installation.
@@ -189,6 +190,6 @@ impl MachineProfile {
 }
 
 /// First source of a list of sourced values, for hints.
-pub fn first_source<T>(values: &Values<T>) -> Option<&SourceRef> {
+pub fn first_source<T>(values: &Values<T>) -> Option<&Provenance> {
     values.primary().and_then(Sourced::source)
 }

@@ -100,3 +100,11 @@ fn typical_hours_wrap_past_midnight() {
     assert_eq!(typical_hours(&hours), Some((23, 2)));
     assert_eq!(typical_hours(&[0; 24]), None);
 }
+
+#[test]
+fn anchored_days_are_never_strays() {
+    let anchor = When(Timestamp::from_civil(2003, 1, 1, 0, 0, 0).unwrap());
+    let report = UsageAnalyzer::new(window(), None).with_anchors([anchor]).analyze(&rows());
+    assert_eq!(day(&report.first_day), "2003-01-01");
+    assert!(report.outliers.is_empty());
+}

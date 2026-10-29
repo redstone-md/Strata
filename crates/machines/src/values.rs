@@ -6,12 +6,12 @@ use strata_kernel::Timestamp;
 
 /// Where a value was read: parser id and evidence file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-pub struct SourceRef {
+pub struct Provenance {
     pub artifact: String,
     pub path: String,
 }
 
-impl SourceRef {
+impl Provenance {
     pub fn new(artifact: impl Into<String>, path: impl Into<String>) -> Self {
         Self { artifact: artifact.into(), path: path.into() }
     }
@@ -37,26 +37,26 @@ const MAX_SOURCES: usize = 4;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Sourced<T> {
     pub value: T,
-    pub sources: Vec<SourceRef>,
+    pub sources: Vec<Provenance>,
     /// Times it was read (more than `sources` holds when many files agree).
     pub seen: usize,
 }
 
 impl<T> Sourced<T> {
-    pub fn source(&self) -> Option<&SourceRef> {
+    pub fn source(&self) -> Option<&Provenance> {
         self.sources.first()
     }
 
-    fn add_source(&mut self, source: SourceRef) {
+    fn add_source(&mut self, source: Provenance) {
         self.seen += 1;
         if self.sources.len() < MAX_SOURCES && !self.sources.contains(&source) {
             self.sources.push(source);
         }
-        self.sources.sort_by_key(SourceRef::rank);
+        self.sources.sort_by_key(Provenance::rank);
     }
 
     fn rank(&self) -> u8 {
-        self.sources.iter().map(SourceRef::rank).min().unwrap_or(u8::MAX)
+        self.sources.iter().map(Provenance::rank).min().unwrap_or(u8::MAX)
     }
 }
 
@@ -107,7 +107,7 @@ impl SameValue for When {
 }
 
 impl<T: SameValue> Values<T> {
-    pub fn add(&mut self, value: T, source: SourceRef) {
+    pub fn add(&mut self, value: T, source: Provenance) {
         match self.items.iter_mut().find(|i| i.value.same(&value)) {
             Some(item) => item.add_source(source),
             None => {
@@ -176,9 +176,9 @@ mod tests {
     #[test]
     fn dedupes_and_prefers_live_files() {
         let mut v = Values::default();
-        v.add("OLD-NAME".to_string(), SourceRef::new("registry.system", "WINDOWS/repair/system"));
-        v.add("HOME-PC".to_string(), SourceRef::new("registry.system", "WINDOWS/system32/config/SYSTEM"));
-        v.add("home-pc".to_string(), SourceRef::new("registry.system", "System Volume Information/_restore{1}/RP2/snapshot/_REGISTRY_MACHINE_SYSTEM"));
+        v.add("OLD-NAME".to_string(), Provenance::new("registry.system", "WINDOWS/repair/system"));
+        v.add("HOME-PC".to_string(), Provenance::new("registry.system", "WINDOWS/system32/config/SYSTEM"));
+        v.add("home-pc".to_string(), Provenance::new("registry.system", "System Volume Information/_restore{1}/RP2/snapshot/_REGISTRY_MACHINE_SYSTEM"));
         assert_eq!(v.len(), 2);
         assert_eq!(v.value().map(String::as_str), Some("HOME-PC"));
         let p = v.primary().unwrap();

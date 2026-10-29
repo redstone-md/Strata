@@ -2,7 +2,7 @@
 //! service catalogue in installed-program lists, program runs and wallet traces, plus wallet
 //! data folders.
 
-use crate::values::SourceRef;
+use crate::values::Provenance;
 use serde::Serialize;
 use strata_accounts::{Service, ServiceKind};
 use strata_artifacts::host::stamp;
@@ -46,7 +46,7 @@ pub struct CryptoSoftware {
     /// Runs and wallet traces counted.
     pub uses: u64,
     pub data_dirs: Vec<String>,
-    pub sources: Vec<SourceRef>,
+    pub sources: Vec<Provenance>,
 }
 
 impl CryptoSoftware {
@@ -96,14 +96,14 @@ impl SoftwareBook {
                 s.uses += row.count;
             }
         }
-        let source = SourceRef::new(row.artifact.clone(), row.path.clone());
+        let source = Provenance::new(row.artifact.clone(), row.path.clone());
         if !s.sources.contains(&source) && s.sources.len() < 4 {
             s.sources.push(source);
         }
     }
 
     /// `wallet_data_dir` fact: `Electrum: home/u/.electrum/...` or a bare registry path.
-    pub fn data_dir(&mut self, value: &str, source: SourceRef) {
+    pub fn data_dir(&mut self, value: &str, source: Provenance) {
         let (name, dir) = match value.split_once(": ") {
             Some((name, dir)) if !name.contains(['\\', '/']) => (name.to_string(), dir.to_string()),
             _ => (Service::classify(value).map_or_else(|| "Bitcoin Core".to_string(), |s| s.name.to_string()), value.to_string()),
@@ -145,8 +145,8 @@ mod tests {
         book.program(&row(ProgramEvidence::Ran, "C:\\miners\\cgminer.exe", 1_335_000_000, false));
         book.program(&row(ProgramEvidence::Installed, "Bitcoin 0.3.21", 1_290_000_000, true));
         book.program(&row(ProgramEvidence::Ran, "notepad.exe", 1_290_000_000, false));
-        book.data_dir("Electrum: home/u/.electrum/wallets/default_wallet", SourceRef::new("linux.wallet_dir", "home/u/.electrum/wallets/default_wallet"));
-        book.data_dir("D:\\BitcoinData", SourceRef::new("registry.ntuser", "NTUSER.DAT"));
+        book.data_dir("Electrum: home/u/.electrum/wallets/default_wallet", Provenance::new("linux.wallet_dir", "home/u/.electrum/wallets/default_wallet"));
+        book.data_dir("D:\\BitcoinData", Provenance::new("registry.ntuser", "NTUSER.DAT"));
         let items = book.finish();
         let names: Vec<&str> = items.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["Bitcoin Core (Bitcoin-Qt, bitcoind)", "Electrum", "CGMiner", "Bitcoin 0.3.21"]);

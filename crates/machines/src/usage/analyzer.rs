@@ -28,6 +28,8 @@ pub struct UsageAnalyzer {
     window: UsageWindow,
     /// Minutes to add to local time for UTC; `None` keeps UTC days.
     bias: Option<i32>,
+    /// Days that are known real use (another analysis kept them): never trimmed as strays.
+    anchors: Vec<i64>,
 }
 
 impl UsageAnalyzer {
@@ -40,7 +42,14 @@ impl UsageAnalyzer {
     pub const STRAY_EVENTS: u64 = 10;
 
     pub fn new(window: UsageWindow, bias: Option<i32>) -> Self {
-        Self { window, bias }
+        Self { window, bias, anchors: Vec::new() }
+    }
+
+    /// Keep clusters within a day of these day stamps (first and last days of each machine's
+    /// own in-use range, so a short-lived installation is not a stray of the whole disk).
+    pub fn with_anchors(mut self, days: impl IntoIterator<Item = When>) -> Self {
+        self.anchors = days.into_iter().map(|w| w.0.unix_secs().div_euclid(86_400)).collect();
+        self
     }
 
     pub fn analyze<'r>(&self, rows: impl IntoIterator<Item = &'r ActivityRow>) -> UsageReport {
@@ -80,7 +89,11 @@ impl UsageAnalyzer {
 
     fn trim_strays(&self, clusters: &mut Vec<Vec<i64>>, days: &BTreeMap<i64, Day>, outliers: &mut Vec<Outlier>) {
         let events = |c: &[i64]| c.iter().filter_map(|d| days.get(d)).map(|s| s.events).sum::<u64>();
-        let tiny = |c: &[i64]| c.len() <= Self::STRAY_DAYS && events(c) <= Self::STRAY_EVENTS;
+        let anchored = |c: &[i64]| match (c.first(), c.last()) {
+            (Some(a), Some(b)) => self.anchors.iter().any(|d| (a - 1..=b + 1).contains(d)),
+            _ => false,
+        };
+        let tiny = |c: &[i64]| c.len() <= Self::STRAY_DAYS && events(c) <= Self::STRAY_EVENTS && !anchored(c);
         let gap = |a: &[i64], b: &[i64]| match (a.last(), b.first()) {
             (Some(x), Some(y)) => y - x,
             _ => 0,

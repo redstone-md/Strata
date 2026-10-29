@@ -124,19 +124,26 @@ impl ActivityRow {
 /// made or after today).
 #[derive(Debug, Clone, Copy)]
 pub struct UsageWindow {
-    pub not_before: Timestamp,
-    pub not_after: Timestamp,
+    pub not_before: Option<Timestamp>,
+    /// `None`: no upper bound known (the clock of this computer is unusable).
+    pub not_after: Option<Timestamp>,
+}
+
+impl Default for UsageWindow {
+    /// From 1995 on, without an upper bound.
+    fn default() -> Self {
+        Self { not_before: Timestamp::from_civil(1995, 1, 1, 0, 0, 0), not_after: None }
+    }
 }
 
 impl UsageWindow {
     /// 1995-01-01 up to `not_after`.
     pub fn until(not_after: Timestamp) -> Self {
-        let not_before = Timestamp::from_civil(1995, 1, 1, 0, 0, 0).unwrap_or(not_after);
-        Self { not_before, not_after }
+        Self { not_after: Some(not_after), ..Self::default() }
     }
 
     pub fn contains(&self, t: Timestamp) -> bool {
-        (self.not_before..=self.not_after).contains(&t)
+        self.not_before.is_none_or(|b| t >= b) && self.not_after.is_none_or(|a| t <= a)
     }
 }
 

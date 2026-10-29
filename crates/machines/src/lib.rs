@@ -15,13 +15,13 @@ mod values;
 
 pub use catalog::{DiskInputs, DiskMachines, FactRow, LogonRow, Machine};
 pub use location::{InstallKey, InstallKind, Location, OsFamily};
-pub use profile::{Hardware, MachineProfile, Network, NetworkProfile, OsInfo, TimeZone, UsbDevice, UserAccount, first_source, utc_offset};
+pub use profile::{PROFILE_KEYS, Hardware, MachineProfile, Network, NetworkProfile, OsInfo, TimeZone, UsbDevice, UserAccount, first_source, utc_offset};
 pub use software::{CryptoSoftware, ProgramEvidence, ProgramRow};
 pub use usage::{
     ActivityKind, ActivityRow, KindCount, MonthActivity, NOT_ACTIVITY_PREFIXES, Outlier, POWER_TITLE_INFIXES, POWER_TITLE_PREFIXES, Period,
     UsageAnalyzer, UsageReport, UsageWindow,
 };
-pub use values::{SourceRef, Sourced, Values, When};
+pub use values::{Provenance, Sourced, Values, When};
 
 #[cfg(test)]
 mod tests;

@@ -1,7 +1,7 @@
 //! User accounts of one installation, merged by name from the SAM, the profile list,
 //! `/etc/passwd`, logon events and activity under each profile folder.
 
-use crate::values::SourceRef;
+use crate::values::Provenance;
 use serde::Serialize;
 use strata_artifacts::host::{UserRecord, stamp};
 use strata_kernel::Timestamp;
@@ -29,7 +29,7 @@ pub struct UserAccount {
     pub logon_events: u64,
     /// Built-in account (Administrator, Guest...) rather than a person's.
     pub builtin: bool,
-    pub sources: Vec<SourceRef>,
+    pub sources: Vec<Provenance>,
 }
 
 impl UserAccount {
@@ -79,7 +79,7 @@ impl UserBook {
         &mut self.users[i]
     }
 
-    pub fn record(&mut self, r: UserRecord, source: SourceRef) {
+    pub fn record(&mut self, r: UserRecord, source: Provenance) {
         if r.name.trim().is_empty() {
             return;
         }
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn book_merges_by_name_and_orders_people_first() {
-        let src = SourceRef::new("registry.sam", "WINDOWS/system32/config/SAM");
+        let src = Provenance::new("registry.sam", "WINDOWS/system32/config/SAM");
         let mut book = UserBook::default();
         book.record(UserRecord { name: "Administrator".into(), id: Some("RID 500".into()), ..Default::default() }, src.clone());
         book.record(UserRecord { name: "olga".into(), id: Some("RID 1003".into()), logon_count: Some(9), ..Default::default() }, src.clone());

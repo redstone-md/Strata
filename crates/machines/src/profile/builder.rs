@@ -5,10 +5,43 @@ use super::users::{UserBook, logon_user};
 use super::{Hardware, MachineProfile, Network, NetworkProfile, OsInfo, TimeZone, UsbDevice};
 use crate::location::{InstallKey, InstallKind};
 use crate::software::{ProgramRow, SoftwareBook};
-use crate::values::{SourceRef, Values, When};
+use crate::values::{Provenance, Values, When};
 use crate::FactRow;
 use strata_artifacts::host::{NetworkProfileRecord, UsbRecord, UserRecord, from_value, keys};
 use strata_kernel::Timestamp;
+
+/// Every fact key a profile reads (the case query loads only these).
+pub const PROFILE_KEYS: &[&str] = &[
+    keys::COMPUTER_NAME,
+    keys::WINDOWS_PRODUCT,
+    keys::LINUX_DISTRO,
+    keys::WINDOWS_EDITION,
+    keys::WINDOWS_VERSION,
+    keys::LINUX_VERSION,
+    keys::WINDOWS_BUILD,
+    keys::WINDOWS_SERVICE_PACK,
+    keys::SYSTEM_ROOT,
+    keys::INSTALL_DATE,
+    keys::REGISTERED_OWNER,
+    keys::REGISTERED_ORGANIZATION,
+    keys::TIMEZONE,
+    keys::TIMEZONE_BIAS,
+    keys::LAST_SHUTDOWN,
+    keys::DOMAIN,
+    keys::NETWORK_INTERFACE,
+    keys::NETWORK_PROFILE,
+    keys::CPU,
+    keys::VIDEO,
+    keys::SYSTEM_MODEL,
+    keys::DISK_DRIVE,
+    keys::USB_DEVICE,
+    keys::USER,
+    OLD_PROFILE,
+    keys::LNK_MACHINE,
+    keys::WALLET_DATA_DIR,
+];
+/// `SID → path` profile facts of older cases.
+const OLD_PROFILE: &str = "profile";
 
 pub(crate) struct ProfileBuilder {
     key: InstallKey,
@@ -20,9 +53,9 @@ pub(crate) struct ProfileBuilder {
     time_zone: TimeZone,
     last_shutdown: Values<When>,
     network: Network,
-    network_profiles: Vec<(NetworkProfileRecord, SourceRef)>,
+    network_profiles: Vec<(NetworkProfileRecord, Provenance)>,
     hardware: Hardware,
-    usb: Vec<(UsbRecord, SourceRef)>,
+    usb: Vec<(UsbRecord, Provenance)>,
     users: UserBook,
     software: SoftwareBook,
     lnk_machines: Values<String>,
@@ -56,7 +89,7 @@ impl ProfileBuilder {
     }
 
     pub fn fact(&mut self, f: &FactRow) {
-        let src = SourceRef::new(f.artifact.clone(), f.source.clone());
+        let src = Provenance::new(f.artifact.clone(), f.source.clone());
         let text = f.value.trim().to_string();
         let when = || Timestamp::parse_iso8601(&text).map(When);
         self.facts += 1;
@@ -83,7 +116,7 @@ impl ProfileBuilder {
             keys::DISK_DRIVE => self.hardware.disks.add(text, src),
             keys::USB_DEVICE => self.usb.push((usb_record(&text), src)),
             keys::USER => self.users.record(from_value::<UserRecord>(&text).unwrap_or_else(|| old_profile(&text)), src),
-            "profile" => self.users.record(old_profile(&text), src),
+            OLD_PROFILE => self.users.record(old_profile(&text), src),
             keys::LNK_MACHINE => self.lnk_machines.add(text, src),
             keys::WALLET_DATA_DIR => self.software.data_dir(&text, src),
             _ => self.facts -= 1,
@@ -91,7 +124,7 @@ impl ProfileBuilder {
     }
 
     /// Old cases stored `Russian Standard Time (bias -180 min)` in one fact.
-    fn time_zone(&mut self, text: String, src: SourceRef) {
+    fn time_zone(&mut self, text: String, src: Provenance) {
         if let Some((name, rest)) = text.rsplit_once(" (bias ")
             && let Some(Ok(bias)) = rest.strip_suffix(" min)").map(str::parse::<i32>)
         {
@@ -166,7 +199,7 @@ fn usb_record(text: &str) -> UsbRecord {
 }
 
 /// One entry per network name; local times moved to UTC when the bias is known.
-fn network_profiles(records: Vec<(NetworkProfileRecord, SourceRef)>, bias: Option<i32>) -> Vec<NetworkProfile> {
+fn network_profiles(records: Vec<(NetworkProfileRecord, Provenance)>, bias: Option<i32>) -> Vec<NetworkProfile> {
     let mut out: Vec<NetworkProfile> = Vec::new();
     for (r, src) in records {
         let to_utc = |t: Option<Timestamp>| match (t, bias) {
@@ -207,7 +240,7 @@ fn network_profiles(records: Vec<(NetworkProfileRecord, SourceRef)>, bias: Optio
 }
 
 /// One entry per (name, serial), widest time span.
-fn usb_devices(records: Vec<(UsbRecord, SourceRef)>) -> Vec<UsbDevice> {
+fn usb_devices(records: Vec<(UsbRecord, Provenance)>) -> Vec<UsbDevice> {
     let mut out: Vec<UsbDevice> = Vec::new();
     for (r, src) in records {
         let first = r.first_connected.or(r.last_connected);
@@ -239,4 +272,19 @@ fn usb_devices(records: Vec<(UsbRecord, SourceRef)>) -> Vec<UsbDevice> {
     // Hardware wallets first, then most recently connected.
     out.sort_by(|a, b| (a.kind != "hardware wallet").cmp(&(b.kind != "hardware wallet")).then(b.last_connected.cmp(&a.last_connected)));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_listed_key_is_read() {
+        let key = InstallKey { volume: None, family: crate::OsFamily::Windows, root: String::new() };
+        for k in PROFILE_KEYS {
+            let mut b = ProfileBuilder::new(key.clone(), InstallKind::System);
+            b.fact(&FactRow { volume: None, key: k.to_string(), value: "2011-01-01 00:00:00".into(), artifact: "t".into(), source: "x".into() });
+            assert_eq!(b.facts, 1, "{k}");
+        }
+    }
 }
