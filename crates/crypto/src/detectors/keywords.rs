@@ -2,7 +2,7 @@
 //! ASCII/UTF-8, CP1251 and UTF-16LE. Used for context scoring and the marker detector.
 
 use super::text::Encoding;
-use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, AhoCorasickKind, Input, MatchKind};
 use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,19 +109,30 @@ pub struct KeywordSet {
     ac: AhoCorasick,
     /// Pattern id -> (keyword index, encoding).
     meta: Vec<(usize, TextEncoding)>,
+    /// Bitmap of every pattern's first two bytes (all ASCII case variants): a cheap
+    /// per-position prefilter so the automaton only runs near plausible starts.
+    bigrams: Box<[u64; 1024]>,
+    max_len: usize,
 }
 
-static SET: LazyLock<KeywordSet> = LazyLock::new(KeywordSet::build);
+static ALL: LazyLock<KeywordSet> = LazyLock::new(|| KeywordSet::build(|_| true));
+static MARKERS: LazyLock<KeywordSet> = LazyLock::new(|| KeywordSet::build(|k| k.marker));
 
 impl KeywordSet {
+    /// Every keyword (context scoring).
     pub fn get() -> &'static KeywordSet {
-        &SET
+        &ALL
     }
 
-    fn build() -> Self {
+    /// Only keywords flagged as markers.
+    pub fn markers() -> &'static KeywordSet {
+        &MARKERS
+    }
+
+    fn build(filter: impl Fn(&Keyword) -> bool) -> Self {
         let mut patterns: Vec<Vec<u8>> = Vec::new();
         let mut meta = Vec::new();
-        for (ki, k) in KEYWORDS.iter().enumerate() {
+        for (ki, k) in KEYWORDS.iter().enumerate().filter(|(_, k)| filter(k)) {
             for variant in case_variants(k.text) {
                 let mut push = |bytes: Vec<u8>, enc| {
                     if !patterns.contains(&bytes) {
@@ -130,20 +141,49 @@ impl KeywordSet {
                     }
                 };
                 push(variant.as_bytes().to_vec(), TextEncoding::Utf8);
-                if let Some(cp) = encode_cp1251(&variant) {
-                    if !variant.is_ascii() {
+                if let Some(cp) = encode_cp1251(&variant)
+                    && !variant.is_ascii() {
                         push(cp, TextEncoding::Cp1251);
                     }
-                }
                 push(variant.encode_utf16().flat_map(|u| u.to_le_bytes()).collect(), TextEncoding::Utf16Le);
             }
         }
         let ac = AhoCorasickBuilder::new()
             .ascii_case_insensitive(true)
             .match_kind(MatchKind::LeftmostLongest)
+            .kind(Some(AhoCorasickKind::DFA))
             .build(&patterns)
             .expect("keyword automaton builds from static patterns");
-        Self { ac, meta }
+        let mut bigrams = Box::new([0u64; 1024]);
+        for p in &patterns {
+            if let [a, b, ..] = p.as_slice() {
+                for x in [a.to_ascii_lowercase(), a.to_ascii_uppercase()] {
+                    for y in [b.to_ascii_lowercase(), b.to_ascii_uppercase()] {
+                        let k = (usize::from(x) << 8) | usize::from(y);
+                        bigrams[k >> 6] |= 1 << (k & 63);
+                    }
+                }
+            }
+        }
+        let max_len = patterns.iter().map(Vec::len).max().unwrap_or(0);
+        Self { ac, meta, bigrams, max_len }
+    }
+
+    /// Disjoint byte spans that may contain a match (prefilter).
+    fn spans(&self, data: &[u8]) -> Vec<(usize, usize)> {
+        let mut out: Vec<(usize, usize)> = Vec::new();
+        for (p, w) in data.windows(2).enumerate() {
+            let k = (usize::from(w[0]) << 8) | usize::from(w[1]);
+            if self.bigrams[k >> 6] & (1 << (k & 63)) == 0 {
+                continue;
+            }
+            let end = (p + self.max_len).min(data.len());
+            match out.last_mut() {
+                Some(last) if p <= last.1 => last.1 = last.1.max(end),
+                _ => out.push((p, end)),
+            }
+        }
+        out
     }
 
     /// Every keyword occurrence in `data`: `(start, end, keyword, encoding)`.
@@ -151,7 +191,11 @@ impl KeywordSet {
         &'a self,
         data: &'a [u8],
     ) -> impl Iterator<Item = (usize, usize, &'static Keyword, TextEncoding)> + 'a {
-        self.ac.find_iter(data).filter_map(move |m| {
+        let spans = self.spans(data);
+        spans
+            .into_iter()
+            .flat_map(move |(s, e)| self.ac.find_iter(Input::new(data).range(s..e)))
+            .filter_map(move |m| {
             let (ki, enc) = *self.meta.get(m.pattern().as_usize())?;
             Some((m.start(), m.end(), KEYWORDS.get(ki)?, enc))
         })
