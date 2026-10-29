@@ -108,15 +108,12 @@ impl ChromeLogins {
             }
             let kind = if is_email(&user) { IdentityKind::Email } else { IdentityKind::Login };
             let service = (!site.is_empty()).then_some(site.as_str());
-            rec.identity(kind, &user, service, created);
+            rec.identity_noted(kind, &user, service, created, "saved browser login");
         });
     }
 }
 
 pub(crate) struct ChromeWebData;
-
-/// Autofill field names that hold an account name.
-const LOGIN_FIELDS: &[&str] = &["login", "user", "nick", "account", "username"];
 
 impl ChromeWebData {
     pub fn parse(db: &mut SqliteDb, rec: &mut Recorder) {
@@ -153,24 +150,22 @@ impl ChromeWebData {
         if last.is_some() && last != first {
             rec.emit(last, EventKind::FormInput, title, "autofill last used");
         }
-        let lname = name.to_ascii_lowercase();
-        if is_email(value) {
-            rec.identity(IdentityKind::Email, value, None, first);
-        } else if value.len() >= 3 && value.len() <= 64 && LOGIN_FIELDS.iter().any(|f| lname.contains(f)) {
-            rec.identity(IdentityKind::Nickname, value, None, first);
-        }
+        super::form_identity(rec, name, value, first, "autofill");
     }
 }
 
 pub(crate) struct ChromeCookies;
 
 impl ChromeCookies {
-    /// Cookie names and hosts only; values are never read.
+    /// Cookie names and hosts; a value is read only when the cookie is named like a login
+    /// (`username`, `remember_login`) and stored in plain text (pre-2014 Chrome).
     pub fn parse(db: &mut SqliteDb, rec: &mut Recorder) {
         let last = db.col_or("cookies", "last_access_utc", "0");
-        db.each(&format!("SELECT host_key, name, creation_utc, {last} FROM cookies"), |r| {
+        let value = db.col_or("cookies", "value", "''");
+        db.each(&format!("SELECT host_key, name, creation_utc, {last}, {value} FROM cookies"), |r| {
             let host = r.text(0);
             let created = chrome_time(r.int(2));
+            super::cookie_identity(rec, &host, &r.text(1), &r.text(4), created);
             rec.emit(created, EventKind::Cookie, host.clone(), format!("cookie {} set", r.text(1)));
             let accessed = chrome_time(r.int(3));
             if accessed.is_some() && accessed != created {

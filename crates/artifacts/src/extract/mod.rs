@@ -133,6 +133,14 @@ impl ArtifactExtractor {
         if kind == ArtifactKind::Lnk {
             lnk_open_times(entry, &mut out);
         }
+        if kind.dated_by_file() {
+            let first = entry.times.created.or(entry.times.modified);
+            let last = entry.times.modified.or(first);
+            for id in out.identities.iter_mut().filter(|i| i.first_seen.is_none()) {
+                id.first_seen = first;
+                id.last_seen = last;
+            }
+        }
         out.attach(&entry.path, entry.is_deleted(), profile_of(&entry.path).as_deref());
         out
     }

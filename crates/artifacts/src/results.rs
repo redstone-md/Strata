@@ -11,6 +11,21 @@ pub enum IdentityKind {
     Login,
     Nickname,
     Phone,
+    /// Numeric or opaque account id (Bitcointalk `u=`, ICQ UIN in a URL).
+    UserId,
+}
+
+impl IdentityKind {
+    pub(crate) fn of(kind: strata_accounts::IdentifierKind) -> Self {
+        use strata_accounts::IdentifierKind as K;
+        match kind {
+            K::Email => Self::Email,
+            K::Login => Self::Login,
+            K::Nickname => Self::Nickname,
+            K::Phone => Self::Phone,
+            K::UserId => Self::UserId,
+        }
+    }
 }
 
 /// An account name / address seen in an artefact.
@@ -24,6 +39,12 @@ pub struct IdentityRecord {
     pub source: String,
     pub first_seen: Option<Timestamp>,
     pub last_seen: Option<Timestamp>,
+    /// How the artefact names the account (`saved browser login`, `URL ?login=`).
+    #[serde(default)]
+    pub detail: String,
+    /// Weak traces (a profile page someone visited) are not necessarily the user's own.
+    #[serde(default)]
+    pub weak: bool,
 }
 
 impl IdentityRecord {
@@ -108,6 +129,9 @@ impl ArtifactResults {
         for e in &mut self.events {
             tagger.tag_event(e);
         }
+        for id in crate::url_identities::url_identities(&self.events) {
+            self.add_identity(id);
+        }
         for i in self.identities.iter_mut().filter(|i| i.service.is_none()) {
             i.service = tagger.service_name(&i.value);
         }
@@ -159,6 +183,11 @@ impl Recorder {
     }
 
     pub fn identity(&mut self, kind: IdentityKind, value: &str, service: Option<&str>, at: Option<Timestamp>) {
+        self.identity_noted(kind, value, service, at, "");
+    }
+
+    /// Like [`Recorder::identity`] with a note on how the artefact names the account.
+    pub fn identity_noted(&mut self, kind: IdentityKind, value: &str, service: Option<&str>, at: Option<Timestamp>, detail: &str) {
         let value = value.trim();
         if value.is_empty() {
             return;
@@ -170,6 +199,8 @@ impl Recorder {
             source: String::new(),
             first_seen: at,
             last_seen: at,
+            detail: detail.to_string(),
+            weak: false,
         });
     }
 

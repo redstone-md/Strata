@@ -12,6 +12,7 @@
 //! INFO2/$I, XP `.evt` and Vista+ `.evtx` logs (also carved chunks), Outlook Express `.dbx`, mbox/eml, IM account paths.
 
 mod browser;
+mod configs;
 mod extract;
 mod linux;
 mod mail;
@@ -21,6 +22,7 @@ mod results;
 mod sqlite;
 mod tag;
 mod text;
+mod url_identities;
 mod windows;
 
 pub use extract::{ArtifactExtractor, ArtifactKind, FsEvents, ProfileHints, fs_events, parse_bytes, profile_of};
