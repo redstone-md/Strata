@@ -1,7 +1,7 @@
 //! Which archives the unpack step opens: files whose content is an archive (live, deleted,
 //! orphaned, renamed) and archives carved from free space.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use strata_archive::ArchiveFormat;
 use strata_carve::{CarvedFile, Carver};
 use strata_case::{Case, HitQuery};
@@ -69,23 +69,28 @@ impl<'a> TargetFinder<'a> {
         let identifier = Identifier::new();
         let mut out = Vec::new();
         for (vol, fs) in layout.filesystems() {
-            let wanted: Option<HashSet<usize>> =
-                listed.as_ref().map(|l| l.iter().filter(|(v, _, _)| *v == vol.index).map(|(_, i, _)| *i).collect());
+            // Classified: the stored type decides (the classifier saw more of the file than the
+            // head read here). Not classified: identify the head now.
+            let wanted: Option<HashMap<usize, TypeId>> = listed.as_ref().map(|l| {
+                l.iter().filter(|(v, _, _)| *v == vol.index).filter_map(|(_, i, ty)| Some((*i, type_by_name(ty)?))).collect()
+            });
             let vol_source = vol.open(source.clone());
             for (idx, e) in fs.entries().iter().enumerate().filter(|(_, e)| !e.is_dir && e.size > 0) {
                 let hint = match &wanted {
-                    Some(w) if !w.contains(&idx) => continue,
-                    // Classified: re-identify the head only to get the exact type.
-                    _ => {
+                    Some(w) => match w.get(&idx) {
+                        Some(t) => *t,
+                        None => continue,
+                    },
+                    None => {
                         let Ok(head) = ExtentReader::new(vol_source.as_ref(), e).read_all(HEAD_BYTES) else { continue };
                         let t = identifier.identify(&head, Some(&e.name)).file_type;
                         if ArchiveFormat::for_type(t).is_none() {
                             continue;
                         }
-                        Some(t)
+                        t
                     }
                 };
-                out.push(Self::file_target(vol.index, vol.range.start(), idx, e, hint));
+                out.push(Self::file_target(vol.index, vol.range.start(), idx, e, Some(hint)));
             }
         }
         Ok(out)

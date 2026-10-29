@@ -29,7 +29,7 @@ pub struct ArchiveMemberRow {
 
 impl Case {
     /// Files whose content type (from the classify step) is one of `types`, as
-    /// `(volume, file index, path)`. `None` when the evidence was never classified.
+    /// `(volume, file index, type)`. `None` when the evidence was never classified.
     pub fn files_of_types(&self, id: EvidenceId, types: &[&str]) -> Result<Option<Vec<(u32, usize, String)>>> {
         self.with_conn(|conn| {
             let classified: bool = conn.query_row(
@@ -41,15 +41,15 @@ impl Case {
                 return Ok(None);
             }
             let mut stmt = conn.prepare(
-                "SELECT volume_idx, file_idx, path, detected_type FROM files
+                "SELECT volume_idx, file_idx, detected_type FROM files
                  WHERE evidence_id = ?1 AND is_dir = 0 AND detected_type IS NOT NULL",
             )?;
-            let rows = stmt.query_map([id.get()], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)? as usize, r.get::<_, String>(2)?, r.get::<_, String>(3)?)))?;
+            let rows = stmt.query_map([id.get()], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)? as usize, r.get::<_, String>(2)?)))?;
             let mut out = Vec::new();
             for row in rows {
-                let (vol, idx, path, ty) = row?;
+                let (vol, idx, ty) = row?;
                 if types.contains(&ty.as_str()) {
-                    out.push((vol, idx, path));
+                    out.push((vol, idx, ty));
                 }
             }
             Ok(Some(out))
