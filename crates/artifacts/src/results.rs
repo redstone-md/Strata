@@ -144,6 +144,13 @@ impl Recorder {
         }
     }
 
+    /// Like [`Recorder::emit`] but silently drops undated events (optional timestamps).
+    pub fn dated(&mut self, at: Option<Timestamp>, kind: EventKind, title: impl Into<String>, detail: impl Into<String>) {
+        if let Some(e) = self.make(at, kind, title) {
+            self.out.events.push(e.with_detail(detail));
+        }
+    }
+
     pub fn push(&mut self, event: TimelineEvent) {
         self.out.events.push(event);
     }

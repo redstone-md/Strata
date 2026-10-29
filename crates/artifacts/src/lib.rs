@@ -2,6 +2,7 @@
 //! evidence bytes into timeline events, identities and host facts.
 
 mod browser;
+mod registry;
 mod results;
 mod sqlite;
 mod tag;
